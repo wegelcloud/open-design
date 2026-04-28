@@ -21,7 +21,7 @@ const DICTS: Record<Locale, Dict> = {
   'zh-CN': zhCN,
 };
 
-const LS_KEY = 'open-claude-design:locale';
+const LS_KEY = 'open-design:locale';
 
 // First-run default is English. We honor an explicit user pick saved to
 // localStorage but never auto-detect from `navigator.language`, so the

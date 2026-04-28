@@ -12,7 +12,7 @@ triggers:
   - "single page"
   - "marketing page"
   - "homepage"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: design
@@ -83,7 +83,7 @@ Wrap `index.html` in `<artifact>` tags. One sentence before describing what's th
 - **Display font is serif** (Iowan Old Style / Charter / Georgia in the seed). Sans for body. Mono for numerics, captions, eyebrows.
 - **Image placeholders, not external URLs.** Use the `.ph-img` class — never link to a stock photo CDN.
 - **Mobile reflow already works** via the seed's media query at 920px. Don't break it by adding fixed widths.
-- **`data-ocd-id` on every `<section>`** so comment mode can target it.
+- **`data-od-id` on every `<section>`** so comment mode can target it.
 
 ## Output contract
 

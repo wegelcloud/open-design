@@ -6,7 +6,7 @@ will read it as part of its system prompt.
 
 ## What's bundled
 
-- **`default/`** — Neutral Modern. Hand-authored starter for the OCD spec.
+- **`default/`** — Neutral Modern. Hand-authored starter for the OD spec.
 - **`warm-editorial/`** — Warm Editorial. Hand-authored serif starter.
 - **69 product systems**, imported from
   [`VoltAgent/awesome-design-md`](https://github.com/VoltAgent/awesome-design-md)

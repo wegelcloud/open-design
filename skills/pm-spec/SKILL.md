@@ -11,7 +11,7 @@ triggers:
   - "feature brief"
   - "feature doc"
   - "需求文档"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: product

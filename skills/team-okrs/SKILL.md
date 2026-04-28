@@ -11,7 +11,7 @@ triggers:
   - "key results"
   - "objectives"
   - "目标"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: product

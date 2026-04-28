@@ -24,20 +24,27 @@ export async function listSkills(skillsRoot) {
       const raw = await readFile(skillPath, 'utf8');
       const { data, body } = parseFrontmatter(raw);
       const hasAttachments = await dirHasAttachments(dir);
-      const mode = data.ocd?.mode || inferMode(body, data.description);
+      const mode = data.od?.mode || inferMode(body, data.description);
       out.push({
         id: data.name || entry.name,
         name: data.name || entry.name,
         description: data.description || '',
         triggers: Array.isArray(data.triggers) ? data.triggers : [],
         mode,
-        platform: normalizePlatform(data.ocd?.platform, mode, body, data.description),
-        scenario: normalizeScenario(data.ocd?.scenario, body, data.description),
-        previewType: data.ocd?.preview?.type || 'html',
-        designSystemRequired: data.ocd?.design_system?.requires ?? true,
-        defaultFor: normalizeDefaultFor(data.ocd?.default_for),
-        upstream: typeof data.ocd?.upstream === 'string' ? data.ocd.upstream : null,
-        featured: normalizeFeatured(data.ocd?.featured),
+        platform: normalizePlatform(data.od?.platform, mode, body, data.description),
+        scenario: normalizeScenario(data.od?.scenario, body, data.description),
+        previewType: data.od?.preview?.type || 'html',
+        designSystemRequired: data.od?.design_system?.requires ?? true,
+        defaultFor: normalizeDefaultFor(data.od?.default_for),
+        upstream: typeof data.od?.upstream === 'string' ? data.od.upstream : null,
+        featured: normalizeFeatured(data.od?.featured),
+        // Optional metadata hints used by 'Use this prompt' fast-create so
+        // the resulting project mirrors the shipped example.html. Each hint
+        // is only consumed when its kind matches the skill mode; missing
+        // hints fall back to the same defaults the new-project form uses.
+        fidelity: normalizeFidelity(data.od?.fidelity),
+        speakerNotes: normalizeBoolHint(data.od?.speaker_notes),
+        animations: normalizeBoolHint(data.od?.animations),
         examplePrompt: derivePrompt(data),
         body: hasAttachments ? withSkillRootPreamble(body, dir) : body,
         dir,
@@ -85,7 +92,28 @@ function normalizeDefaultFor(value) {
   return [String(value)];
 }
 
-// Coerce `ocd.featured` into a numeric priority. Lower numbers float to the
+// Optional `od.fidelity` hint for prototype skills. Only 'wireframe' and
+// 'high-fidelity' are meaningful — anything else collapses to null so the
+// caller falls back to the form default ('high-fidelity').
+function normalizeFidelity(value) {
+  if (value === 'wireframe' || value === 'high-fidelity') return value;
+  return null;
+}
+
+// Coerce truthy / falsy strings ("true", "yes", "false", "no") and booleans
+// to a real boolean. Returns null for anything we can't interpret so the
+// caller knows to fall back to the form default.
+function normalizeBoolHint(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true' || v === 'yes' || v === '1') return true;
+    if (v === 'false' || v === 'no' || v === '0') return false;
+  }
+  return null;
+}
+
+// Coerce `od.featured` into a numeric priority. Lower numbers float to the
 // top of the Examples gallery; `true` is treated as priority 1; anything
 // missing/unrecognised becomes null so non-featured skills keep their
 // natural alphabetical order.
@@ -99,12 +127,12 @@ function normalizeFeatured(value) {
   return null;
 }
 
-// Prefer an explicitly authored `ocd.example_prompt`. Fall back to the
+// Prefer an explicitly authored `od.example_prompt`. Fall back to the
 // skill description's first sentence — it's already written in actionable
 // language ("Admin / analytics dashboard in a single HTML file…") so it
 // serves as a passable starter prompt.
 function derivePrompt(data) {
-  const explicit = data.ocd?.example_prompt;
+  const explicit = data.od?.example_prompt;
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
   const desc = typeof data.description === 'string' ? data.description.trim() : '';
   if (!desc) return '';

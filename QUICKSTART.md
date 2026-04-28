@@ -10,7 +10,7 @@ npm run dev:all        # starts daemon (:7456) + Vite (:5173) together
 open http://localhost:5173
 ```
 
-On first load, the app detects your installed code-agent CLI (Claude Code / Codex / Gemini / OpenCode / Cursor Agent / Qwen), picks it automatically, and defaults to `web-prototype` skill + `Neutral Modern` design system. Type a prompt and hit **Send**. The agent streams into the left pane; the `<artifact>` tag is parsed out and the HTML renders live on the right. When it finishes, click **Save to disk** to persist the artifact under `./.ocd/artifacts/<timestamp>-<slug>/index.html`.
+On first load, the app detects your installed code-agent CLI (Claude Code / Codex / Gemini / OpenCode / Cursor Agent / Qwen), picks it automatically, and defaults to `web-prototype` skill + `Neutral Modern` design system. Type a prompt and hit **Send**. The agent streams into the left pane; the `<artifact>` tag is parsed out and the HTML renders live on the right. When it finishes, click **Save to disk** to persist the artifact under `./.od/artifacts/<timestamp>-<slug>/index.html`.
 
 The **Design system** dropdown ships with 71 built-in systems — 2 hand-authored starters (Neutral Modern, Warm Editorial) and 69 product systems imported from [`awesome-design-md`](https://github.com/VoltAgent/awesome-design-md), grouped by category (AI & LLM, Developer Tools, Productivity, Backend, Design Tools, Fintech, E-Commerce, Media, Automotive). Pick one to skin every prototype in that brand's aesthetic.
 
@@ -57,9 +57,9 @@ Swap the skill or the design system in the top bar and the next send uses the ne
 ## File map
 
 ```
-open-claude-design/
+open-design/
 ├── daemon/                    # Node/Express — spawns local agents + serves APIs
-│   ├── cli.js                 # `ocd` bin entry (also used by npm scripts)
+│   ├── cli.js                 # `od` bin entry (also used by npm scripts)
 │   ├── server.js              # /api/agents /api/skills /api/design-systems /api/chat /api/upload /api/artifacts/save
 │   ├── agents.js              # PATH scanner for claude/codex/gemini/opencode/cursor-agent/qwen
 │   ├── skills.js              # SKILL.md loader (frontmatter parser)
@@ -96,7 +96,10 @@ open-claude-design/
 │   ├── components/            # ChatPane, PreviewPane, AgentPicker, SkillPicker, DesignSystemPicker, SettingsDialog
 │   └── state/config.ts        # localStorage persistence
 ├── docs/                      # product vision + spec
-├── .ocd/artifacts/            # saved HTML outputs (gitignored)
+├── .od/                       # runtime data (gitignored, auto-created)
+│   ├── app.sqlite              #   projects / conversations / messages / tabs
+│   ├── artifacts/              #   one-off "Save to disk" renders
+│   └── projects/<id>/          #   per-project working dir + agent cwd
 └── vite.config.ts             # /api proxy to :7456
 ```
 
@@ -111,6 +114,6 @@ open-claude-design/
 This Quickstart is the runnable seed of the spec in [`docs/`](docs/). The spec describes where this grows (see [`docs/roadmap.md`](docs/roadmap.md)). Highlights:
 
 - `docs/architecture.md` proposes Next.js; we picked Vite for a simpler dev loop. The daemon contract is identical, so migrating is a port, not a rewrite.
-- `docs/skills-protocol.md` describes the full `ocd:` frontmatter (typed inputs, sliders, capability gating). This MVP reads `name` / `description` / `triggers` / `ocd.mode` / `ocd.design_system.requires` only — extend `daemon/skills.js` to add the rest.
+- `docs/skills-protocol.md` describes the full `od:` frontmatter (typed inputs, sliders, capability gating). This MVP reads `name` / `description` / `triggers` / `od.mode` / `od.design_system.requires` only — extend `daemon/skills.js` to add the rest.
 - `docs/agent-adapters.md` foresees richer dispatch (capability detection, streaming tool-calls). Our `daemon/agents.js` is a minimal dispatcher — enough to prove the wiring.
 - `docs/modes.md` lists four modes: prototype / deck / template / design-system. We ship skills for the first two; the picker already filters by `mode`.

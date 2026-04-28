@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const DAEMON_PORT = Number(process.env.OCD_PORT) || 7456;
+const DAEMON_PORT = Number(process.env.OD_PORT) || 7456;
 
 export default defineConfig({
   plugins: [react()],

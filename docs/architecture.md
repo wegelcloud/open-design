@@ -13,7 +13,7 @@ This doc describes the system topology, runtime modes, data flow, and file layou
 
 ## 1. Three deployment topologies
 
-OCD is a web app plus a local daemon. The split means the same UI can run in three shapes:
+OD is a web app plus a local daemon. The split means the same UI can run in three shapes:
 
 ### Topology A — Fully local (the default)
 
@@ -24,7 +24,7 @@ OCD is a web app plus a local daemon. The split means the same UI can run in thr
 │                       │                            │
 │                       │ ws://localhost:7431        │
 │                       ▼                            │
-│            ocd daemon (Node, long-running)         │
+│            od daemon (Node, long-running)         │
 │                       │                            │
 │                       ▼                            │
 │            spawns: claude / codex / cursor / …     │
@@ -36,22 +36,22 @@ One `pnpm dev` starts both the Next.js app and the daemon (via a predev script).
 ### Topology B — Web on Vercel + daemon on user's machine
 
 ```
-browser ──► ocd.yourdomain.com (Vercel)
+browser ──► od.yourdomain.com (Vercel)
               │
               │ ws(s):// user-provided URL (e.g. cloudflared tunnel)
               ▼
-        ocd daemon on user's laptop
+        od daemon on user's laptop
               │
               ▼
         spawns: claude / codex / …
 ```
 
-The user runs `ocd daemon --expose` which prints a tunnel URL; they paste the URL into the deployed web app's "Connect daemon" screen. Daemon holds secrets; Vercel holds nothing sensitive.
+The user runs `od daemon --expose` which prints a tunnel URL; they paste the URL into the deployed web app's "Connect daemon" screen. Daemon holds secrets; Vercel holds nothing sensitive.
 
 ### Topology C — Web on Vercel + direct API (no daemon)
 
 ```
-browser ──► ocd.yourdomain.com (Vercel serverless)
+browser ──► od.yourdomain.com (Vercel serverless)
                        │
                        ▼
               Anthropic Messages API (BYOK stored in browser)
@@ -91,8 +91,8 @@ The three topologies share the same web bundle; the difference is which transpor
   │                                                │
   ▼                                                ▼
 ┌─ agent CLIs ─┐                           ┌─ filesystem ─┐
-│ claude       │                           │ ./.ocd/      │
-│ codex        │                           │ ~/.ocd/      │
+│ claude       │                           │ ./.od/      │
+│ codex        │                           │ ~/.od/      │
 │ cursor-agent │                           │ skills/      │
 │ gemini       │                           │ DESIGN.md    │
 │ opencode     │                           └──────────────┘
@@ -107,10 +107,10 @@ The three topologies share the same web bundle; the difference is which transpor
 - **Why Next.js, not Vite SPA?** We want SSR for the marketing landing page + serverless routes for Topology C's direct-API path + Vercel deployment as a first-class citizen. An SPA would need a separate server for any of that.
 - **State:** Zustand for session/artifact stores. Browser-side only; hydrated from daemon on connect.
 - **Iframe preview:** Vendored React 18 + Babel standalone for JSX artifacts, following [Open CoDesign][ocod]'s approach. HTML artifacts load raw. See [§5](#5-preview-renderer).
-- **Comment mode:** Click captures `[data-ocd-id]` on preview DOM, opens a popover, sends `{artifact_id, element_id, note}` to daemon → agent gets a surgical edit instruction.
+- **Comment mode:** Click captures `[data-od-id]` on preview DOM, opens a popover, sends `{artifact_id, element_id, note}` to daemon → agent gets a surgical edit instruction.
 - **Slider UI:** When an agent emits a "tweak parameter" tool call (see [`skills-protocol.md`](skills-protocol.md) §4.2), the web app renders a live-update control that re-sends parameterized prompts without round-tripping the chat.
 
-### 3.2 Local daemon (`ocd daemon`)
+### 3.2 Local daemon (`od daemon`)
 
 Single binary via `pkg` or a thin Node script distributed over npm. Responsibilities:
 
@@ -155,7 +155,7 @@ Conflicts resolve by priority (higher wins). Each skill parsed once; watched for
 Plain files on disk. Conventional layout per project:
 
 ```
-./.ocd/
+./.od/
 ├── config.json                  # project-level daemon config
 ├── artifacts/
 │   ├── 2026-04-24T10-03-12-landing/
@@ -169,8 +169,8 @@ Plain files on disk. Conventional layout per project:
 ```
 
 Rationale:
-- **Plain files** → users can `git add ./.ocd/artifacts/` and review designs in PRs.
-- **`artifact.json` metadata** → OCD can reconstruct the artifact tree without a DB.
+- **Plain files** → users can `git add ./.od/artifacts/` and review designs in PRs.
+- **`artifact.json` metadata** → OD can reconstruct the artifact tree without a DB.
 - **`history.jsonl` not SQLite** → append-only, git-friendly, greppable. [Open CoDesign][ocod] uses SQLite; we deliberately don't.
 - **Sessions separate from artifacts** → sessions are ephemeral UI state; artifacts are durable.
 
@@ -195,7 +195,7 @@ Rationale:
 3. Daemon:
      a. picks active skill (prototype-skill)
      b. loads design-system (DESIGN.md)
-     c. materializes a new artifact dir under ./.ocd/artifacts/<slug>/
+     c. materializes a new artifact dir under ./.od/artifacts/<slug>/
      d. invokes agent adapter with:
           - system: skill's SKILL.md contents + DESIGN.md
           - user: original prompt
@@ -242,9 +242,9 @@ Rationale:
 
 | File | Purpose |
 |---|---|
-| `~/.open-claude-design/config.toml` | daemon-global: default agent preference, keys (optional, BYOK), telemetry opt-in (default off) |
-| `~/.open-claude-design/agents.json` | cached agent detection results |
-| `./.ocd/config.json` | project-local: active design system, preferred skills, preferred mode |
+| `~/.open-design/config.toml` | daemon-global: default agent preference, keys (optional, BYOK), telemetry opt-in (default off) |
+| `~/.open-design/agents.json` | cached agent detection results |
+| `./.od/config.json` | project-local: active design system, preferred skills, preferred mode |
 | `./skills/<skill>/SKILL.md` | skill manifest (standard Claude Code format) |
 | `./DESIGN.md` | active design system ([awesome-claude-design][acd] format) |
 
@@ -288,35 +288,35 @@ pnpm dev           # starts daemon on :7431, next on :3000
 services:
   daemon:
     image: openclaudedesign/daemon
-    volumes: [ "~/.open-claude-design:/root/.open-claude-design", "./:/workspace" ]
+    volumes: [ "~/.open-design:/root/.open-design", "./:/workspace" ]
     ports: ["7431:7431"]
   web:
     image: openclaudedesign/web
     ports: ["3000:3000"]
-    environment: [ "OCD_DAEMON_URL=ws://daemon:7431" ]
+    environment: [ "OD_DAEMON_URL=ws://daemon:7431" ]
 ```
 
 ### Vercel + local daemon (Topology B)
 ```sh
 vercel deploy                     # web only
-ocd daemon --expose               # user runs locally; prints tunnel URL
+od daemon --expose               # user runs locally; prints tunnel URL
 # user pastes URL into /connect UI
 ```
 
 ### Vercel direct (Topology C)
 ```sh
 vercel deploy                     # same bundle
-# flip VERCEL env flag OCD_MODE=direct to hide daemon-connect UI
+# flip VERCEL env flag OD_MODE=direct to hide daemon-connect UI
 ```
 
 ## 9. Security model
 
 | Surface | Threat | Mitigation |
 |---|---|---|
-| Daemon WebSocket | Arbitrary local process talks to daemon | Token handshake; token printed on `ocd daemon` start, required in WS URL |
+| Daemon WebSocket | Arbitrary local process talks to daemon | Token handshake; token printed on `od daemon` start, required in WS URL |
 | Artifact code in preview | XSS/cookie theft from host | `<iframe sandbox="allow-scripts">`, no `allow-same-origin` |
 | Agent running on user's machine | Agent reads/writes outside project | Adapter sets `cwd` to artifact dir; relies on agent's own permission system (Claude Code's `--allowed-tools` etc.) |
-| User secrets | Leak to cloud | BYOK stored only in daemon's `config.toml` (mode 0600) or browser `localStorage` in Topology C, never sent to OCD's own servers (we don't have any) |
+| User secrets | Leak to cloud | BYOK stored only in daemon's `config.toml` (mode 0600) or browser `localStorage` in Topology C, never sent to OD's own servers (we don't have any) |
 | Skill from untrusted source | Malicious skill in `~/.claude/skills/` | Install-time warning; skills run under the agent's permission model, not ours |
 | Vercel web bundle | Compromised build | Standard Vercel integrity; bundle has zero secrets |
 
@@ -326,7 +326,7 @@ We inherit the agent's permission model on purpose — we don't invent our own s
 
 - Daemon startup: < 500 ms (lazy adapter init).
 - Agent detection: < 200 ms (parallel PATH probes).
-- First generation latency: dominated by agent model time; OCD overhead should be < 50 ms.
+- First generation latency: dominated by agent model time; OD overhead should be < 50 ms.
 - Preview reload: debounced 100 ms on artifact file writes.
 - Skill index: cold scan < 100 ms for ~50 skills; watched with `chokidar`.
 

@@ -1,5 +1,5 @@
 /**
- * Prompt composer. The base is the OCD-adapted "expert designer" system
+ * Prompt composer. The base is the OD-adapted "expert designer" system
  * prompt (see ./official-system.ts) — a full identity, workflow, and
  * content-philosophy charter. Stacked on top:
  *

@@ -80,7 +80,7 @@ export async function fetchSkillExample(id: string): Promise<string | null> {
   }
 }
 
-// Project files — all paths are scoped under .ocd/projects/<id>/ on disk.
+// Project files — all paths are scoped under .od/projects/<id>/ on disk.
 
 export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[]> {
   try {

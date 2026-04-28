@@ -1,6 +1,6 @@
 // SQLite-backed persistence for projects, conversations, messages, and the
 // per-project set of open file tabs. The on-disk project folder under
-// .ocd/projects/<id>/ is still the single owner of the user's actual files
+// .od/projects/<id>/ is still the single owner of the user's actual files
 // (HTML artifacts, sketches, uploads); this database tracks the metadata
 // that used to live in localStorage.
 
@@ -12,7 +12,7 @@ let dbInstance = null;
 
 export function openDatabase(projectRoot) {
   if (dbInstance) return dbInstance;
-  const dir = path.join(projectRoot, '.ocd');
+  const dir = path.join(projectRoot, '.od');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'app.sqlite');
   const db = new Database(file);

@@ -3,7 +3,16 @@ dist
 .DS_Store
 *.log
 .vite
+
+# Local runtime data — auto-created by the daemon on first start.
+# Holds app.sqlite (project metadata), projects/<id>/ (per-project artifacts,
+# the agent's CWD), and artifacts/ (one-off renders). Never commit.
+.od
+
+# Legacy folder name from before the rename; keep ignored so existing
+# clones don't accidentally stage stale runtime data.
 .ocd
+
 tsconfig.tsbuildinfo
 
 .claude-sessions/*

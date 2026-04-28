@@ -15,7 +15,7 @@
          transform: translate(-50%, -50%) scale(--deck-scale);
        JS only updates the CSS variable. No grid, no flex
        centering, no transform-origin tricks. This works inside
-       the OCD viewer's nested transform wrapper at any zoom.
+       the OD viewer's nested transform wrapper at any zoom.
        =========================================================== */
     :root {
       /* SLOT: theme tokens — the only top-level CSS the agent edits.
@@ -196,7 +196,7 @@
       // ---- scale-to-fit ---------------------------------------------------
       // Update one CSS variable; the stage uses
       //   transform: translate(-50%, -50%) scale(var(--deck-scale))
-      // which is bulletproof inside the OCD viewer's nested transform
+      // which is bulletproof inside the OD viewer's nested transform
       // wrapper. No element transforms set in JS — keeps the math local
       // to CSS and avoids order-of-operations bugs.
       function fit() {
@@ -231,7 +231,7 @@
         else if (e.key === 'Home') { e.preventDefault(); go(0); }
         else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
       }
-      // Capture phase + listen on both targets — inside the OCD iframe,
+      // Capture phase + listen on both targets — inside the OD iframe,
       // focus may be on window OR document; a single non-capture listener
       // silently misses presses.
       window.addEventListener('keydown', onKey, true);

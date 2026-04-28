@@ -13,7 +13,7 @@ triggers:
   - "presentation"
   - "幻灯"
   - "ppt 模板"
-ocd:
+od:
   mode: deck
   scenario: product
   preview:

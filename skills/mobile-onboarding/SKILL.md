@@ -12,7 +12,7 @@ triggers:
   - "phone signup"
   - "app onboarding"
   - "移动端引导"
-ocd:
+od:
   mode: prototype
   platform: mobile
   scenario: design

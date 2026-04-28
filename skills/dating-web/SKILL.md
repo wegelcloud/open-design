@@ -16,7 +16,7 @@ triggers:
   - "consumer dashboard"
   - "约会应用"
   - "婚恋"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: personal
@@ -72,7 +72,7 @@ accent, lots of negative space, *no* swipe deck or hookup tropes.
    - Background creamy off-white, body serif, mono labels everywhere.
    - Use `font-feature-settings: 'tnum'` on the metric numerals.
    - SVG bar chart with ~30 bars, varied heights.
-   - `data-ocd-id` on ticker, sidebar, kpi grid, chart, trend.
+   - `data-od-id` on ticker, sidebar, kpi grid, chart, trend.
 5. **Self-check**:
    - Reads as restrained, editorial, slightly funny — not horny.
    - Single accent token used in 3–4 places max (one KPI, two highlight

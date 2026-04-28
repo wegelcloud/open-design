@@ -11,7 +11,7 @@ triggers:
   - "tutorial"
   - "api reference"
   - "文档"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: engineering
@@ -48,7 +48,7 @@ Produce a single, three-column documentation page in one HTML file.
    - Code blocks: monospace token, soft surface fill, copy-button affordance
      (visual only — no JS needed).
    - Anchor IDs on every H2/H3 so the TOC links work.
-   - `data-ocd-id` on the nav, article, and TOC.
+   - `data-od-id` on the nav, article, and TOC.
 5. **Prose**: write at least 350 words of believable docs. Include at least
    one shell command, one code snippet (5–15 lines), one callout, one table.
 6. **Self-check**:

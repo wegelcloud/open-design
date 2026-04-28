@@ -2,7 +2,7 @@
 
 **Parent:** [`spec.md`](spec.md) · **Siblings:** [`architecture.md`](architecture.md) · [`skills-protocol.md`](skills-protocol.md) · [`modes.md`](modes.md)
 
-The adapter layer is OCD's most load-bearing design decision. We delegate the **entire agent loop** — model calls, tool use, context management, permission handling, resume, cancel — to the user's existing code agent CLI. OCD's job is to detect it, feed it a skill + prompt + working directory, and stream its output back to the web UI.
+The adapter layer is OD's most load-bearing design decision. We delegate the **entire agent loop** — model calls, tool use, context management, permission handling, resume, cancel — to the user's existing code agent CLI. OD's job is to detect it, feed it a skill + prompt + working directory, and stream its output back to the web UI.
 
 > **Thesis:** The code agent space has already converged on a few strong implementations (Claude Code, Codex, Cursor Agent, Gemini CLI, OpenCode, OpenClaw). Reimplementing a 7th is worse than just talking to all of them.
 >
@@ -70,7 +70,7 @@ type AgentEvent =
 
 ## 2. Detection strategy
 
-Run all adapters' `detect()` in parallel on daemon start, then cache results in `~/.open-claude-design/agents.json` with a 24h TTL. Re-detect on daemon `SIGHUP`.
+Run all adapters' `detect()` in parallel on daemon start, then cache results in `~/.open-design/agents.json` with a 24h TTL. Re-detect on daemon `SIGHUP`.
 
 Each adapter uses **two signals**:
 
@@ -98,7 +98,7 @@ If both signals agree, detection is confident. If only one signal fires, we mark
 Skills travel into each agent via one of three strategies, in order of preference:
 
 ### 4.1 Native skill loading (preferred)
-Agent scans its own `~/.<agent>/skills/` on launch. We symlink OCD's skill into that dir (see [`skills-protocol.md`](skills-protocol.md) §3) and let the agent pick it up natively. Zero prompt overhead.
+Agent scans its own `~/.<agent>/skills/` on launch. We symlink OD's skill into that dir (see [`skills-protocol.md`](skills-protocol.md) §3) and let the agent pick it up natively. Zero prompt overhead.
 
 - **Works for:** Claude Code. Codex (version-dependent). OpenCode.
 
@@ -131,10 +131,10 @@ The adapter declares which strategy to use via `capabilities().nativeSkillLoadin
 
 - Invocation: direct Anthropic Messages API with `stream: true`.
 - Skill loading: prompt injection only — read the skill dir, inline everything.
-- Tool use: we register `Read/Write/Edit` as tools, implement them in the daemon against the artifact cwd, and run the loop ourselves. This is the one place OCD does own the loop — because the user has no agent at all. Keep it as dumb as possible.
+- Tool use: we register `Read/Write/Edit` as tools, implement them in the daemon against the artifact cwd, and run the loop ourselves. This is the one place OD does own the loop — because the user has no agent at all. Keep it as dumb as possible.
 - Surgical edits: approximated by regenerating the whole target file with "only change X" in the prompt.
 - Model: Claude Sonnet 4.6 default; Opus 4.7 behind a flag.
-- **Why ship this at all?** Topology C requires it (no daemon available in a pure-Vercel deploy). Also, users trying OCD for the first time without a CLI installed still get a working experience.
+- **Why ship this at all?** Topology C requires it (no daemon available in a pure-Vercel deploy). Also, users trying OD for the first time without a CLI installed still get a working experience.
 
 ### 5.3 Codex
 
@@ -173,7 +173,7 @@ The web UI reads `agents.capabilities()` and disables features that the active a
 | Comment mode (click to refine) | `surgicalEdit: true` | Hidden; show tooltip explaining why |
 | Streaming tool-call feed | `streaming: true` | Show a spinner only |
 | Resume interrupted run | `resume: true` | "Cancel + restart" only |
-| Skill picker shows skill with `ocd.capabilities_required` | all listed caps | Skill greyed out with reason |
+| Skill picker shows skill with `od.capabilities_required` | all listed caps | Skill greyed out with reason |
 
 This is how we avoid "works on my Claude Code, breaks on your Gemini" — we detect, degrade, and document.
 
@@ -192,7 +192,7 @@ Switching mid-run is not allowed (cancel first). The artifact is agent-agnostic;
 
 ## 8. Fallback chain
 
-If the user's preferred agent fails (crash, auth, timeout), OCD offers a one-click fallback in this order:
+If the user's preferred agent fails (crash, auth, timeout), OD offers a one-click fallback in this order:
 
 1. User's preferred agent (e.g. Cursor Agent)
 2. Any other detected agent (Claude Code, if installed)
@@ -206,14 +206,14 @@ First run:
 
 ```
 $ pnpm dev
-[ocd] daemon starting on :7431
-[ocd] detecting agents…
-[ocd]   ✓ claude-code v0.6.3 (auth: ok, skills dir linked)
-[ocd]   ✓ codex v0.8.1 (auth: ok)
-[ocd]   ✗ cursor-agent (not installed)
-[ocd]   ✗ gemini-cli (installed but not authenticated; run `gemini auth login`)
-[ocd]   ✓ api-fallback (ANTHROPIC_API_KEY found)
-[ocd] daemon ready; 3 agents available
+[od] daemon starting on :7431
+[od] detecting agents…
+[od]   ✓ claude-code v0.6.3 (auth: ok, skills dir linked)
+[od]   ✓ codex v0.8.1 (auth: ok)
+[od]   ✗ cursor-agent (not installed)
+[od]   ✗ gemini-cli (installed but not authenticated; run `gemini auth login`)
+[od]   ✓ api-fallback (ANTHROPIC_API_KEY found)
+[od] daemon ready; 3 agents available
 ```
 
 Web UI mirrors this in an agent-selector dropdown, with unauthenticated agents shown greyed out with a fix-it tooltip.
@@ -222,8 +222,8 @@ Web UI mirrors this in an agent-selector dropdown, with unauthenticated agents s
 
 We inherit the underlying agent's permission model rather than building our own. This means:
 
-- **Claude Code** respects its own `--allowed-tools` and `--permission-mode` flags. OCD passes through user preferences.
-- **Codex / Cursor** sandbox by workspace; OCD always sets cwd to the artifact dir so nothing outside is visible by default.
+- **Claude Code** respects its own `--allowed-tools` and `--permission-mode` flags. OD passes through user preferences.
+- **Codex / Cursor** sandbox by workspace; OD always sets cwd to the artifact dir so nothing outside is visible by default.
 - **API fallback** is the one case we own. We implement a whitelist: only `Read`, `Write`, `Edit` tools, all rooted at the artifact cwd. Network access is off.
 
 The daemon never grants more authority to an agent than it had on its own. We don't run the agent in a privileged mode "for convenience."
@@ -253,6 +253,6 @@ Each adapter is a separate module so community contributions can add new ones wi
 ## 12. Open questions
 
 - **Nested agents.** What if Claude Code's agent itself spawns a subagent? We receive events from the outer process only. v1 policy: surface only top-level events; summarize subagent activity as "sub-task" placeholder.
-- **Billing awareness.** Some agents bill per message, some per token. OCD doesn't track cost in MVP; v1 adds an optional "usage" event from adapters that expose it.
+- **Billing awareness.** Some agents bill per message, some per token. OD doesn't track cost in MVP; v1 adds an optional "usage" event from adapters that expose it.
 - **Windows support.** PATH scanning and `spawn` semantics differ on Windows. v1 targets macOS and Linux; Windows is best-effort.
 - **Docker-contained agents.** Some users run Claude Code in a container. Adapter needs a "remote" mode — probably same interface but talks over SSH. Phase 2+.

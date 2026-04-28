@@ -18,7 +18,7 @@ triggers:
   - "可调参数面板"
   - "side panel"
   - "knobs"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: design

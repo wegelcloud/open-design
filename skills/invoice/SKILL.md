@@ -10,7 +10,7 @@ triggers:
   - "billing statement"
   - "发票"
   - "账单"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: finance

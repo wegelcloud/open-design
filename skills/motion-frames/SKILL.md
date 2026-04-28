@@ -18,7 +18,7 @@ triggers:
   - "kinetic typography"
   - "动态设计"
   - "动效"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: marketing
@@ -69,7 +69,7 @@ Lottie, etc.) can capture into a video.
    - `<!doctype html>` through `</html>`, CSS inline.
    - All motion uses CSS — no scripts, so HyperFrames or any frame-grabber
      can capture it deterministically.
-   - `data-ocd-id` on stage, focal, ring, headline, chrome.
+   - `data-od-id` on stage, focal, ring, headline, chrome.
 5. **Self-check**:
    - The composition still reads as a poster with motion paused at frame 0.
    - At least 3 layers move at different speeds (depth comes from delta

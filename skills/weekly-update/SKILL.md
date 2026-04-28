@@ -11,7 +11,7 @@ triggers:
   - "weekly status"
   - "weekly review"
   - "周报演示"
-ocd:
+od:
   mode: deck
   scenario: operations
   preview:

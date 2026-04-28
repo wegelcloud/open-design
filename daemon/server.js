@@ -50,11 +50,11 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const STATIC_DIR = path.join(PROJECT_ROOT, 'dist');
 const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
 const DESIGN_SYSTEMS_DIR = path.join(PROJECT_ROOT, 'design-systems');
-const ARTIFACTS_DIR = path.join(PROJECT_ROOT, '.ocd', 'artifacts');
-const PROJECTS_DIR = path.join(PROJECT_ROOT, '.ocd', 'projects');
+const ARTIFACTS_DIR = path.join(PROJECT_ROOT, '.od', 'artifacts');
+const PROJECTS_DIR = path.join(PROJECT_ROOT, '.od', 'projects');
 fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 
-const UPLOAD_DIR = path.join(os.tmpdir(), 'ocd-uploads');
+const UPLOAD_DIR = path.join(os.tmpdir(), 'od-uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 
@@ -580,7 +580,7 @@ export async function startServer({ port = 7456 } = {}) {
   // No mtime-based caching — frames are static and small.
   app.use('/frames', express.static(path.join(PROJECT_ROOT, 'assets', 'frames')));
 
-  // Project files. Each project owns a flat folder under .ocd/projects/<id>/
+  // Project files. Each project owns a flat folder under .od/projects/<id>/
   // containing every file the user has uploaded, pasted, sketched, or that
   // the agent has generated. Names are sanitized; paths are confined to the
   // project's own folder (see daemon/projects.js).

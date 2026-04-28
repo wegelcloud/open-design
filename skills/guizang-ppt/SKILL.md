@@ -16,7 +16,7 @@ triggers:
   - "网页 PPT"
   - "发布会"
   - "分享 PPT"
-ocd:
+od:
   mode: deck
   scenario: marketing
   featured: 9

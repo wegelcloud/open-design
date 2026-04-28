@@ -2,9 +2,9 @@
 
 **Parent:** [`spec.md`](spec.md) · **Siblings:** [`architecture.md`](architecture.md) · [`agent-adapters.md`](agent-adapters.md) · [`modes.md`](modes.md)
 
-A **Skill** is the atomic unit of design capability in OCD. We adopt Claude Code's `SKILL.md` convention verbatim as the base format, then add optional fields for design-specific features (preview type, input schema, slider parameters). A skill written for plain Claude Code runs in OCD. An OCD skill that doesn't use our extensions runs in plain Claude Code.
+A **Skill** is the atomic unit of design capability in OD. We adopt Claude Code's `SKILL.md` convention verbatim as the base format, then add optional fields for design-specific features (preview type, input schema, slider parameters). A skill written for plain Claude Code runs in OD. An OD skill that doesn't use our extensions runs in plain Claude Code.
 
-> **Compatibility promise:** A skill like [`guizang-ppt-skill`](https://github.com/op7418/guizang-ppt-skill) works in OCD **without modification**. It just drops into `~/.claude/skills/` and OCD discovers it.
+> **Compatibility promise:** A skill like [`guizang-ppt-skill`](https://github.com/op7418/guizang-ppt-skill) works in OD **without modification**. It just drops into `~/.claude/skills/` and OD discovers it.
 
 ---
 
@@ -40,11 +40,11 @@ triggers:
 
 Body is free-form Markdown that describes the workflow the agent should follow — typically a numbered step list plus principles. This is what [guizang-ppt-skill](https://github.com/op7418/guizang-ppt-skill) does.
 
-**OCD reads all of this as-is.** No changes required.
+**OD reads all of this as-is.** No changes required.
 
-## 2. OCD extensions (optional)
+## 2. OD extensions (optional)
 
-Skills can declare additional front-matter fields to unlock OCD-specific UI. All fields are optional; absent fields fall back to sensible defaults.
+Skills can declare additional front-matter fields to unlock OD-specific UI. All fields are optional; absent fields fall back to sensible defaults.
 
 ```yaml
 ---
@@ -52,9 +52,9 @@ name: magazine-web-ppt
 description: …
 triggers: […]
 
-# --- OCD extensions below this line ---
+# --- OD extensions below this line ---
 
-ocd:
+od:
   mode: deck                        # one of: prototype | deck | template | design-system
   preview:
     type: html                      # html | jsx | pptx | markdown
@@ -94,21 +94,21 @@ ocd:
 ---
 ```
 
-### 2.1 What OCD uses each field for
+### 2.1 What OD uses each field for
 
 | Field | Used by |
 |---|---|
-| `ocd.mode` | routing (which mode picker the skill shows up under) |
-| `ocd.preview.type` | picking the right iframe renderer |
-| `ocd.design_system.requires` | whether to inject `DESIGN.md` |
-| `ocd.design_system.sections` | pruning the injected DESIGN.md to relevant sections only (token savings) |
-| `ocd.inputs` | rendering a typed form in the sidebar instead of only free-text |
-| `ocd.parameters` | rendering live sliders that re-prompt on change |
-| `ocd.outputs.primary` | which file the iframe loads |
-| `ocd.outputs.secondary` | which files export pipelines read (e.g. `slides.json` for PPTX) |
-| `ocd.capabilities_required` | gating: if the active agent lacks surgical edit, comment mode is disabled for this skill |
+| `od.mode` | routing (which mode picker the skill shows up under) |
+| `od.preview.type` | picking the right iframe renderer |
+| `od.design_system.requires` | whether to inject `DESIGN.md` |
+| `od.design_system.sections` | pruning the injected DESIGN.md to relevant sections only (token savings) |
+| `od.inputs` | rendering a typed form in the sidebar instead of only free-text |
+| `od.parameters` | rendering live sliders that re-prompt on change |
+| `od.outputs.primary` | which file the iframe loads |
+| `od.outputs.secondary` | which files export pipelines read (e.g. `slides.json` for PPTX) |
+| `od.capabilities_required` | gating: if the active agent lacks surgical edit, comment mode is disabled for this skill |
 
-### 2.2 If a skill omits `ocd:` entirely
+### 2.2 If a skill omits `od:` entirely
 
 Defaults:
 - `mode`: inferred from name/description (best-effort keyword match) or "prototype"
@@ -133,15 +133,15 @@ Conflicts by `name` resolve to the higher-priority version. All locations are wa
 
 ### Symlink strategy (borrowed from [cc-switch](https://github.com/farion1231/cc-switch))
 
-`cc-switch` maintains a central skill dir at `~/.cc-switch/skills/` and symlinks it into each agent's expected location (`~/.claude/skills/`, `~/.codex/skills/`, etc.). OCD can opt into the same model:
+`cc-switch` maintains a central skill dir at `~/.cc-switch/skills/` and symlinks it into each agent's expected location (`~/.claude/skills/`, `~/.codex/skills/`, etc.). OD can opt into the same model:
 
 ```
-~/.open-claude-design/skills/
+~/.open-design/skills/
     magazine-web-ppt/      (canonical location)
 ~/.claude/skills/
-    magazine-web-ppt → ~/.open-claude-design/skills/magazine-web-ppt
+    magazine-web-ppt → ~/.open-design/skills/magazine-web-ppt
 ~/.codex/skills/
-    magazine-web-ppt → ~/.open-claude-design/skills/magazine-web-ppt
+    magazine-web-ppt → ~/.open-design/skills/magazine-web-ppt
 ```
 
 One install → every agent sees the skill. This is optional; users who only use one agent don't need it.
@@ -181,17 +181,17 @@ Each mode expects a slightly different skill shape. The required outputs and exp
 - **Preview:** `markdown` (render the resulting DESIGN.md with a sample-components preview).
 - **Primary output:** `DESIGN.md`.
 - **Typical workflow:** analyze input → draft 9 sections per awesome-claude-design schema → generate sample component preview → finalize.
-- **Post-run:** OCD prompts the user to set this DESIGN.md as the project's active design system.
+- **Post-run:** OD prompts the user to set this DESIGN.md as the project's active design system.
 
 ## 5. The DESIGN.md as skill context
 
-Every non–design-system skill (modes 1–3) can consume the active `DESIGN.md`. OCD injects it as:
+Every non–design-system skill (modes 1–3) can consume the active `DESIGN.md`. OD injects it as:
 
-1. **System-prompt prefix** (required sections only, per `ocd.design_system.sections`).
+1. **System-prompt prefix** (required sections only, per `od.design_system.sections`).
 2. **File available in CWD** named `DESIGN.md` — skills can `Read` it directly via their agent.
 3. **Template variable** `{{ design_system }}` if the skill body references it in Mustache-style.
 
-The 9-section DESIGN.md format is **not invented by OCD**; it's the [awesome-claude-design](https://github.com/VoltAgent/awesome-claude-design) convention, reproduced here for convenience:
+The 9-section DESIGN.md format is **not invented by OD**; it's the [awesome-claude-design](https://github.com/VoltAgent/awesome-claude-design) convention, reproduced here for convenience:
 
 ```markdown
 # <Brand Name>
@@ -212,27 +212,27 @@ Full schema and examples: [`schemas/design-system.md`](schemas/design-system.md)
 ## 6. Skill installation
 
 ```sh
-ocd skill add https://github.com/op7418/guizang-ppt-skill
-# → clones into ~/.open-claude-design/skills/magazine-web-ppt
+od skill add https://github.com/op7418/guizang-ppt-skill
+# → clones into ~/.open-design/skills/magazine-web-ppt
 # → symlinks into ~/.claude/skills/ (and any other active agent dirs)
 # → re-indexes registry
 
-ocd skill add ./path/to/my-skill
+od skill add ./path/to/my-skill
 # → symlinks local dir (no copy) into skills registry
 
-ocd skill list
+od skill list
 # → table: name, mode, source, agent compatibility
 
-ocd skill remove <name>
+od skill remove <name>
 # → unlinks; does not delete the source
 ```
 
-## 7. Worked example — running `guizang-ppt-skill` under OCD
+## 7. Worked example — running `guizang-ppt-skill` under OD
 
 The skill is unchanged. Here's the full path:
 
-1. User: `ocd skill add https://github.com/op7418/guizang-ppt-skill`
-2. Registry indexes it. No `ocd:` block in front-matter → defaults applied:
+1. User: `od skill add https://github.com/op7418/guizang-ppt-skill`
+2. Registry indexes it. No `od:` block in front-matter → defaults applied:
    - `mode`: inferred from body mentioning "PPT" → `deck`.
    - `preview.type`: sniffed from `assets/template.html` → `html`.
    - `preview.entry`: `index.html` (convention).
@@ -241,12 +241,12 @@ The skill is unchanged. Here's the full path:
 4. User types "给我做一份杂志风 8 页投资人 PPT".
 5. Daemon dispatches to active agent (Claude Code) with:
    - system message: skill's `SKILL.md` body
-   - cwd: `./.ocd/artifacts/2026-04-24-pitch-deck/`
+   - cwd: `./.od/artifacts/2026-04-24-pitch-deck/`
    - files already placed in cwd: `template.html` (from skill's `assets/`)
 6. Agent runs its 6-step workflow (clarify → copy template → populate → self-check → preview → refine).
-7. OCD streams the agent's tool calls as UI events; artifact dir grows.
+7. OD streams the agent's tool calls as UI events; artifact dir grows.
 8. Agent signals done; daemon sets preview iframe to `index.html`.
-9. User clicks "Export PPTX" — export pipeline notices the skill has no `slides.json` output (the upstream skill doesn't produce one). OCD falls back to "print to PDF then page-to-slide PPTX," which is uglier but works. This is a known limitation documented per-skill.
+9. User clicks "Export PPTX" — export pipeline notices the skill has no `slides.json` output (the upstream skill doesn't produce one). OD falls back to "print to PDF then page-to-slide PPTX," which is uglier but works. This is a known limitation documented per-skill.
 
 ## 8. Writing a new skill — minimal example
 
@@ -266,7 +266,7 @@ description: |
 triggers:
   - "saas landing"
   - "marketing page"
-ocd:
+od:
   mode: prototype
   preview:
     type: html
@@ -303,7 +303,7 @@ ocd:
 
 ## 9. Testing skills
 
-A skill ships with optional test inputs that OCD uses for CI:
+A skill ships with optional test inputs that OD uses for CI:
 
 ```
 <skill-root>/
@@ -313,10 +313,10 @@ A skill ships with optional test inputs that OCD uses for CI:
     └── basic.expected.regex.txt       # text regex assertions against the primary output
 ```
 
-`ocd skill test <name>` runs the skill against each case using a cheap model (e.g. Haiku 4.5) and asserts on the manifest + regex. Low-fidelity but catches structural regressions.
+`od skill test <name>` runs the skill against each case using a cheap model (e.g. Haiku 4.5) and asserts on the manifest + regex. Low-fidelity but catches structural regressions.
 
 ## 10. Open questions
 
-- **Skill signing.** Can we verify a skill hasn't been tampered with between publish and install? Simplest answer: `ocd skill add` records the git commit SHA; reinstall-on-update warns on signature change. Deferred to v1.
+- **Skill signing.** Can we verify a skill hasn't been tampered with between publish and install? Simplest answer: `od skill add` records the git commit SHA; reinstall-on-update warns on signature change. Deferred to v1.
 - **Skill composition.** Can a `prototype-skill` call a `deck-skill` for a sub-artifact? Not in v1; skills are leaf-level. Composition would require a meta-skill concept, which is speculative.
 - **Parameter stability.** When sliders change, should the agent re-plan or just re-render? Lean: re-render (fast path), with an "also re-plan" button for larger changes.

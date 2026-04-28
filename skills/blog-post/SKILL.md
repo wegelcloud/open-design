@@ -14,7 +14,7 @@ triggers:
   - "newsletter"
   - "博客"
   - "文章"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: marketing
@@ -57,7 +57,7 @@ Produce a single long-form article page — editorial layout, no chrome.
      rule (typically 680–720px).
    - Drop caps (`first-letter`) only if the DS mood is editorial / serif —
      skip on tech-y DSes.
-   - `data-ocd-id` on the headline, hero, body, pull quote, related grid.
+   - `data-od-id` on the headline, hero, body, pull quote, related grid.
 5. **Self-check**:
    - Type hierarchy is unambiguous — H1 is clearly the headline; H2s are
      section dividers; pull quotes do not compete with H1.

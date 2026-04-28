@@ -2,7 +2,7 @@
 import { startServer } from './server.js';
 
 const args = process.argv.slice(2);
-let port = Number(process.env.OCD_PORT) || 7456;
+let port = Number(process.env.OD_PORT) || 7456;
 let open = true;
 
 for (let i = 0; i < args.length; i++) {
@@ -12,7 +12,7 @@ for (let i = 0; i < args.length; i++) {
   } else if (a === '--no-open') {
     open = false;
   } else if (a === '-h' || a === '--help') {
-    console.log(`Usage: ocd [--port <n>] [--no-open]
+    console.log(`Usage: od [--port <n>] [--no-open]
 
 Starts a local daemon that:
   * scans PATH for installed code-agent CLIs (claude, codex, gemini, opencode, cursor-agent, ...)
@@ -24,7 +24,7 @@ Starts a local daemon that:
 }
 
 startServer({ port }).then(url => {
-  console.log(`[ocd] listening on ${url}`);
+  console.log(`[od] listening on ${url}`);
   if (open) {
     const opener = process.platform === 'darwin' ? 'open'
       : process.platform === 'win32' ? 'start'

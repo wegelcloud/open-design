@@ -31,7 +31,7 @@ const SECTION_LABEL_KEY: Record<Section, keyof Dict> = {
 const SECTION_ORDER: Section[] = ['pages', 'sketches', 'scripts', 'images', 'other'];
 
 /**
- * Full-panel browser for a project's `.ocd/projects/<id>/` folder. Mirrors
+ * Full-panel browser for a project's `.od/projects/<id>/` folder. Mirrors
  * Claude Design's "Design Files" surface: grouped sections, hover-revealed
  * row menu, drop-files footer, and (when a row is selected) a right-side
  * preview pane. Triggered as a sticky first tab in FileWorkspace.

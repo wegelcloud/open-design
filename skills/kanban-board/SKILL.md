@@ -12,7 +12,7 @@ triggers:
   - "trello"
   - "jira board"
   - "看板"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: operations

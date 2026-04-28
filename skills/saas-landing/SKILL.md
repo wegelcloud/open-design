@@ -8,7 +8,7 @@ triggers:
   - "saas landing"
   - "marketing page"
   - "product landing"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: marketing
@@ -85,7 +85,7 @@ Output a single self-contained `index.html` with:
 - System font fallbacks if DESIGN.md fonts aren't loadable from Google Fonts etc.
 - No external JS.
 - Semantic HTML (`<header>`, `<main>`, `<section>`, `<footer>`).
-- Each editable element tagged with `data-ocd-id="<unique-slug>"` so the host app's comment mode can target it.
+- Each editable element tagged with `data-od-id="<unique-slug>"` so the host app's comment mode can target it.
 
 ## 5. Self-check
 
@@ -114,9 +114,9 @@ saas-landing-skill/
 ```
 
 Things to notice:
-- The `ocd:` front-matter block is optional for Claude-Code-only compatibility, but adding it lights up OCD's typed inputs, sliders, preview metadata, and capability gating.
+- The `od:` front-matter block is optional for Claude-Code-only compatibility, but adding it lights up OD's typed inputs, sliders, preview metadata, and capability gating.
 - The workflow below the front-matter is plain Markdown that the agent reads as its system prompt.
 - DESIGN.md is treated as a collaborator, not an override. The skill gives the agent authority to override when the brief conflicts, but never to invent new tokens.
-- `data-ocd-id` tagging is how we wire elements to comment mode. Skills that want comment-mode compatibility must annotate their output.
+- `data-od-id` tagging is how we wire elements to comment mode. Skills that want comment-mode compatibility must annotate their output.
 
 See [`../../skills-protocol.md`](../../skills-protocol.md) for the full protocol.

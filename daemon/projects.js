@@ -1,5 +1,5 @@
 // Project files registry. Each project is a folder under
-// <projectRoot>/.ocd/projects/<projectId>/. The frontend's project list
+// <projectRoot>/.od/projects/<projectId>/. The frontend's project list
 // (localStorage) carries metadata; this module is the single owner of the
 // on-disk content (HTML artifacts, sketches, uploaded images, pasted text).
 //

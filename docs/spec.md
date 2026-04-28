@@ -1,9 +1,9 @@
-# Open Claude Design — Product Spec
+# Open Design — Product Spec
 
 **Status:** Draft v0.1 · 2026-04-24
 **Scope:** Product definition, scenarios, non-goals, high-level modules, and positioning against both [Anthropic's Claude Design][cd] and the existing open-source alternative ([Open CoDesign][ocod]).
 
-[cd]: https://www.anthropic.com/news/claude-design
+[cd]: https://x.com/claudeai/status/2045156267690213649
 [ocod]: https://github.com/OpenCoworkAI/open-codesign
 [guizang]: https://github.com/op7418/guizang-ppt-skill
 [multica]: https://github.com/multica-ai/multica
@@ -27,7 +27,7 @@ Other docs:
 
 ## 2. Core bets (and why they're different)
 
-| # | Bet | [Anthropic Claude Design][cd] | [Open CoDesign][ocod] | OCD |
+| # | Bet | [Anthropic Claude Design][cd] | [Open CoDesign][ocod] | OD |
 |---|---|---|---|---|
 | 1 | Where the product runs | claude.ai only | Local Electron app | **Next.js web app** — `pnpm dev`, `vercel deploy`, or `docker compose up` |
 | 2 | Who owns the agent loop | Anthropic, closed | [Open CoDesign][ocod] itself, via [`pi-ai`][piai] | **The user's existing code agent CLI** (Claude Code, Codex, Cursor Agent, Gemini CLI, OpenCode, OpenClaw); direct Anthropic API as fallback |
@@ -47,16 +47,16 @@ The differentiation is not "yet another design generator." It is **an integratio
 ## 4. User scenarios
 
 ### S1 — "Give me a prototype"
-User opens the web app, types *"Airbnb-style search page, use our internal design system"*, OCD picks the `prototype-skill`, resolves the user's `DESIGN.md`, dispatches to Claude Code with both files plus the brief, streams tool calls into the UI, and renders the resulting HTML in an iframe preview. User clicks an element, drops a comment, the agent rewrites just that region.
+User opens the web app, types *"Airbnb-style search page, use our internal design system"*, OD picks the `prototype-skill`, resolves the user's `DESIGN.md`, dispatches to Claude Code with both files plus the brief, streams tool calls into the UI, and renders the resulting HTML in an iframe preview. User clicks an element, drops a comment, the agent rewrites just that region.
 
 ### S2 — "Make me a deck"
-User says *"8-slide magazine-style pitch deck for my seed round"*. OCD routes to `deck-skill` (a fork of [`guizang-ppt-skill`][guizang]). Output is a single-file HTML deck; preview is the deck itself with arrow-key navigation; export is PDF/PPTX.
+User says *"8-slide magazine-style pitch deck for my seed round"*. OD routes to `deck-skill` (a fork of [`guizang-ppt-skill`][guizang]). Output is a single-file HTML deck; preview is the deck itself with arrow-key navigation; export is PDF/PPTX.
 
 ### S3 — "Start from a template"
 User picks "SaaS landing — Stripe-ish" from a gallery. Template is a pre-filled artifact bundle plus a `DESIGN.md` reference. Agent only fills content; structure is already there. This is the fastest mode — useful for users who don't want to prompt at all.
 
 ### S4 — "Set up our design system"
-User uploads a screenshot, brand guide PDF, or Figma link. OCD runs `design-system-skill` which produces a `DESIGN.md` following the 9-section format. That file is then referenced by every subsequent generation — prototypes, decks, templates all pick up the tokens.
+User uploads a screenshot, brand guide PDF, or Figma link. OD runs `design-system-skill` which produces a `DESIGN.md` following the 9-section format. That file is then referenced by every subsequent generation — prototypes, decks, templates all pick up the tokens.
 
 These four scenarios map 1:1 to the four modes in [`modes.md`](modes.md).
 
@@ -69,7 +69,7 @@ These four scenarios map 1:1 to the four modes in [`modes.md`](modes.md).
 └────────────┬─────────────────────────────────┬───────────────────┘
              │ WebSocket (JSON-RPC)            │ HTTPS (BYOK direct)
 ┌────────────▼──────────────────┐     ┌────────▼─────────────────┐
-│   Local Daemon (ocd daemon)   │     │   Anthropic Messages API │
+│   Local Daemon (od daemon)   │     │   Anthropic Messages API │
 │   · agent detection           │     │   (fallback when no CLI) │
 │   · skill registry            │     └──────────────────────────┘
 │   · artifact store            │
@@ -88,7 +88,7 @@ Module responsibilities:
 - **Daemon** — long-running local process. Detects agents, registers skills, manages artifacts on disk, resolves the active design system, and brokers WebSocket sessions.
 - **Agent adapters** — one adapter per supported CLI; see [`agent-adapters.md`](agent-adapters.md).
 - **Skill registry** — scans `~/.claude/skills/`, `./skills/`, and `./.claude/skills/`; merges and exposes a typed catalog.
-- **Artifact store** — project-scoped folder (default `./.ocd/`) holding generated files, version snapshots (git-friendly), and per-artifact metadata.
+- **Artifact store** — project-scoped folder (default `./.od/`) holding generated files, version snapshots (git-friendly), and per-artifact metadata.
 - **Design-system resolver** — loads the active `DESIGN.md`, injects it as skill context.
 - **Preview renderer** — sandboxed iframe with vendored React + Babel for JSX artifacts; plain iframe for HTML; PDF via the daemon's headless Chrome.
 - **Export pipeline** — HTML (inlined), PDF, PPTX, ZIP, Markdown.
@@ -122,20 +122,20 @@ We are **not** trying to out-feature [Claude Design][cd]. Claude Design has Anth
 - **Skills as files.** Version them in git. Fork them. Ship them to teammates as a repo. Run your team's branded deck skill without rebuilding a product.
 - **Design systems as files.** A `DESIGN.md` is an artifact you can review in a PR. Claude Design's "design system" lives in an ephemeral chat.
 
-In short: Claude Design is a product; OCD is a **substrate**.
+In short: Claude Design is a product; OD is a **substrate**.
 
 ## 9. Success criteria for v1
 
 - One developer can `git clone && pnpm install && pnpm dev`, point at their Claude Code install, and produce a prototype in under 5 minutes.
-- A third party can author a skill in a separate git repo, publish it, and have a user install it by running `ocd skill add <git-url>` without touching OCD's source.
-- A design system author can write a `DESIGN.md`, point OCD at it, and have the style propagate across prototype / deck / template outputs.
+- A third party can author a skill in a separate git repo, publish it, and have a user install it by running `od skill add <git-url>` without touching OD's source.
+- A design system author can write a `DESIGN.md`, point OD at it, and have the style propagate across prototype / deck / template outputs.
 - Deploying to Vercel with a local daemon works end-to-end (the daemon is reachable via localhost tunnel or a user-provided URL).
 - Swapping the underlying agent from Claude Code to Codex requires zero skill changes.
 
 ## 10. Open questions (to resolve before coding)
 
 - **Daemon ↔ Vercel bridge.** Do we ship a reverse-tunnel helper (like `cloudflared`), require the user to set one up, or punt to "run locally for now"? My current lean: punt for MVP, helper in v1.
-- **Artifact versioning.** Git, or SQLite, or both? [Open CoDesign][ocod] uses SQLite; that's easier but less reviewable. Lean: write artifacts as plain files + a `.ocd/history.jsonl` log. Git is the user's business.
+- **Artifact versioning.** Git, or SQLite, or both? [Open CoDesign][ocod] uses SQLite; that's easier but less reviewable. Lean: write artifacts as plain files + a `.od/history.jsonl` log. Git is the user's business.
 - **Comment mode on non-Claude-Code agents.** Claude Code supports surgical edits via its tool loop. Codex and Gemini CLI are less graceful. Do we degrade to "regenerate whole file" for weaker agents? Lean: yes, document clearly in the adapter table.
 - **Skill trust model.** Skills can shell out via the agent. We should at minimum warn on install, and probably sandbox the agent's cwd to the project directory. Claude Code's permission mode handles this for us if we use it; Codex is looser. Needs a per-adapter note.
 

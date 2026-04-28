@@ -15,7 +15,7 @@ triggers:
   - "mjml"
   - "邮件营销"
   - "邮件模板"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: marketing
@@ -65,7 +65,7 @@ email body. Treat it like a marketing artifact: one big idea, one CTA.
      so the email-on-page metaphor reads.
    - No external images — use inline SVG or DS-tinted gradient blocks for the
      product photo.
-   - `data-ocd-id` on the masthead, hero, headline, CTA, specs.
+   - `data-od-id` on the masthead, hero, headline, CTA, specs.
 5. **Self-check**:
    - Email reads top to bottom in 8–10 seconds.
    - One CTA. Accent appears at most twice (eyebrow + CTA, or headline word).

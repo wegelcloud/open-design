@@ -26,7 +26,7 @@
  * Drift fixes baked in:
  *   - `transform-origin: top left` and the stage is positioned by grid +
  *     place-items, so scaling never shifts content sideways inside the
- *     OCD viewer's nested transform wrapper.
+ *     OD viewer's nested transform wrapper.
  *   - Capture-phase keydown on BOTH window and document so iframe focus
  *     quirks can't swallow arrow keys.
  *   - Auto-focus body on load and on every click.
@@ -242,7 +242,7 @@ export const DECK_SKELETON_HTML = `<!doctype html>
       // The stage is 1920×1080 and positioned by .deck-shell's
       // \`display:grid;place-items:center\`. We scale via transform with
       // transform-origin:top-left, then re-center by translating to the
-      // remainder. This survives nested transforms (e.g. when the OCD viewer
+      // remainder. This survives nested transforms (e.g. when the OD viewer
       // wraps the iframe in its own scale wrapper at zoom != 100%).
       function fit() {
         var sw = window.innerWidth;
@@ -277,7 +277,7 @@ export const DECK_SKELETON_HTML = `<!doctype html>
         else if (e.key === 'Home') { e.preventDefault(); go(0); }
         else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
       }
-      // Capture phase + listen on both targets — inside the OCD iframe,
+      // Capture phase + listen on both targets — inside the OD iframe,
       // focus may be on window OR document; a single non-capture listener
       // silently misses presses.
       window.addEventListener('keydown', onKey, true);
@@ -328,7 +328,7 @@ You may edit only inside slots marked \`SLOT:\`:
 
 These are the failure patterns we just spent days debugging. Each one looks "equivalent" but breaks something specific:
 
-- ❌ Don't write your own \`fit()\` function or \`transform: scale()\` script. The framework already does it, and ad-hoc versions drift inside the OCD viewer's nested transform wrapper.
+- ❌ Don't write your own \`fit()\` function or \`transform: scale()\` script. The framework already does it, and ad-hoc versions drift inside the OD viewer's nested transform wrapper.
 - ❌ Don't use \`transform-origin: center center\` on the stage. The framework uses \`top left\` plus an explicit translate so scaled content lands at the same place every render.
 - ❌ Don't use \`document.addEventListener('keydown', …)\` alone. Inside an iframe, focus is sometimes on window. The framework adds capture-phase listeners on **both** targets — replacing this with a single listener silently swallows arrow keys.
 - ❌ Don't replace the localStorage key, the slide-visibility toggle (\`.slide.active\`), or the counter element IDs (\`#deck-cur\`, \`#deck-total\`, \`#deck-prev\`, \`#deck-next\`). The framework reads them by ID.
@@ -338,7 +338,7 @@ These are the failure patterns we just spent days debugging. Each one looks "equ
 
 ## Why this matters (so you can judge edge cases)
 
-The framework is a contract with the host viewer. The OCD iframe sits inside a transformed wrapper (the zoom control); the keyboard handler needs capture phase + dual targets; "Share → PDF" reads the print stylesheet; the position survives reloads via localStorage. If a turn rewrites any of these — even with "equivalent" code — the next turn diverges, and three turns in the deck has subtly broken nav and a one-page PDF. Treat the framework as load-bearing infrastructure.
+The framework is a contract with the host viewer. The OD iframe sits inside a transformed wrapper (the zoom control); the keyboard handler needs capture phase + dual targets; "Share → PDF" reads the print stylesheet; the position survives reloads via localStorage. If a turn rewrites any of these — even with "equivalent" code — the next turn diverges, and three turns in the deck has subtly broken nav and a one-page PDF. Treat the framework as load-bearing infrastructure.
 
 If the user asks for something the framework genuinely doesn't support (vertical decks, custom slide transitions, multi-column simultaneous slides), say so and ask before forking. **Default answer: keep the framework, change the slide content.**
 

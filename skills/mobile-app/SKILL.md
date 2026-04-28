@@ -14,7 +14,7 @@ triggers:
   - "app mockup"
   - "移动端"
   - "手机 app"
-ocd:
+od:
   mode: prototype
   platform: mobile
   scenario: design

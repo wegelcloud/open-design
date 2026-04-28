@@ -12,7 +12,7 @@ Phased plan from "spec-only today" to "usable MVP" to "published v1." All estima
 
 **Deliverables:**
 - [x] `README.md` + `docs/spec.md` + architecture / protocol / adapter / modes / references docs (this repo, as of now)
-- [ ] `docs/schemas/skill-manifest.json` — JSON Schema for the `ocd:` front-matter block
+- [ ] `docs/schemas/skill-manifest.json` — JSON Schema for the `od:` front-matter block
 - [ ] `docs/schemas/design-system.md` — formal spec of the 9-section `DESIGN.md`
 - [ ] `docs/schemas/protocol.md` — JSON-RPC method signatures
 - [ ] `docs/schemas/adapter.md` — adapter interface in TypeScript, printed out
@@ -65,7 +65,7 @@ Phased plan from "spec-only today" to "usable MVP" to "published v1." All estima
 - PDF / PPTX export
 - Topology B (Vercel + tunneled local daemon)
 - Docker compose file
-- Skill tests (`ocd skill test`)
+- Skill tests (`od skill test`)
 - Auth / multi-user
 
 ### Week-by-week breakdown
@@ -78,7 +78,7 @@ Phased plan from "spec-only today" to "usable MVP" to "published v1." All estima
 | 4 | API-fallback adapter | Anthropic Messages streaming; minimal tool loop (Read/Write/Edit rooted to artifact cwd); integration with skill prompt injection |
 | 5 | Web UI — chat + artifact tree | Zustand session store; WS client; chat pane; artifact tree reflects filesystem; skill picker |
 | 6 | Web UI — preview + export | sandboxed iframe with hot reload; JSX → vendored React/Babel runtime; export ZIP; export self-contained HTML (inline CSS) |
-| 7 | Default skills | port `guizang-ppt-skill` (no modifications; add `ocd:` extension block); write `saas-landing` skill; write 1–2 DESIGN.md examples; docs for skill authors |
+| 7 | Default skills | port `guizang-ppt-skill` (no modifications; add `od:` extension block); write `saas-landing` skill; write 1–2 DESIGN.md examples; docs for skill authors |
 | 8 | Polish + dogfood | end-to-end dogfooding; performance pass (daemon <500ms cold start, first generation overhead <50ms); bug-fixing; first publishable alpha |
 
 ### MVP exit criteria
@@ -87,8 +87,8 @@ Phased plan from "spec-only today" to "usable MVP" to "published v1." All estima
 2. With Claude Code installed: prototype + deck generation works end-to-end.
 3. Without Claude Code installed: API-fallback produces prototypes (not decks — guizang-ppt-skill needs native skill loading).
 4. A user can drop a DESIGN.md into the project root and subsequent generations respect it.
-5. A third party can publish a skill repo; `ocd skill add <url>` installs it and it works.
-6. Artifacts are plain files; `git add ./.ocd/artifacts/` and `git log` tell a sensible story.
+5. A third party can publish a skill repo; `od skill add <url>` installs it and it works.
+6. Artifacts are plain files; `git add ./.od/artifacts/` and `git log` tell a sensible story.
 7. No Electron, no Tauri, no desktop packaging anywhere in the repo.
 
 ---
@@ -107,7 +107,7 @@ Phased plan from "spec-only today" to "usable MVP" to "published v1." All estima
 
 **UI:**
 - **Comment mode** (click element → surgical edit; only when `capabilities.surgicalEdit`)
-- **Slider parameters** (live-tweak `ocd.parameters`)
+- **Slider parameters** (live-tweak `od.parameters`)
 - **Multi-frame preview** (desktop / tablet / phone)
 - **Template gallery** UI with thumbnails
 - **Design System editor** (split view: markdown ↔ sample-components preview)
@@ -129,18 +129,18 @@ Phased plan from "spec-only today" to "usable MVP" to "published v1." All estima
 **Deployment:**
 - Docker compose file
 - Topology B: Vercel web + tunneled local daemon
-  - Ship a helper subcommand: `ocd daemon --expose` using `cloudflared` (opt-in, documented)
+  - Ship a helper subcommand: `od daemon --expose` using `cloudflared` (opt-in, documented)
 
 **Dev experience:**
-- `ocd skill test` with cheap-model runs
-- Skill author starter template: `ocd skill scaffold`
+- `od skill test` with cheap-model runs
+- Skill author starter template: `od skill scaffold`
 
 ### v1 exit criteria
 
 1. All four modes fully functional.
 2. Three adapters working (Claude Code, Codex, Cursor Agent); fallback chain shipping.
 3. PDF + PPTX export working for at least the `magazine-web-ppt` + `pitch-deck` skills.
-4. Deployed example at `demo.open-claude-design.dev` (Topology C).
+4. Deployed example at `demo.open-design.dev` (Topology C).
 5. Skill author docs published; at least one third-party skill submitted.
 6. Documentation site rebuilt from these spec docs.
 
@@ -176,7 +176,7 @@ v2 isn't promised. It's the direction if v1 lands.
 | `guizang-ppt-skill` or similar upstream skill changes format | default deck skill breaks | pin git SHA in our default install; monitor upstream |
 | DESIGN.md format evolves in awesome-claude-design | incompatibility | track upstream; adopt changes; our resolver is tolerant of missing sections |
 | Anthropic ships an open-source Claude Design | differentiation collapses | our moat is the "uses user's existing agent" angle; Anthropic is unlikely to ship that |
-| Skill security (malicious skill via `ocd skill add`) | user machine compromise | install-time warning; rely on agent's own permission model; document best practices |
+| Skill security (malicious skill via `od skill add`) | user machine compromise | install-time warning; rely on agent's own permission model; document best practices |
 
 ---
 

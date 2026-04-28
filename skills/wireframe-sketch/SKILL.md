@@ -17,10 +17,11 @@ triggers:
   - "手绘原型"
   - "草图"
   - "线框图"
-ocd:
+od:
   mode: prototype
   platform: desktop
   scenario: design
+  fidelity: wireframe
   preview:
     type: html
     entry: index.html
@@ -74,7 +75,7 @@ fills, dashed borders, slight rotations.
      Daughter" fonts via Google Fonts; otherwise fall back to italic serif.
    - Slight rotations everywhere (`transform: rotate(-0.6deg)`) to break
      the grid and feel hand-drawn.
-   - `data-ocd-id` on header, tabs, sidebar, KPIs, chart, bar-chart,
+   - `data-od-id` on header, tabs, sidebar, KPIs, chart, bar-chart,
      sticky notes.
 5. **Self-check**:
    - The page should *not* look pixel-perfect. If it does, you over-rendered.
