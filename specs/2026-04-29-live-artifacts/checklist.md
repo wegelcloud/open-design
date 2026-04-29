@@ -1,0 +1,326 @@
+# Live Artifacts Implementation Checklist
+
+## Phase 0 — Contracts and fixtures
+
+- [ ] Define `html_template_v1` rendering contract.
+  - [ ] Decide MVP binding syntax: Mustache-style `{{data.path}}`, `data-od-*` attributes, or both.
+  - [ ] Specify that interpolation HTML-escapes by default.
+  - [ ] Explicitly disallow raw / unescaped interpolation in MVP.
+  - [ ] Specify allowed structural directives, if any.
+- [ ] Define shared bounded JSON constraints.
+  - [ ] Max object depth.
+  - [ ] Max array length.
+  - [ ] Max string length.
+  - [ ] Max serialized payload size.
+- [ ] Implement or draft schemas for core types.
+  - [ ] `BoundedJsonValue` / `BoundedJsonObject`.
+  - [ ] `LiveArtifact`.
+  - [ ] `LiveArtifactDocument`.
+  - [ ] `LiveArtifactTile`.
+  - [ ] `LiveArtifactRenderJson` discriminated union.
+  - [ ] `LiveArtifactTileSource`.
+  - [ ] `LiveArtifactProvenance`.
+  - [ ] `ConnectorDetail`.
+  - [ ] `ConnectorToolSafety`.
+- [ ] Define create/update input schemas.
+  - [ ] `LiveArtifactCreateInput`.
+  - [ ] `LiveArtifactUpdateInput`.
+  - [ ] Reject daemon-owned fields from agent input: `id`, `projectId`, `createdAt`, `createdByRunId`, `schemaVersion`, `refreshStatus`.
+- [ ] Define compact agent-facing error format.
+  - [ ] `code`.
+  - [ ] `message`.
+  - [ ] `fieldErrors`.
+  - [ ] `retryable`.
+- [ ] Add fixture artifacts under `specs/2026-04-29-live-artifacts/examples/`.
+  - [ ] Minimal static `html_template_v1` artifact.
+  - [ ] Artifact with one metric tile.
+  - [ ] Artifact with one table tile.
+  - [ ] Invalid fixture containing forbidden raw provider fields.
+  - [ ] Invalid fixture containing credential-like fields.
+- [ ] Add schema validation tests.
+  - [ ] Reject `raw`, `rawResponse`, `payload`, `body`, `headers`, `cookie`, `authorization`, `token`, `secret`, `credential`, `password` keys.
+  - [ ] Reject path traversal.
+  - [ ] Reject oversized JSON.
+  - [ ] Reject unsupported URLs.
+  - [ ] Accept valid fixture artifacts.
+
+## Phase 1A — Static live artifact registration
+
+- [ ] Create daemon live artifact module structure.
+  - [ ] `daemon/live-artifacts/schema.js`.
+  - [ ] `daemon/live-artifacts/store.js`.
+  - [ ] `daemon/live-artifacts/render.js`.
+- [ ] Implement project-scoped storage layout.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/artifact.json`.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/template.html`.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/data.json`.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/provenance.json`.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/tiles/*.json`.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/refreshes.jsonl`.
+  - [ ] `.od/projects/<projectId>/live-artifacts/<artifactId>/snapshots/`.
+- [ ] Implement artifact ID and slug generation.
+- [ ] Implement safe path resolution.
+  - [ ] Ensure all reads/writes stay inside project workspace.
+  - [ ] Reject absolute paths from agent payloads.
+  - [ ] Reject `..` traversal.
+- [ ] Implement `createLiveArtifact` service.
+  - [ ] Validate create input.
+  - [ ] Assign daemon-owned fields.
+  - [ ] Persist files atomically where practical.
+  - [ ] Generate initial `index.html` as derived preview output.
+- [ ] Implement `listLiveArtifacts` service.
+  - [ ] Read project live artifact directories.
+  - [ ] Return compact summaries.
+  - [ ] Hide snapshots and implementation files.
+- [ ] Implement `getLiveArtifact` service.
+- [ ] Add daemon routes for UI reads.
+  - [ ] `GET /api/live-artifacts?projectId=...`.
+  - [ ] `GET /api/live-artifacts/:artifactId`.
+- [ ] Add daemon tool routes for agent registration.
+  - [ ] `POST /api/tools/live-artifacts/create`.
+  - [ ] `GET /api/tools/live-artifacts/list`.
+- [ ] Implement run-scoped tool token infrastructure.
+  - [ ] Define run as one `/api/chat` invocation.
+  - [ ] Mint `OD_TOOL_TOKEN` per run.
+  - [ ] Bind token to `runId`, `projectId`, allowed endpoints, allowed operations, and expiry.
+  - [ ] Revoke token when child process exits.
+  - [ ] Revoke token when SSE stream ends.
+  - [ ] Revoke token when TTL expires.
+  - [ ] Isolate concurrent runs under the same project.
+- [ ] Inject runtime tool environment into agent session.
+  - [ ] `OD_DAEMON_URL`.
+  - [ ] `OD_TOOL_TOKEN`.
+  - [ ] `OD_TOOL_ROOT`.
+- [ ] Enforce `/api/tools/*` auth.
+  - [ ] Require bearer token.
+  - [ ] Derive project scope from token.
+  - [ ] Reject request-supplied project overrides.
+  - [ ] Enforce endpoint allowlist.
+  - [ ] Enforce operation allowlist.
+
+## Phase 1B — Preview and UI integration
+
+- [ ] Implement preview renderer.
+  - [ ] Load `template.html`.
+  - [ ] Load `data.json` as source of truth.
+  - [ ] Apply `html_template_v1` bindings.
+  - [ ] HTML-escape interpolated values.
+  - [ ] Regenerate derived `index.html` when needed.
+- [ ] Add preview route.
+  - [ ] `GET /api/live-artifacts/:artifactId/preview`.
+  - [ ] Serve with iframe-compatible response.
+  - [ ] Apply restrictive CSP.
+  - [ ] Apply iframe sandbox assumptions.
+- [ ] Apply local daemon security to preview routes.
+  - [ ] Host header validation.
+  - [ ] Origin validation.
+  - [ ] CORS restrictions.
+  - [ ] CSRF protection where relevant.
+  - [ ] DNS rebinding protection.
+- [ ] Add live artifact type definitions to frontend.
+- [ ] Extend frontend provider/registry methods.
+  - [ ] List live artifacts.
+  - [ ] Fetch live artifact detail.
+  - [ ] Build preview URL.
+- [ ] Show live artifacts as virtual nodes in the artifact tree.
+  - [ ] One node per live artifact.
+  - [ ] Hide `snapshots/` by default.
+  - [ ] Hide `tiles/` implementation files by default.
+- [ ] Add badges.
+  - [ ] `Live`.
+  - [ ] `Refreshable`.
+  - [ ] `Refreshing...`.
+  - [ ] `Refresh failed`.
+  - [ ] `Archived`.
+- [ ] Add preview panel support.
+  - [ ] Load preview route in iframe.
+  - [ ] Add `Source` tab.
+  - [ ] Add `Data` tab.
+  - [ ] Add `Provenance` tab.
+  - [ ] Add `Refresh history` tab.
+- [ ] Ensure `data.json` is source of truth.
+  - [ ] Treat any API `dataJson` as derived cache only.
+  - [ ] On divergence, prefer `data.json`.
+
+## Phase 1C — Built-in skill and wrapper CLI
+
+- [ ] Add built-in skill directory.
+  - [ ] `skills/live-artifact/SKILL.md`.
+  - [ ] `skills/live-artifact/references/artifact-schema.md`.
+  - [ ] `skills/live-artifact/references/connector-policy.md`.
+  - [ ] `skills/live-artifact/references/refresh-contract.md`.
+- [ ] Write skill frontmatter.
+  - [ ] `name: live-artifact`.
+  - [ ] Trigger keywords for live dashboards/reports.
+  - [ ] `od.mode: prototype`.
+  - [ ] `od.preview.type: html`.
+  - [ ] `od.outputs.primary: index.html`.
+  - [ ] Required capabilities: `shell`, `file_write`.
+- [ ] Write skill workflow instructions.
+  - [ ] Determine if user wants live vs static artifact.
+  - [ ] Use daemon wrappers instead of raw curl.
+  - [ ] Write `template.html`, `data.json`, `artifact.json`, `provenance.json`.
+  - [ ] Treat `index.html` as derived preview output.
+  - [ ] Never store credentials or raw provider responses.
+  - [ ] Keep `data.json` compact and preview-oriented.
+- [ ] Implement wrapper CLI.
+  - [ ] `daemon/tools/live-artifacts.js create --input artifact.json`.
+  - [ ] `daemon/tools/live-artifacts.js list --format compact`.
+  - [ ] `daemon/tools/live-artifacts.js update --artifact-id <id> --input artifact.json`.
+  - [ ] `daemon/tools/live-artifacts.js refresh --artifact-id <id>`.
+- [ ] Ensure wrapper reads injected environment.
+  - [ ] `OD_DAEMON_URL`.
+  - [ ] `OD_TOOL_TOKEN`.
+  - [ ] `OD_TOOL_ROOT`.
+- [ ] Ensure wrapper returns agent-friendly output.
+  - [ ] Compact success JSON.
+  - [ ] Compact validation errors.
+  - [ ] Non-zero exit code on failure.
+- [ ] Update system prompt / skill preamble injection.
+  - [ ] Include daemon URL.
+  - [ ] Include tool root.
+  - [ ] Include token availability without exposing unnecessary internals.
+- [ ] Verify skill discovery.
+  - [ ] Skill appears in catalog.
+  - [ ] Skill body includes root preamble for references/assets.
+  - [ ] Active agent receives live artifact workflow instructions.
+
+## Phase 2 — Refresh runner
+
+- [ ] Implement refresh storage.
+  - [ ] Append-only `refreshes.jsonl`.
+  - [ ] Refresh step status.
+  - [ ] Refresh duration.
+  - [ ] Connector/tool metadata.
+  - [ ] Compact error records.
+- [ ] Implement refresh lock.
+  - [ ] One active refresh per artifact.
+  - [ ] Reject or queue concurrent refreshes.
+- [ ] Implement monotonic refresh IDs.
+  - [ ] Prevent stale refresh from overwriting newer committed data.
+- [ ] Implement timeout and cancellation.
+  - [ ] Per-source timeout.
+  - [ ] Total refresh timeout.
+  - [ ] User cancellation path.
+- [ ] Implement crash recovery.
+  - [ ] Detect stale `running` refreshes on daemon startup.
+  - [ ] Mark timed-out stale runs as failed.
+  - [ ] Preserve last valid preview.
+- [ ] Implement local daemon refresh sources.
+  - [ ] `project_files.search`.
+  - [ ] `project_files.read_json`.
+  - [ ] `git.summary`.
+- [ ] Implement declarative output mapping.
+  - [ ] `outputMapping.dataPaths`.
+  - [ ] `identity` transform.
+  - [ ] `compact_table` transform.
+  - [ ] `metric_summary` transform.
+- [ ] Implement all-or-nothing refresh commit.
+  - [ ] Build candidate `data.json`.
+  - [ ] Build candidate tile render JSON.
+  - [ ] Validate all candidates.
+  - [ ] Commit only if all refreshable tiles succeed.
+  - [ ] Keep previous data/preview if any tile fails.
+- [ ] Implement snapshot behavior.
+  - [ ] Successful snapshots under `snapshots/<refreshId>/`.
+  - [ ] Failed attempts summarized in `refreshes.jsonl`.
+  - [ ] Decide whether failed payloads are retained under hidden failed snapshot directory.
+- [ ] Add refresh UI.
+  - [ ] Refresh button.
+  - [ ] Running state.
+  - [ ] Success state.
+  - [ ] Failure state with actionable error.
+- [ ] Implement refresh permission flow.
+  - [ ] Initial state `refreshPermission: none`.
+  - [ ] First manual refresh confirmation.
+  - [ ] Persist `manual_refresh_granted_for_read_only` after approval.
+  - [ ] Allow revoke from Source tab.
+- [ ] Emit refresh events.
+  - [ ] Through active chat SSE when tied to active agent run.
+  - [ ] Through project-scoped event stream for UI-triggered/background refreshes, if implemented.
+
+## Phase 3 — Connector catalog and read-only connector tools
+
+- [ ] Create connector module structure.
+  - [ ] `daemon/connectors/catalog.js`.
+  - [ ] `daemon/connectors/service.js`.
+  - [ ] `daemon/routes/connectors.js`.
+  - [ ] `daemon/tools/connectors.js`.
+- [ ] Implement connector catalog.
+  - [ ] Static connector definitions.
+  - [ ] Featured tools.
+  - [ ] Allowed tools.
+  - [ ] Minimum approval policy.
+- [ ] Implement connector status service.
+  - [ ] `available`.
+  - [ ] `connected`.
+  - [ ] `error`.
+  - [ ] `disabled`.
+  - [ ] `accountLabel`.
+- [ ] Add connector UI/API endpoints.
+  - [ ] `GET /api/connectors`.
+  - [ ] `GET /api/connectors/:connectorId`.
+  - [ ] `POST /api/connectors/:connectorId/connect`.
+  - [ ] `DELETE /api/connectors/:connectorId/connection`.
+  - [ ] `GET /connectors/oauth/callback/:connectorId`.
+- [ ] Implement connector tool endpoints.
+  - [ ] `GET /api/tools/connectors/list`.
+  - [ ] `POST /api/tools/connectors/execute`.
+- [ ] Implement connector wrapper CLI.
+  - [ ] `daemon/tools/connectors.js list --format compact`.
+  - [ ] `daemon/tools/connectors.js execute --connector <id> --tool <name> --input input.json`.
+- [ ] Implement read-only safety classification.
+  - [ ] Scope/name contains write/create/update/delete/admin/send/post/manage → write/confirm.
+  - [ ] Destructive hints → destructive/disabled for refresh.
+  - [ ] Explicit read-only hints → read/auto.
+  - [ ] Unknown → write/confirm.
+- [ ] Enforce policy at execution time.
+  - [ ] Re-check allowlist.
+  - [ ] Re-check current scopes.
+  - [ ] Re-check tool safety.
+  - [ ] Re-check connector status.
+  - [ ] Fail closed if read-only tool becomes write-capable.
+  - [ ] Never make write/destructive/unknown tools refreshable.
+- [ ] Implement connector output protections.
+  - [ ] Max serialized output size, e.g. 256KB.
+  - [ ] Per-run rate limit, e.g. 10 calls/minute.
+  - [ ] Per-run total call limit, e.g. 60 calls/run.
+  - [ ] Redact credentials and provider envelope fields.
+  - [ ] Return compact summaries where possible.
+- [ ] Implement credential storage policy.
+  - [ ] Store OAuth credentials outside project artifacts.
+  - [ ] Use daemon-controlled global store or app database.
+  - [ ] Persist only connector references in artifacts.
+  - [ ] Never write tokens/headers/cookies/OAuth state under live artifact directories.
+- [ ] Add first connector or public/local provider.
+  - [ ] Prefer local/public source before OAuth-backed provider.
+  - [ ] Validate read-only refresh end-to-end.
+- [ ] Update skill references.
+  - [ ] Document connector listing.
+  - [ ] Document connector execution.
+  - [ ] Document read-only refresh rules.
+  - [ ] Document credential handling constraints.
+
+## Phase 4 — Optional MCP wrapper
+
+- [ ] Confirm need for MCP after skill + wrapper path works.
+- [ ] Design MCP server as wrapper over existing daemon services.
+- [ ] Do not make MCP required.
+- [ ] Do not mutate user global MCP config automatically.
+- [ ] Keep skill + CLI path unchanged.
+- [ ] Add MCP discovery only for agents with mature MCP support.
+- [ ] Verify Claude Code or another MCP-capable agent can discover equivalent tools.
+
+## Cross-cutting verification
+
+- [ ] Run schema tests.
+- [ ] Run daemon route tests.
+- [ ] Run storage/path traversal tests.
+- [ ] Run preview renderer tests.
+- [ ] Run token auth tests.
+- [ ] Run refresh failure fallback tests.
+- [ ] Run connector policy tests.
+- [ ] Run frontend build/typecheck.
+- [ ] Run an end-to-end local artifact create flow with one supported agent.
+- [ ] Run an end-to-end refresh flow using a local read-only source.
+- [ ] Verify no fixture or generated artifact contains raw credentials, headers, cookies, or full provider payloads.
