@@ -15,6 +15,10 @@ function sendRpcResult(writable, id, result) {
   writable.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
 }
 
+function isJsonRpcId(value) {
+  return typeof value === 'number' || typeof value === 'string';
+}
+
 function rpcErrorMessage(raw) {
   if (!raw || typeof raw !== 'object' || !raw.error || typeof raw.error !== 'object') {
     return '';
@@ -273,7 +277,7 @@ export function attachAcpSession({
 
   const replyPermission = (raw) => {
     const optionId = choosePermissionOutcome(raw.params?.options);
-    if (!optionId || typeof raw.id !== 'number') {
+    if (!optionId || !isJsonRpcId(raw.id)) {
       fail(`unhandled ACP permission request: ${JSON.stringify(raw)}`);
       return;
     }

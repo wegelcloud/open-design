@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { createJsonEventStreamHandler } from './json-event-stream.js';
 
@@ -146,6 +146,37 @@ test('cursor stream emits suffix when final assistant extends partial text', () 
       '\n' +
       JSON.stringify({
         type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hello world' }] },
+      }) +
+      '\n',
+  );
+
+  assert.deepEqual(events, [
+    { type: 'text_delta', delta: 'hello' },
+    { type: 'text_delta', delta: ' world' },
+  ]);
+});
+
+test('cursor stream de-duplicates cumulative timestamped assistant chunks', () => {
+  const events = [];
+  const handler = createJsonEventStreamHandler('cursor-agent', (event) => events.push(event));
+
+  handler.feed(
+    JSON.stringify({
+      type: 'assistant',
+      timestamp_ms: 1,
+      message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+    }) +
+      '\n' +
+      JSON.stringify({
+        type: 'assistant',
+        timestamp_ms: 2,
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hello world' }] },
+      }) +
+      '\n' +
+      JSON.stringify({
+        type: 'assistant',
+        timestamp_ms: 3,
         message: { role: 'assistant', content: [{ type: 'text', text: 'hello world' }] },
       }) +
       '\n',

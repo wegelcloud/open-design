@@ -139,6 +139,25 @@ function extractCursorText(message) {
     .join('');
 }
 
+function emitCursorTextDelta(text, onEvent, state) {
+  if (!state.cursorTextSoFar) {
+    state.cursorTextSoFar = text;
+    onEvent({ type: 'text_delta', delta: text });
+    return;
+  }
+  if (text === state.cursorTextSoFar) {
+    return;
+  }
+  if (text.startsWith(state.cursorTextSoFar)) {
+    const delta = text.slice(state.cursorTextSoFar.length);
+    if (delta) onEvent({ type: 'text_delta', delta });
+    state.cursorTextSoFar = text;
+    return;
+  }
+  state.cursorTextSoFar += text;
+  onEvent({ type: 'text_delta', delta: text });
+}
+
 function handleCursorEvent(obj, onEvent, state) {
   if (!obj || typeof obj !== 'object') return false;
 
@@ -155,26 +174,10 @@ function handleCursorEvent(obj, onEvent, state) {
     const text = extractCursorText(obj.message);
     if (!text) return false;
     if (typeof obj.timestamp_ms === 'number') {
-      state.cursorTextSoFar += text;
-      onEvent({ type: 'text_delta', delta: text });
+      emitCursorTextDelta(text, onEvent, state);
       return true;
     }
-    if (!state.cursorTextSoFar) {
-      state.cursorTextSoFar = text;
-      onEvent({ type: 'text_delta', delta: text });
-      return true;
-    }
-    if (text === state.cursorTextSoFar) {
-      return true;
-    }
-    if (text.startsWith(state.cursorTextSoFar)) {
-      const delta = text.slice(state.cursorTextSoFar.length);
-      if (delta) onEvent({ type: 'text_delta', delta });
-      state.cursorTextSoFar = text;
-      return true;
-    }
-    onEvent({ type: 'text_delta', delta: text });
-    state.cursorTextSoFar = text;
+    emitCursorTextDelta(text, onEvent, state);
     return true;
   }
 
