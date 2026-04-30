@@ -10,6 +10,7 @@ import {
   ensureLiveArtifactStoreLayout,
   generateLiveArtifactId,
   generateLiveArtifactSlug,
+  getLiveArtifact,
   liveArtifactStorePaths,
   liveArtifactTilePath,
   listLiveArtifacts,
@@ -301,6 +302,43 @@ describe('live artifact store layout', () => {
     expect(JSON.stringify(summaries)).not.toContain('snapshots');
     expect(JSON.stringify(summaries)).not.toContain('template.html');
     expect(JSON.stringify(summaries)).not.toContain('data.json');
+  });
+
+  it('gets a full project-scoped live artifact record by id', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    const created = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: validCreateInput(),
+      now: new Date('2026-04-30T10:11:12.345Z'),
+    });
+
+    const record = await getLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+    });
+
+    expect(record.artifact).toEqual(created.artifact);
+    expect(record.paths).toEqual(created.paths);
+    expect(record.artifact.tiles).toHaveLength(1);
+    expect(record.artifact.document).toMatchObject({
+      format: 'html_template_v1',
+      templatePath: 'template.html',
+      generatedPreviewPath: 'index.html',
+      dataPath: 'data.json',
+    });
+  });
+
+  it('rejects invalid ids and missing live artifacts during get', async () => {
+    const projectsRoot = await makeProjectsRoot();
+
+    await expect(
+      getLiveArtifact({ projectsRoot, projectId: 'project-1', artifactId: '../artifact' }),
+    ).rejects.toThrow(/invalid live artifact id/);
+    await expect(
+      getLiveArtifact({ projectsRoot, projectId: 'project-1', artifactId: 'missing-artifact' }),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('returns an empty live artifact list when the project has no live artifact storage', async () => {

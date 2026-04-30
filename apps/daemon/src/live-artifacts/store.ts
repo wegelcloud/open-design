@@ -92,6 +92,12 @@ export interface ListLiveArtifactsOptions {
   projectId: string;
 }
 
+export interface GetLiveArtifactOptions {
+  projectsRoot: string;
+  projectId: string;
+  artifactId: string;
+}
+
 export class LiveArtifactStoreValidationError extends Error {
   readonly issues: LiveArtifactValidationIssue[];
 
@@ -256,6 +262,15 @@ async function readPersistedLiveArtifact(paths: LiveArtifactStorePaths): Promise
   return persisted.value;
 }
 
+function assertArtifactMatchesStorage(artifact: LiveArtifact, projectId: string, artifactId: string): void {
+  if (artifact.id !== artifactId) {
+    throw validationError('id', 'live artifact id does not match storage directory');
+  }
+  if (artifact.projectId !== projectId) {
+    throw validationError('projectId', 'live artifact projectId does not match requested project');
+  }
+}
+
 async function writeLiveArtifactFiles(paths: LiveArtifactStorePaths, artifact: LiveArtifact, templateHtml: string, provenanceJson: LiveArtifactProvenance): Promise<void> {
   const dataJson = artifact.document?.dataJson ?? {};
   const previewHtml = artifact.document?.format === 'html_template_v1'
@@ -344,12 +359,7 @@ export async function listLiveArtifacts(options: ListLiveArtifactsOptions): Prom
     const artifactId = validateLiveArtifactStorageId(entry.name);
     const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
     const artifact = await readPersistedLiveArtifact(paths);
-    if (artifact.id !== artifactId) {
-      throw validationError('id', 'live artifact id does not match storage directory');
-    }
-    if (artifact.projectId !== options.projectId) {
-      throw validationError('projectId', 'live artifact projectId does not match requested project');
-    }
+    assertArtifactMatchesStorage(artifact, options.projectId, artifactId);
 
     summaries.push(toSummary(artifact));
   }
@@ -360,6 +370,14 @@ export async function listLiveArtifacts(options: ListLiveArtifactsOptions): Prom
     return a.id.localeCompare(b.id);
   });
   return summaries;
+}
+
+export async function getLiveArtifact(options: GetLiveArtifactOptions): Promise<LiveArtifactStoreRecord> {
+  const artifactId = validateLiveArtifactStorageId(options.artifactId);
+  const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
+  const artifact = await readPersistedLiveArtifact(paths);
+  assertArtifactMatchesStorage(artifact, options.projectId, artifactId);
+  return { artifact, paths };
 }
 
 export function summarizeLiveArtifactRecord(record: LiveArtifactStoreRecord): LiveArtifactStoreSummary {
