@@ -58,7 +58,9 @@ import {
   upsertMessage,
 } from './db.js';
 import {
+  getLiveArtifact,
   LiveArtifactStoreValidationError,
+  listLiveArtifacts,
   updateLiveArtifact,
 } from './live-artifacts/store.js';
 
@@ -851,6 +853,41 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       });
     } catch (err) {
       res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/live-artifacts', async (req, res) => {
+    try {
+      const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+      if (!projectId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'projectId query parameter is required');
+      }
+
+      const artifacts = await listLiveArtifacts({
+        projectsRoot: PROJECTS_DIR,
+        projectId,
+      });
+      res.json({ artifacts });
+    } catch (err) {
+      sendLiveArtifactRouteError(res, err);
+    }
+  });
+
+  app.get('/api/live-artifacts/:artifactId', async (req, res) => {
+    try {
+      const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+      if (!projectId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'projectId query parameter is required');
+      }
+
+      const record = await getLiveArtifact({
+        projectsRoot: PROJECTS_DIR,
+        projectId,
+        artifactId: req.params.artifactId,
+      });
+      res.json({ artifact: record.artifact });
+    } catch (err) {
+      sendLiveArtifactRouteError(res, err);
     }
   });
 
