@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
 import {
+  buildLiveArtifactsMcpServersForAgent,
   detectAgents,
   getAgentDef,
   isKnownModel,
@@ -1590,6 +1591,9 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
         ? def.reasoningOptions.find((r) => r.id === reasoning)?.id ?? null
         : null;
     const agentOptions = { model: safeModel, reasoning: safeReasoning };
+    const mcpServers = buildLiveArtifactsMcpServersForAgent(def, {
+      enabled: Boolean(toolTokenGrant?.token),
+    });
 
     // Windows ENAMETOOLONG mitigation.  On Windows the OS caps the command
     // line passed to child_process.spawn: ~8 191 chars when shell:true is
@@ -1765,6 +1769,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
         prompt: composed,
         cwd: cwd || PROJECT_ROOT,
         model: safeModel,
+        mcpServers,
         send,
       });
     } else if (def.streamFormat === 'json-event-stream') {

@@ -221,6 +221,7 @@ export function attachAcpSession({
   prompt,
   cwd,
   model,
+  mcpServers,
   send,
   clientName = 'open-design',
   clientVersion = 'runtime-adapter',
@@ -349,7 +350,7 @@ export function attachAcpSession({
       writeRpc(
         nextId,
         'session/new',
-        buildAcpSessionNewParams(effectiveCwd),
+        buildAcpSessionNewParams(effectiveCwd, { mcpServers }),
         'session/new',
       );
       nextId += 1;
