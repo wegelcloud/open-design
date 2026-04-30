@@ -55,6 +55,10 @@ This file is the single source of truth for agents entering this repository. Rea
 - Orchestration layers (`tools-dev`, future `tools-pack`, packaged launchers) must call package primitives; do not hand-build `--od-stamp-*` args or process-scan regexes.
 - Default runtime files live under `<project-root>/.tmp/<source>/<namespace>/...`; POSIX IPC sockets are fixed at `/tmp/open-design/ipc/<namespace>/<app>.sock`.
 
+## Git commit policy
+
+- Git commits must not include `Co-authored-by` trailers or any other co-author metadata.
+
 ## Validation strategy
 
 - After package, workspace, or command-entry changes, run `pnpm install` so workspace links and generated dist entries stay fresh.
