@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { deleteProjectFile, listFiles, readProjectFile, writeProjectFile } from '../src/projects.js';
 import {
+  acquireLiveArtifactRefreshLock,
   appendLiveArtifactRefreshLogEntry,
   compactLiveArtifactRefreshError,
   createLiveArtifact,
@@ -18,7 +19,9 @@ import {
   liveArtifactTilePath,
   listLiveArtifactRefreshLogEntries,
   listLiveArtifacts,
+  LiveArtifactRefreshLockError,
   regenerateLiveArtifactPreview,
+  releaseLiveArtifactRefreshLock,
   updateLiveArtifact,
   validateLiveArtifactStorageId,
 } from '../src/live-artifacts/store.js';
@@ -417,6 +420,81 @@ describe('live artifact store layout', () => {
       first,
       second,
     ]);
+  });
+
+  it('rejects a second concurrent refresh lock for the same artifact but allows different artifacts', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    const firstArtifact = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: validCreateInput(),
+    });
+    const secondArtifact = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: { ...validCreateInput(), title: 'Other dashboard', slug: 'other-dashboard' },
+    });
+
+    const firstLock = await acquireLiveArtifactRefreshLock({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: firstArtifact.artifact.id,
+      now: new Date('2026-04-30T10:00:00.000Z'),
+    });
+
+    await expect(
+      acquireLiveArtifactRefreshLock({
+        projectsRoot,
+        projectId: 'project-1',
+        artifactId: firstArtifact.artifact.id,
+        now: new Date('2026-04-30T10:00:01.000Z'),
+      }),
+    ).rejects.toBeInstanceOf(LiveArtifactRefreshLockError);
+
+    const secondLock = await acquireLiveArtifactRefreshLock({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: secondArtifact.artifact.id,
+      now: new Date('2026-04-30T10:00:02.000Z'),
+    });
+
+    expect(firstLock.lockPath).not.toBe(secondLock.lockPath);
+    expect(JSON.parse(await readFile(firstLock.lockPath, 'utf8'))).toMatchObject({
+      projectId: 'project-1',
+      artifactId: firstArtifact.artifact.id,
+      acquiredAt: '2026-04-30T10:00:00.000Z',
+    });
+
+    await Promise.all([
+      releaseLiveArtifactRefreshLock(firstLock),
+      releaseLiveArtifactRefreshLock(secondLock),
+    ]);
+  });
+
+  it('allows reacquiring a refresh lock after release', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    const created = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: validCreateInput(),
+    });
+
+    const firstLock = await acquireLiveArtifactRefreshLock({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+    });
+    await releaseLiveArtifactRefreshLock(firstLock);
+    await expect(stat(firstLock.lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
+
+    const secondLock = await acquireLiveArtifactRefreshLock({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+    });
+
+    expect(secondLock.metadata.token).not.toBe(firstLock.metadata.token);
+    await releaseLiveArtifactRefreshLock(secondLock);
   });
 
   it('rejects unsafe refresh log metadata and compacts arbitrary errors', async () => {

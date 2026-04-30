@@ -20,6 +20,7 @@ export const LIVE_ARTIFACT_PREVIEW_FILE = 'index.html' as const;
 export const LIVE_ARTIFACT_DATA_FILE = 'data.json' as const;
 export const LIVE_ARTIFACT_PROVENANCE_FILE = 'provenance.json' as const;
 export const LIVE_ARTIFACT_REFRESHES_FILE = 'refreshes.jsonl' as const;
+export const LIVE_ARTIFACT_REFRESH_LOCK_FILE = 'refresh.lock.json' as const;
 export const LIVE_ARTIFACT_TILES_DIR = 'tiles' as const;
 export const LIVE_ARTIFACT_SNAPSHOTS_DIR = 'snapshots' as const;
 
@@ -58,6 +59,7 @@ export interface LiveArtifactStorePaths {
   provenanceJsonPath: string;
   tilesDir: string;
   refreshesJsonlPath: string;
+  refreshLockPath: string;
   snapshotsDir: string;
 }
 
@@ -114,6 +116,13 @@ export interface RegenerateLiveArtifactPreviewOptions {
   artifactId: string;
 }
 
+export interface AcquireLiveArtifactRefreshLockOptions {
+  projectsRoot: string;
+  projectId: string;
+  artifactId: string;
+  now?: Date;
+}
+
 export interface AppendLiveArtifactRefreshLogEntryOptions {
   projectsRoot: string;
   projectId: string;
@@ -141,6 +150,20 @@ export interface LiveArtifactPreviewRenderRecord extends LiveArtifactStoreRecord
   html: string;
 }
 
+export interface LiveArtifactRefreshLockMetadata {
+  schemaVersion: 1;
+  projectId: string;
+  artifactId: string;
+  acquiredAt: string;
+  token: string;
+}
+
+export interface LiveArtifactRefreshLock {
+  artifactId: string;
+  lockPath: string;
+  metadata: LiveArtifactRefreshLockMetadata;
+}
+
 export class LiveArtifactStoreValidationError extends Error {
   readonly issues: LiveArtifactValidationIssue[];
 
@@ -148,6 +171,20 @@ export class LiveArtifactStoreValidationError extends Error {
     super(message);
     this.name = 'LiveArtifactStoreValidationError';
     this.issues = issues;
+  }
+}
+
+export class LiveArtifactRefreshLockError extends Error {
+  readonly projectId: string;
+  readonly artifactId: string;
+  readonly lockPath: string;
+
+  constructor(message: string, options: { projectId: string; artifactId: string; lockPath: string }) {
+    super(message);
+    this.name = 'LiveArtifactRefreshLockError';
+    this.projectId = options.projectId;
+    this.artifactId = options.artifactId;
+    this.lockPath = options.lockPath;
   }
 }
 
@@ -218,6 +255,7 @@ export function liveArtifactStorePaths(
     provenanceJsonPath: resolveInside(artifactDir, LIVE_ARTIFACT_PROVENANCE_FILE, 'live artifact path escapes artifact dir'),
     tilesDir: resolveInside(artifactDir, LIVE_ARTIFACT_TILES_DIR, 'live artifact path escapes artifact dir'),
     refreshesJsonlPath: resolveInside(artifactDir, LIVE_ARTIFACT_REFRESHES_FILE, 'live artifact path escapes artifact dir'),
+    refreshLockPath: resolveInside(artifactDir, LIVE_ARTIFACT_REFRESH_LOCK_FILE, 'live artifact path escapes artifact dir'),
     snapshotsDir: resolveInside(artifactDir, LIVE_ARTIFACT_SNAPSHOTS_DIR, 'live artifact path escapes artifact dir'),
   };
 }
@@ -375,6 +413,18 @@ function assertArtifactMatchesStorage(artifact: LiveArtifact, projectId: string,
   if (artifact.projectId !== projectId) {
     throw validationError('projectId', 'live artifact projectId does not match requested project');
   }
+}
+
+async function assertLiveArtifactRefreshLockScope(
+  projectsRoot: string,
+  projectId: string,
+  artifactId: string,
+): Promise<LiveArtifactStorePaths> {
+  const safeArtifactId = validateLiveArtifactStorageId(artifactId);
+  const paths = liveArtifactStorePaths(projectsRoot, projectId, safeArtifactId);
+  const artifact = await readPersistedLiveArtifact(paths);
+  assertArtifactMatchesStorage(artifact, projectId, safeArtifactId);
+  return paths;
 }
 
 function artifactWithDataJson(artifact: LiveArtifact, dataJson: BoundedJsonObject): LiveArtifact {
@@ -557,6 +607,71 @@ export async function appendLiveArtifactRefreshLogEntry(
 
   await appendFile(paths.refreshesJsonlPath, `${JSON.stringify(result.value)}\n`, 'utf8');
   return result.value;
+}
+
+export async function acquireLiveArtifactRefreshLock(
+  options: AcquireLiveArtifactRefreshLockOptions,
+): Promise<LiveArtifactRefreshLock> {
+  const artifactId = validateLiveArtifactStorageId(options.artifactId);
+  const paths = await assertLiveArtifactRefreshLockScope(options.projectsRoot, options.projectId, artifactId);
+  const metadata: LiveArtifactRefreshLockMetadata = {
+    schemaVersion: 1,
+    projectId: options.projectId,
+    artifactId,
+    acquiredAt: (options.now ?? new Date()).toISOString(),
+    token: randomBytes(12).toString('hex'),
+  };
+
+  try {
+    await writeFile(paths.refreshLockPath, stableJson(metadata), { encoding: 'utf8', flag: 'wx' });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') {
+      throw new LiveArtifactRefreshLockError('live artifact refresh already active', {
+        projectId: options.projectId,
+        artifactId,
+        lockPath: paths.refreshLockPath,
+      });
+    }
+    throw error;
+  }
+
+  return { artifactId, lockPath: paths.refreshLockPath, metadata };
+}
+
+export async function releaseLiveArtifactRefreshLock(lock: LiveArtifactRefreshLock): Promise<void> {
+  let current: LiveArtifactRefreshLockMetadata;
+  try {
+    current = JSON.parse(await readFile(lock.lockPath, 'utf8')) as LiveArtifactRefreshLockMetadata;
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return;
+    throw error;
+  }
+
+  if (
+    current.projectId !== lock.metadata.projectId
+    || current.artifactId !== lock.metadata.artifactId
+    || current.token !== lock.metadata.token
+  ) {
+    throw new LiveArtifactRefreshLockError('live artifact refresh lock ownership mismatch', {
+      projectId: lock.metadata.projectId,
+      artifactId: lock.metadata.artifactId,
+      lockPath: lock.lockPath,
+    });
+  }
+
+  await rm(lock.lockPath, { force: true });
+}
+
+export async function withLiveArtifactRefreshLock<T>(
+  options: AcquireLiveArtifactRefreshLockOptions,
+  callback: (lock: LiveArtifactRefreshLock) => Promise<T>,
+): Promise<T> {
+  const lock = await acquireLiveArtifactRefreshLock(options);
+  try {
+    return await callback(lock);
+  } finally {
+    await releaseLiveArtifactRefreshLock(lock);
+  }
 }
 
 export async function listLiveArtifactRefreshLogEntries(
