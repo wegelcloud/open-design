@@ -12,6 +12,7 @@ import {
   generateLiveArtifactSlug,
   liveArtifactStorePaths,
   liveArtifactTilePath,
+  listLiveArtifacts,
   validateLiveArtifactStorageId,
 } from '../src/live-artifacts/store.js';
 
@@ -257,6 +258,55 @@ describe('live artifact store layout', () => {
     expect(await readFile(record.paths.generatedPreviewHtmlPath, 'utf8')).toContain(
       '<div>Use &quot;quotes&quot; and &lt;tags&gt; and &#39;apostrophes&#39;</div>',
     );
+  });
+
+  it('lists compact live artifact summaries without exposing implementation files', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    const older = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: validCreateInput(),
+      now: new Date('2026-04-30T10:11:12.345Z'),
+    });
+    const newer = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: {
+        ...validCreateInput(),
+        title: 'Current Health',
+        slug: 'current-health',
+        tiles: [],
+        document: undefined,
+      },
+      now: new Date('2026-04-30T10:12:12.345Z'),
+    });
+
+    const summaries = await listLiveArtifacts({ projectsRoot, projectId: 'project-1' });
+
+    expect(summaries.map((artifact) => artifact.id)).toEqual([newer.artifact.id, older.artifact.id]);
+    expect(summaries[0]).toMatchObject({
+      id: newer.artifact.id,
+      projectId: 'project-1',
+      title: 'Current Health',
+      tileCount: 0,
+      hasDocument: false,
+    });
+    expect(summaries[1]).toMatchObject({
+      id: older.artifact.id,
+      tileCount: 1,
+      hasDocument: true,
+    });
+    expect(summaries[0]).not.toHaveProperty('document');
+    expect(summaries[0]).not.toHaveProperty('tiles');
+    expect(JSON.stringify(summaries)).not.toContain('snapshots');
+    expect(JSON.stringify(summaries)).not.toContain('template.html');
+    expect(JSON.stringify(summaries)).not.toContain('data.json');
+  });
+
+  it('returns an empty live artifact list when the project has no live artifact storage', async () => {
+    const projectsRoot = await makeProjectsRoot();
+
+    await expect(listLiveArtifacts({ projectsRoot, projectId: 'project-1' })).resolves.toEqual([]);
   });
 
   it('rejects daemon-owned fields in create input', async () => {

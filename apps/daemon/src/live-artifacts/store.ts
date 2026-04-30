@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { ensureProject, projectDir } from '../projects.js';
@@ -84,6 +85,11 @@ export interface CreateLiveArtifactOptions {
   provenanceJson?: LiveArtifactProvenance;
   createdByRunId?: string;
   now?: Date;
+}
+
+export interface ListLiveArtifactsOptions {
+  projectsRoot: string;
+  projectId: string;
 }
 
 export class LiveArtifactStoreValidationError extends Error {
@@ -230,6 +236,26 @@ function toSummary(artifact: LiveArtifact): LiveArtifactSummary {
   };
 }
 
+function validationError(path: string, message: string): LiveArtifactStoreValidationError {
+  return new LiveArtifactStoreValidationError(message, [{ path, message }]);
+}
+
+async function readPersistedLiveArtifact(paths: LiveArtifactStorePaths): Promise<LiveArtifact> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(paths.artifactJsonPath, 'utf8'));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw validationError('artifact.json', 'live artifact file contains invalid JSON');
+    }
+    throw error;
+  }
+
+  const persisted = validatePersistedLiveArtifact(parsed);
+  if (!persisted.ok) throw new LiveArtifactStoreValidationError(persisted.error, persisted.issues);
+  return persisted.value;
+}
+
 async function writeLiveArtifactFiles(paths: LiveArtifactStorePaths, artifact: LiveArtifact, templateHtml: string, provenanceJson: LiveArtifactProvenance): Promise<void> {
   const dataJson = artifact.document?.dataJson ?? {};
   const previewHtml = artifact.document?.format === 'html_template_v1'
@@ -299,6 +325,41 @@ export async function createLiveArtifact(options: CreateLiveArtifactOptions): Pr
   }
 
   return { artifact: persisted.value, paths: finalPaths };
+}
+
+export async function listLiveArtifacts(options: ListLiveArtifactsOptions): Promise<LiveArtifactSummary[]> {
+  const rootDir = liveArtifactsRootDir(options.projectsRoot, options.projectId);
+  let entries: Dirent[];
+  try {
+    entries = await readdir(rootDir, { withFileTypes: true });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return [];
+    throw error;
+  }
+
+  const summaries: LiveArtifactSummary[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('tmp-')) continue;
+
+    const artifactId = validateLiveArtifactStorageId(entry.name);
+    const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
+    const artifact = await readPersistedLiveArtifact(paths);
+    if (artifact.id !== artifactId) {
+      throw validationError('id', 'live artifact id does not match storage directory');
+    }
+    if (artifact.projectId !== options.projectId) {
+      throw validationError('projectId', 'live artifact projectId does not match requested project');
+    }
+
+    summaries.push(toSummary(artifact));
+  }
+
+  summaries.sort((a, b) => {
+    const updatedDelta = Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+    if (updatedDelta !== 0) return updatedDelta;
+    return a.id.localeCompare(b.id);
+  });
+  return summaries;
 }
 
 export function summarizeLiveArtifactRecord(record: LiveArtifactStoreRecord): LiveArtifactStoreSummary {
