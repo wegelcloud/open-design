@@ -505,11 +505,44 @@ Rules:
 
 - `template.html` is authored by the agent during create/update.
 - Refreshable values must come from `data.json`, not be hardcoded only in HTML.
-- The template can use a small deterministic binding syntax such as `{{data.path.to.value}}` and repeated sections declared in comments or `data-od-repeat` attributes. The exact binding grammar must be specified in `skills/live-artifact/references/refresh-contract.md` before implementation.
+- `html_template_v1` supports **Mustache-style escaped interpolation plus a minimal `data-od-repeat` structural directive**. It does not support arbitrary JavaScript, expression evaluation, helper functions, filters, partials, or raw HTML injection.
 - Refresh updates `data.json`, `tiles/*.json`, and snapshots. It does not let connector output rewrite arbitrary HTML.
 - If a presentation redesign is needed, the user should ask the agent to update the artifact; refresh is for data changes.
 - `index.html` may be regenerated after successful refresh, but it is derived output.
 - The preview route must serve the document in a sandboxed iframe context with a restrictive CSP. External scripts are disallowed in MVP unless vendored and allowlisted.
+
+#### 7.4.1 `html_template_v1` binding contract
+
+MVP binding syntax is intentionally small and deterministic:
+
+- **Escaped interpolation:** `{{data.path.to.value}}` inserts a scalar value from `data.json`.
+  - Paths must start with `data` and use dot-separated object keys, e.g. `{{data.summary.title}}`.
+  - Numeric array indexes are allowed only as path segments, e.g. `{{data.metrics.0.value}}`.
+  - Keys must match `/^[A-Za-z_][A-Za-z0-9_-]*$/`; bracket notation, computed paths, wildcards, function calls, and expressions are invalid.
+  - Values render as strings. `null` and missing values render as an empty string. Objects and arrays are invalid interpolation targets except inside a supported repeat context.
+- **Repeat directive:** `data-od-repeat="item in data.items"` repeats the annotated element once for each object in an array.
+  - The left side is a local alias matching `/^[A-Za-z_][A-Za-z0-9_]*$/`.
+  - The right side must be a `data.*` path resolving to an array.
+  - Inside the repeated element, interpolation may reference the local alias, e.g. `{{item.name}}`, using the same path grammar.
+  - Nested `data-od-repeat` directives are disallowed in MVP.
+  - `data-od-repeat` is removed from the generated output.
+- **Conditional directives:** none in MVP. Optional sections should be represented by empty strings, zero-length arrays, or separate agent-authored template variants during update.
+- **Attribute bindings:** interpolation may appear in text nodes and ordinary HTML attribute values, but not in attribute names, tag names, comments, `<script>`, `<style>`, `<iframe srcdoc>`, event-handler attributes such as `onclick`, or URL-bearing attributes that fail URL validation.
+
+All interpolation is HTML-escaped by default:
+
+- Text-node interpolation escapes `&`, `<`, `>`, `"`, and `'`.
+- Attribute interpolation escapes the same characters and must not be allowed to break out of the containing attribute.
+- URL-bearing attributes such as `href` and `src` must resolve to allowed `http:` or `https:` URLs, root-relative paths, same-artifact relative asset paths, or fragments; `javascript:`, `data:`, `blob:`, and other unsupported schemes are rejected.
+
+Raw / unescaped interpolation is explicitly forbidden in MVP:
+
+- No triple braces such as `{{{data.html}}}`.
+- No ampersand form such as `{{& data.html}}`.
+- No `data-od-html`, `data-od-raw`, `data-od-bind-html`, or equivalent raw insertion attributes.
+- No opt-out flag in artifact metadata or tool input.
+
+The daemon must validate `template.html` before persistence and again before preview rendering. Validation failures must use the shared API error envelope with field/path details in `details`.
 
 ## 8. Runtime flows
 
@@ -901,9 +934,8 @@ Keep the first implementation small: current daemon route handlers live in `apps
 
 1. Should `od tools ...` be the only wrapper surface, or should generated per-project wrappers also be provided for easier agent access?
 2. How should agent adapters advertise `shell` availability for skill gating?
-3. What exact binding grammar should `html_template_v1` support in MVP: Mustache-style only, `data-od-*` attributes, or both?
-4. How much refresh history should be retained before compaction?
-5. Should failed refresh attempt payloads be retained in a hidden failed snapshot directory, or only summarized in `refreshes.jsonl`?
+3. How much refresh history should be retained before compaction?
+4. Should failed refresh attempt payloads be retained in a hidden failed snapshot directory, or only summarized in `refreshes.jsonl`?
 
 ## 16. Acceptance criteria
 
