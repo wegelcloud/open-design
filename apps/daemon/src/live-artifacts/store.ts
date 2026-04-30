@@ -597,6 +597,34 @@ function artifactWithDataJson(artifact: LiveArtifact, dataJson: BoundedJsonObjec
   return { ...artifact, document: { ...artifact.document, dataJson } };
 }
 
+function artifactWithInitialRefreshPermission(artifact: LiveArtifact): LiveArtifact {
+  const normalized: LiveArtifact = {
+    ...artifact,
+    tiles: artifact.tiles.map((tile) => {
+      if (tile.sourceJson === undefined) return tile;
+      return {
+        ...tile,
+        sourceJson: {
+          ...tile.sourceJson,
+          refreshPermission: 'none',
+        },
+      };
+    }),
+  };
+  if (artifact.document !== undefined) {
+    normalized.document = artifact.document.sourceJson === undefined
+      ? artifact.document
+      : {
+          ...artifact.document,
+          sourceJson: {
+            ...artifact.document.sourceJson,
+            refreshPermission: 'none',
+          },
+        };
+  }
+  return normalized;
+}
+
 async function readLiveArtifactWithDataJsonCache(paths: LiveArtifactStorePaths): Promise<LiveArtifact> {
   const artifact = await readPersistedLiveArtifact(paths);
   if (artifact.document?.format !== 'html_template_v1') return artifact;
@@ -677,7 +705,7 @@ export async function createLiveArtifact(options: CreateLiveArtifactOptions): Pr
   const nowIso = (options.now ?? new Date()).toISOString();
   const artifactId = generateLiveArtifactId(input.slug === undefined ? { title: input.title } : { title: input.title, slug: input.slug });
   const slug = generateLiveArtifactSlug(input.slug ?? input.title);
-  const artifact: LiveArtifact = {
+  const artifactBase: LiveArtifact = {
     schemaVersion: 1,
     id: artifactId,
     projectId: options.projectId,
@@ -691,9 +719,10 @@ export async function createLiveArtifact(options: CreateLiveArtifactOptions): Pr
     updatedAt: nowIso,
     tiles: input.tiles ?? [],
   };
-  if (input.sessionId !== undefined) artifact.sessionId = input.sessionId;
-  if (options.createdByRunId !== undefined) artifact.createdByRunId = options.createdByRunId;
-  if (input.document !== undefined) artifact.document = input.document;
+  if (input.sessionId !== undefined) artifactBase.sessionId = input.sessionId;
+  if (options.createdByRunId !== undefined) artifactBase.createdByRunId = options.createdByRunId;
+  if (input.document !== undefined) artifactBase.document = input.document;
+  const artifact = artifactWithInitialRefreshPermission(artifactBase);
 
   const persisted = validatePersistedLiveArtifact(artifact);
   if (!persisted.ok) throw new LiveArtifactStoreValidationError(persisted.error, persisted.issues);

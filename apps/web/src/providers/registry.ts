@@ -172,6 +172,42 @@ export async function refreshLiveArtifact(
   return (await resp.json()) as LiveArtifactRefreshResult;
 }
 
+export async function updateLiveArtifact(
+  projectId: string,
+  artifactId: string,
+  input: Pick<LiveArtifact, 'title' | 'status' | 'pinned' | 'preview' | 'tiles'> & {
+    slug?: string;
+    document?: LiveArtifact['document'];
+  },
+): Promise<LiveArtifact> {
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `/api/live-artifacts/${encodeURIComponent(artifactId)}?projectId=${encodeURIComponent(projectId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    );
+  } catch (error) {
+    throw new LiveArtifactRefreshError(
+      error instanceof Error ? error.message : 'Update request failed.',
+      0,
+    );
+  }
+
+  if (!resp.ok) {
+    const errorBody = await readApiErrorBody(resp);
+    throw new LiveArtifactRefreshError(errorBody.message, resp.status, errorBody.code);
+  }
+
+  const json = (await resp.json()) as { artifact?: LiveArtifact; liveArtifact?: LiveArtifact };
+  const artifact = json.liveArtifact ?? json.artifact;
+  if (!artifact) throw new LiveArtifactRefreshError('Update response did not include a live artifact.', resp.status);
+  return artifact;
+}
+
 async function readApiErrorBody(resp: Response): Promise<{ message: string; code?: string }> {
   try {
     const json = (await resp.json()) as { error?: { code?: string; message?: string }; message?: string };

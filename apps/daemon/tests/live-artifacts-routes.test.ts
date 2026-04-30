@@ -216,6 +216,7 @@ describe('live artifact tool routes', () => {
       }),
     });
     expect(create.status).toBe(200);
+    expect(create.body.artifact.tiles[0].sourceJson.refreshPermission).toBe('none');
 
     const toolRefresh = await jsonFetch(`${baseUrl}/api/tools/live-artifacts/refresh`, {
       method: 'POST',
@@ -223,16 +224,76 @@ describe('live artifact tool routes', () => {
       body: JSON.stringify({ artifactId: create.body.artifact.id }),
     });
     expect(toolRefresh.status).toBe(200);
-    expect(toolRefresh.body.refresh).toMatchObject({ id: 'refresh-000001', status: 'succeeded', refreshedTileCount: 1 });
-    expect(toolRefresh.body.artifact).toMatchObject({ refreshStatus: 'succeeded', lastRefreshedAt: expect.any(String) });
-    expect(toolRefresh.body.artifact.tiles[0].renderJson).toMatchObject({ type: 'metric', label: 'Open bugs', value: 7 });
+    expect(toolRefresh.body.refresh).toMatchObject({ id: 'refresh-000001', status: 'succeeded', refreshedTileCount: 0 });
+
+    const approvedInput = {
+      title: create.body.artifact.title,
+      slug: create.body.artifact.slug,
+      status: create.body.artifact.status,
+      pinned: create.body.artifact.pinned,
+      preview: create.body.artifact.preview,
+      tiles: [
+        {
+          ...create.body.artifact.tiles[0],
+          sourceJson: {
+            ...create.body.artifact.tiles[0].sourceJson,
+            refreshPermission: 'manual_refresh_granted_for_read_only',
+          },
+        },
+      ],
+      document: create.body.artifact.document,
+    };
+    const approve = await jsonFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}?projectId=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(approvedInput),
+    });
+    expect(approve.status).toBe(200);
+    expect(approve.body.artifact.tiles[0].sourceJson.refreshPermission).toBe('manual_refresh_granted_for_read_only');
+
+    const approvedRefresh = await jsonFetch(`${baseUrl}/api/tools/live-artifacts/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ artifactId: create.body.artifact.id }),
+    });
+    expect(approvedRefresh.status).toBe(200);
+    expect(approvedRefresh.body.refresh).toMatchObject({ id: 'refresh-000002', status: 'succeeded', refreshedTileCount: 1 });
+    expect(approvedRefresh.body.artifact).toMatchObject({ refreshStatus: 'succeeded', lastRefreshedAt: expect.any(String) });
+    expect(approvedRefresh.body.artifact.tiles[0].renderJson).toMatchObject({ type: 'metric', label: 'Open bugs', value: 7 });
+
+    const revokeInput = {
+      ...approvedInput,
+      tiles: [
+        {
+          ...approvedInput.tiles[0],
+          sourceJson: {
+            ...approvedInput.tiles[0].sourceJson,
+            refreshPermission: 'none',
+          },
+        },
+      ],
+    };
+    const revoke = await jsonFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}?projectId=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(revokeInput),
+    });
+    expect(revoke.status).toBe(200);
+    expect(revoke.body.artifact.tiles[0].sourceJson.refreshPermission).toBe('none');
+
+    const reapprove = await jsonFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}?projectId=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(approvedInput),
+    });
+    expect(reapprove.status).toBe(200);
 
     await writeProjectJson(projectId, 'metrics.json', { label: 'Open bugs', value: 8 });
     const uiRefresh = await jsonFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}/refresh?projectId=${encodeURIComponent(projectId)}`, {
       method: 'POST',
     });
     expect(uiRefresh.status).toBe(200);
-    expect(uiRefresh.body.refresh).toMatchObject({ id: 'refresh-000002', status: 'succeeded', refreshedTileCount: 1 });
+    expect(uiRefresh.body.refresh).toMatchObject({ id: 'refresh-000003', status: 'succeeded', refreshedTileCount: 1 });
     expect(uiRefresh.body.artifact.tiles[0].renderJson).toMatchObject({ type: 'metric', label: 'Open bugs', value: 8 });
   });
 

@@ -701,14 +701,26 @@ describe('live artifact store layout', () => {
       input,
       templateHtml: '<h1>{{data.title}}</h1><p>{{data.value}}</p>',
     });
+    const approvedArtifact = {
+      ...created.artifact,
+      tiles: [
+        {
+          ...created.artifact.tiles[0]!,
+          sourceJson: {
+            ...created.artifact.tiles[0]!.sourceJson!,
+            refreshPermission: 'manual_refresh_granted_for_read_only' as const,
+          },
+        },
+      ],
+    };
     const previousData = await readFile(created.paths.dataJsonPath, 'utf8');
     const previousPreview = await readFile(created.paths.generatedPreviewHtmlPath, 'utf8');
     const previousTile = await readFile(liveArtifactTilePath(created.paths, 'tile-1'), 'utf8');
 
     const failedLock = await acquireLiveArtifactRefreshLock({ projectsRoot, projectId: 'project-1', artifactId: created.artifact.id });
     await expect(() => buildLiveArtifactRefreshCandidate({
-      artifact: created.artifact,
-      currentDataJson: created.artifact.document!.dataJson,
+      artifact: approvedArtifact,
+      currentDataJson: approvedArtifact.document!.dataJson,
       tileOutputs: [{ tileId: 'tile-1', output: { json: { revenue: { nested: true } } } }],
       now: new Date('2026-04-30T11:00:00.000Z'),
     })).toThrow(/metric refresh output/);
@@ -737,8 +749,8 @@ describe('live artifact store layout', () => {
 
     const successLock = await acquireLiveArtifactRefreshLock({ projectsRoot, projectId: 'project-1', artifactId: created.artifact.id });
     const candidate = buildLiveArtifactRefreshCandidate({
-      artifact: created.artifact,
-      currentDataJson: created.artifact.document!.dataJson,
+      artifact: approvedArtifact,
+      currentDataJson: approvedArtifact.document!.dataJson,
       tileOutputs: [{ tileId: 'tile-1', output: { json: { revenue: 99 } } }],
       now: new Date('2026-04-30T11:01:00.000Z'),
     });
