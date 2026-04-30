@@ -58,6 +58,7 @@ import {
   upsertMessage,
 } from './db.js';
 import {
+  createLiveArtifact,
   getLiveArtifact,
   LiveArtifactStoreValidationError,
   listLiveArtifacts,
@@ -886,6 +887,44 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
         artifactId: req.params.artifactId,
       });
       res.json({ artifact: record.artifact });
+    } catch (err) {
+      sendLiveArtifactRouteError(res, err);
+    }
+  });
+
+  app.post('/api/tools/live-artifacts/create', async (req, res) => {
+    try {
+      const { projectId, input, templateHtml, provenanceJson, createdByRunId } = req.body || {};
+      if (typeof projectId !== 'string' || projectId.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'projectId is required');
+      }
+
+      const record = await createLiveArtifact({
+        projectsRoot: PROJECTS_DIR,
+        projectId,
+        input: input ?? {},
+        templateHtml,
+        provenanceJson,
+        createdByRunId,
+      });
+      res.json({ artifact: record.artifact });
+    } catch (err) {
+      sendLiveArtifactRouteError(res, err);
+    }
+  });
+
+  app.get('/api/tools/live-artifacts/list', async (req, res) => {
+    try {
+      const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+      if (!projectId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'projectId query parameter is required');
+      }
+
+      const artifacts = await listLiveArtifacts({
+        projectsRoot: PROJECTS_DIR,
+        projectId,
+      });
+      res.json({ artifacts });
     } catch (err) {
       sendLiveArtifactRouteError(res, err);
     }
