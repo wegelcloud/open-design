@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "live_metric_tile",
+  "projectId": "project_fixture",
+  "title": "Launch Signup Metric",
+  "slug": "launch-signup-metric",
+  "status": "active",
+  "pinned": true,
+  "preview": {
+    "type": "html",
+    "entry": "index.html"
+  },
+  "refreshStatus": "idle",
+  "createdAt": "2026-04-29T12:05:00.000Z",
+  "updatedAt": "2026-04-29T12:05:00.000Z",
+  "tiles": [
+    {
+      "id": "tile_total_signups",
+      "kind": "metric",
+      "title": "Total signups",
+      "renderJson": {
+        "type": "metric",
+        "label": "Signups",
+        "value": 1280,
+        "delta": "+12%",
+        "tone": "good"
+      },
+      "provenanceJson": {
+        "generatedAt": "2026-04-29T12:05:00.000Z",
+        "generatedBy": "agent",
+        "sources": [
+          {
+            "label": "Fixture launch summary",
+            "type": "user_input"
+          }
+        ]
+      },
+      "refreshStatus": "not_refreshable"
+    }
+  ],
+  "document": {
+    "format": "html_template_v1",
+    "templatePath": "template.html",
+    "generatedPreviewPath": "index.html",
+    "dataPath": "data.json",
+    "dataJson": {
+      "title": "Launch Signup Metric",
+      "metric": {
+        "label": "Signups",
+        "value": "1,280",
+        "delta": "+12%"
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "title": "Launch Signup Metric",
+  "metric": {
+    "label": "Signups",
+    "value": "1,280",
+    "delta": "+12%"
+  }
+}

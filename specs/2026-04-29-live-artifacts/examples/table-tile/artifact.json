@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "live_table_tile",
+  "projectId": "project_fixture",
+  "title": "Design System Coverage Table",
+  "slug": "design-system-coverage-table",
+  "status": "active",
+  "pinned": false,
+  "preview": {
+    "type": "html",
+    "entry": "index.html"
+  },
+  "refreshStatus": "idle",
+  "createdAt": "2026-04-29T12:10:00.000Z",
+  "updatedAt": "2026-04-29T12:10:00.000Z",
+  "tiles": [
+    {
+      "id": "tile_component_coverage",
+      "kind": "table",
+      "title": "Component coverage",
+      "renderJson": {
+        "type": "table",
+        "columns": [
+          { "key": "component", "label": "Component" },
+          { "key": "coverage", "label": "Coverage" },
+          { "key": "owner", "label": "Owner" }
+        ],
+        "rows": [
+          { "component": "Button", "coverage": "Complete", "owner": "Design Systems" },
+          { "component": "Modal", "coverage": "In progress", "owner": "Product UI" }
+        ],
+        "maxRows": 25
+      },
+      "sourceJson": {
+        "type": "local_file",
+        "toolName": "project_files.read_json",
+        "input": {
+          "path": "reports/component-coverage.json"
+        },
+        "outputMapping": {
+          "transform": "compact_table"
+        },
+        "refreshPermission": "manual_refresh_granted_for_read_only"
+      },
+      "provenanceJson": {
+        "generatedAt": "2026-04-29T12:10:00.000Z",
+        "generatedBy": "agent",
+        "sources": [
+          {
+            "label": "Component coverage fixture",
+            "type": "local_file",
+            "ref": "reports/component-coverage.json"
+          }
+        ]
+      },
+      "refreshStatus": "idle"
+    }
+  ],
+  "document": {
+    "format": "html_template_v1",
+    "templatePath": "template.html",
+    "generatedPreviewPath": "index.html",
+    "dataPath": "data.json",
+    "dataJson": {
+      "title": "Design System Coverage Table",
+      "rows": [
+        { "component": "Button", "coverage": "Complete", "owner": "Design Systems" },
+        { "component": "Modal", "coverage": "In progress", "owner": "Product UI" }
+      ]
+    }
+  }
+}

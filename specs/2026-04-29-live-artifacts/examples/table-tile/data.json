@@ -1,0 +1,7 @@
+{
+  "title": "Design System Coverage Table",
+  "rows": [
+    { "component": "Button", "coverage": "Complete", "owner": "Design Systems" },
+    { "component": "Modal", "coverage": "In progress", "owner": "Product UI" }
+  ]
+}

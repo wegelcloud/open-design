@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-04-29T12:10:00.000Z",
+  "generatedBy": "agent",
+  "notes": "Table fixture uses a compact local-file source reference.",
+  "sources": [
+    {
+      "label": "Component coverage fixture",
+      "type": "local_file",
+      "ref": "reports/component-coverage.json"
+    }
+  ]
+}
