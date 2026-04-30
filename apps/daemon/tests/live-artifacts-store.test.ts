@@ -712,11 +712,28 @@ describe('live artifact store layout', () => {
       tileOutputs: [{ tileId: 'tile-1', output: { json: { revenue: { nested: true } } } }],
       now: new Date('2026-04-30T11:00:00.000Z'),
     })).toThrow(/metric refresh output/);
+    await appendLiveArtifactRefreshLogEntry({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+      refreshId: failedLock.metadata.refreshId,
+      sequence: 0,
+      step: 'refresh:commit',
+      status: 'failed',
+      startedAt: '2026-04-30T11:00:00.000Z',
+      finishedAt: '2026-04-30T11:00:01.000Z',
+      error: { code: 'REFRESH_VALIDATION_FAILED', message: 'metric refresh output must include string or number value' },
+    });
     await releaseLiveArtifactRefreshLock(failedLock);
 
     await expect(readFile(created.paths.dataJsonPath, 'utf8')).resolves.toBe(previousData);
     await expect(readFile(created.paths.generatedPreviewHtmlPath, 'utf8')).resolves.toBe(previousPreview);
     await expect(readFile(liveArtifactTilePath(created.paths, 'tile-1'), 'utf8')).resolves.toBe(previousTile);
+    await expect(stat(path.join(created.paths.snapshotsDir, failedLock.metadata.refreshId))).rejects.toMatchObject({ code: 'ENOENT' });
+    const failedLogEntries = await listLiveArtifactRefreshLogEntries({ projectsRoot, projectId: 'project-1', artifactId: created.artifact.id });
+    expect(failedLogEntries).toEqual([
+      expect.objectContaining({ refreshId: failedLock.metadata.refreshId, status: 'failed', step: 'refresh:commit' }),
+    ]);
 
     const successLock = await acquireLiveArtifactRefreshLock({ projectsRoot, projectId: 'project-1', artifactId: created.artifact.id });
     const candidate = buildLiveArtifactRefreshCandidate({
@@ -742,6 +759,13 @@ describe('live artifact store layout', () => {
     await expect(readFile(created.paths.dataJsonPath, 'utf8')).resolves.toContain('"value": 99');
     await expect(readFile(created.paths.generatedPreviewHtmlPath, 'utf8')).resolves.toContain('<p>99</p>');
     await expect(readFile(liveArtifactTilePath(created.paths, 'tile-1'), 'utf8')).resolves.toContain('"value": 99');
+    const snapshotDir = path.join(created.paths.snapshotsDir, successLock.metadata.refreshId);
+    await expect(readFile(path.join(snapshotDir, 'artifact.json'), 'utf8')).resolves.toContain('"lastRefreshedAt": "2026-04-30T11:01:00.000Z"');
+    await expect(readFile(path.join(snapshotDir, 'data.json'), 'utf8')).resolves.toContain('"value": 99');
+    await expect(readFile(path.join(snapshotDir, 'index.html'), 'utf8')).resolves.toContain('<p>99</p>');
+    await expect(readFile(path.join(snapshotDir, 'template.html'), 'utf8')).resolves.toContain('{{data.value}}');
+    await expect(readFile(path.join(snapshotDir, 'tiles', 'tile-1.json'), 'utf8')).resolves.toContain('"value": 99');
+    expect(await readdir(created.paths.snapshotsDir)).toEqual([successLock.metadata.refreshId]);
     await expect(
       markLiveArtifactRefreshCommitted({
         projectsRoot,

@@ -868,6 +868,45 @@ function assertLiveArtifactRefreshCanCommit(
   return refreshOrdinal;
 }
 
+async function writeLiveArtifactSuccessfulSnapshot(
+  paths: LiveArtifactStorePaths,
+  options: {
+    refreshId: string;
+    artifact: LiveArtifact;
+    dataJson: BoundedJsonObject;
+    templateHtml: string;
+    previewHtml: string;
+    provenanceJson: LiveArtifactProvenance;
+  },
+): Promise<void> {
+  parseRefreshOrdinal(options.refreshId);
+  await mkdir(paths.snapshotsDir, { recursive: true });
+
+  // MVP decision: failed refresh payloads are not retained on disk. Failed attempts
+  // are summarized in refreshes.jsonl only; snapshots/<refreshId>/ is reserved for
+  // validated successful commits that are safe to use for history/rollback views.
+  const finalSnapshotDir = resolveInside(paths.snapshotsDir, options.refreshId, 'live artifact snapshot path escapes snapshots dir');
+  const tempSnapshotDir = resolveInside(paths.snapshotsDir, `.tmp-${options.refreshId}-${randomBytes(6).toString('hex')}`, 'live artifact snapshot path escapes snapshots dir');
+  const tempTilesDir = resolveInside(tempSnapshotDir, LIVE_ARTIFACT_TILES_DIR, 'live artifact snapshot path escapes snapshot dir');
+
+  await rm(tempSnapshotDir, { recursive: true, force: true });
+  await mkdir(tempTilesDir, { recursive: true });
+  try {
+    await Promise.all([
+      writeFile(resolveInside(tempSnapshotDir, LIVE_ARTIFACT_ARTIFACT_FILE, 'live artifact snapshot path escapes snapshot dir'), stableJson(options.artifact), 'utf8'),
+      writeFile(resolveInside(tempSnapshotDir, LIVE_ARTIFACT_DATA_FILE, 'live artifact snapshot path escapes snapshot dir'), stableJson(options.dataJson), 'utf8'),
+      writeFile(resolveInside(tempSnapshotDir, LIVE_ARTIFACT_TEMPLATE_FILE, 'live artifact snapshot path escapes snapshot dir'), options.templateHtml, 'utf8'),
+      writeFile(resolveInside(tempSnapshotDir, LIVE_ARTIFACT_PREVIEW_FILE, 'live artifact snapshot path escapes snapshot dir'), options.previewHtml, 'utf8'),
+      writeFile(resolveInside(tempSnapshotDir, LIVE_ARTIFACT_PROVENANCE_FILE, 'live artifact snapshot path escapes snapshot dir'), stableJson(options.provenanceJson), 'utf8'),
+      ...options.artifact.tiles.map((tile) => writeFile(resolveInside(tempTilesDir, `${validateLiveArtifactStorageId(tile.id)}.json`, 'live artifact snapshot tile path escapes tiles dir'), stableJson(tile), 'utf8')),
+    ]);
+    await rename(tempSnapshotDir, finalSnapshotDir);
+  } catch (error) {
+    await rm(tempSnapshotDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export async function commitLiveArtifactRefreshCandidate(
   options: CommitLiveArtifactRefreshCandidateOptions,
 ): Promise<LiveArtifactStoreRecord> {
@@ -915,6 +954,14 @@ export async function commitLiveArtifactRefreshCandidate(
     writeFile(paths.provenanceJsonPath, stableJson(provenanceJson), 'utf8'),
     ...persisted.value.tiles.map((tile) => writeFile(liveArtifactTilePath(paths, tile.id), stableJson(tile), 'utf8')),
   ]);
+  await writeLiveArtifactSuccessfulSnapshot(paths, {
+    refreshId: options.refreshId,
+    artifact: persisted.value,
+    dataJson: candidateData.value,
+    templateHtml,
+    previewHtml,
+    provenanceJson,
+  });
   await writeLiveArtifactRefreshState(paths, nextState);
   return { artifact: persisted.value, paths };
 }
