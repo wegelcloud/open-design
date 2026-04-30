@@ -109,6 +109,25 @@ const promptFileBootstrap = (fp) =>
   'Do not begin your response until you have read the entire file.';
 export const SSE_KEEPALIVE_INTERVAL_MS = 25_000;
 
+export function createAgentRuntimeEnv(
+  baseEnv: NodeJS.ProcessEnv | Record<string, string | undefined>,
+  daemonUrl: string,
+  toolTokenGrant: { token?: string } | null = null,
+): NodeJS.ProcessEnv {
+  const env = {
+    ...baseEnv,
+    OD_DAEMON_URL: daemonUrl,
+  };
+
+  if (toolTokenGrant?.token) {
+    env.OD_TOOL_TOKEN = toolTokenGrant.token;
+  } else {
+    delete env.OD_TOOL_TOKEN;
+  }
+
+  return env;
+}
+
 /**
  * @param {ApiErrorCode} code
  * @param {string} message
@@ -315,6 +334,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
   const app = express();
   app.use(express.json({ limit: '4mb' }));
   const db = openDatabase(PROJECT_ROOT, { dataDir: RUNTIME_DATA_DIR });
+  let daemonUrl = `http://127.0.0.1:${port}`;
 
   if (process.env.OD_CODEX_DISABLE_PLUGINS === '1') {
     console.log('[od] Codex plugins disabled via OD_CODEX_DISABLE_PLUGINS=1');
@@ -1393,7 +1413,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       // which causes `spawn ENAMETOOLONG` for any non-trivial prompt.
       const stdinMode = def.promptViaStdin || def.streamFormat === 'acp-json-rpc' || needsFilePrompt ? 'pipe' : 'ignore';
       child = spawn(resolvedBin, args, {
-        env: { ...process.env },
+        env: createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant),
         stdio: [stdinMode, 'pipe', 'pipe'],
         cwd: cwd || undefined,
         shell: useShell,
@@ -1627,6 +1647,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       const address = server.address();
       const actualPort = typeof address === 'object' && address ? address.port : port;
       const url = `http://127.0.0.1:${actualPort}`;
+      daemonUrl = url;
       resolve(returnServer ? { url, server } : url);
     });
   });
