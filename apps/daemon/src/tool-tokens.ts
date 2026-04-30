@@ -7,9 +7,18 @@ export const CHAT_TOOL_ENDPOINTS = [
   '/api/tools/live-artifacts/list',
   '/api/tools/live-artifacts/refresh',
   '/api/tools/live-artifacts/update',
+  '/api/tools/connectors/list',
+  '/api/tools/connectors/execute',
 ] as const;
 
-export const CHAT_TOOL_OPERATIONS = ['live-artifacts:create', 'live-artifacts:list', 'live-artifacts:refresh', 'live-artifacts:update'] as const;
+export const CHAT_TOOL_OPERATIONS = [
+  'live-artifacts:create',
+  'live-artifacts:list',
+  'live-artifacts:refresh',
+  'live-artifacts:update',
+  'connectors:list',
+  'connectors:execute',
+] as const;
 
 export type ToolEndpoint = (typeof CHAT_TOOL_ENDPOINTS)[number] | (string & {});
 export type ToolOperation = (typeof CHAT_TOOL_OPERATIONS)[number] | (string & {});

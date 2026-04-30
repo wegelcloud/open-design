@@ -542,7 +542,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     res.json({ ok: true, version: '0.1.0' });
   });
 
-  registerConnectorRoutes(app, { sendApiError });
+  registerConnectorRoutes(app, { sendApiError, authorizeToolRequest, projectsRoot: PROJECTS_DIR });
 
   // ---- Projects (DB-backed) -------------------------------------------------
 

@@ -1,4 +1,5 @@
-import type { BoundedJsonObject } from '../live-artifacts/schema.js';
+import { executeLocalDaemonRefreshSource } from '../live-artifacts/refresh.js';
+import type { BoundedJsonObject, BoundedJsonValue } from '../live-artifacts/schema.js';
 
 import {
   connectorDefinitionToDetail,
@@ -16,9 +17,14 @@ export interface ConnectorExecuteRequest {
 }
 
 export interface ConnectorExecuteResponse {
+  ok: true;
   connectorId: string;
+  accountLabel?: string;
   toolName: string;
-  output: BoundedJsonObject;
+  safety: ConnectorCatalogDefinition['tools'][number]['safety'];
+  output: BoundedJsonValue;
+  outputSummary?: string;
+  metadata?: BoundedJsonObject;
 }
 
 export type ConnectorServiceErrorCode =
@@ -146,9 +152,11 @@ export class ConnectorStatusService {
 }
 
 export interface ConnectorExecutionContext {
+  projectsRoot: string;
   projectId: string;
   runId?: string;
   purpose?: 'agent_preview' | 'artifact_refresh';
+  signal?: AbortSignal;
 }
 
 export class ConnectorService {
@@ -199,13 +207,67 @@ export class ConnectorService {
     return this.toDetail(definition);
   }
 
-  async execute(request: ConnectorExecuteRequest, _context: ConnectorExecutionContext): Promise<ConnectorExecuteResponse> {
-    const connector = this.getConnector(request.connectorId);
-    const tool = connector.tools.find((candidate) => candidate.name === request.toolName);
+  async execute(request: ConnectorExecuteRequest, context: ConnectorExecutionContext): Promise<ConnectorExecuteResponse> {
+    const definition = this.getDefinition(request.connectorId);
+    if (!definition) {
+      throw new ConnectorServiceError('CONNECTOR_NOT_FOUND', 'connector not found', 404);
+    }
+    const connector = this.toDetail(definition);
+    if (connector.status === 'disabled') {
+      throw new ConnectorServiceError('CONNECTOR_DISABLED', 'connector is disabled', 403);
+    }
+    if (connector.status !== 'connected') {
+      throw new ConnectorServiceError('CONNECTOR_NOT_CONNECTED', 'connector is not connected', 403, {
+        connectorId: request.connectorId,
+        status: connector.status,
+      });
+    }
+    if (!definition.allowedToolNames.includes(request.toolName)) {
+      throw new ConnectorServiceError('CONNECTOR_TOOL_NOT_FOUND', 'connector tool is not allowed', 404, {
+        connectorId: request.connectorId,
+        toolName: request.toolName,
+      });
+    }
+    const tool = definition.tools.find((candidate) => candidate.name === request.toolName);
     if (!tool) {
       throw new ConnectorServiceError('CONNECTOR_TOOL_NOT_FOUND', 'connector tool not found', 404);
     }
-    throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'connector execution is not implemented', 501);
+    if (tool.safety.approval === 'disabled') {
+      throw new ConnectorServiceError('CONNECTOR_SAFETY_DENIED', 'connector tool is disabled by safety policy', 403, {
+        connectorId: request.connectorId,
+        toolName: request.toolName,
+        safety: { ...tool.safety },
+      });
+    }
+
+    const output = await executeLocalDaemonRefreshSource({
+      projectsRoot: context.projectsRoot,
+      projectId: context.projectId,
+      source: {
+        type: 'daemon_tool',
+        toolName: request.toolName,
+        input: request.input,
+        refreshPermission: 'none',
+      },
+      ...(context.signal === undefined ? {} : { signal: context.signal }),
+    });
+    const outputSummary = summarizeConnectorOutput(output);
+
+    return {
+      ok: true,
+      connectorId: request.connectorId,
+      ...(connector.accountLabel === undefined ? {} : { accountLabel: connector.accountLabel }),
+      toolName: request.toolName,
+      safety: { ...tool.safety },
+      output,
+      ...(outputSummary === undefined ? {} : { outputSummary }),
+      metadata: {
+        connectorId: request.connectorId,
+        toolName: request.toolName,
+        purpose: context.purpose ?? 'agent_preview',
+        ...(context.runId === undefined ? {} : { runId: context.runId }),
+      },
+    };
   }
 
   private toDetail(definition: ConnectorCatalogDefinition): ConnectorDetail {
@@ -221,3 +283,15 @@ export class ConnectorService {
 }
 
 export const connectorService = new ConnectorService();
+
+function summarizeConnectorOutput(output: BoundedJsonValue): string | undefined {
+  if (output === null || typeof output !== 'object' || Array.isArray(output)) return undefined;
+  const maybeToolName = output.toolName;
+  if (typeof maybeToolName === 'string') {
+    if (typeof output.count === 'number') return `${maybeToolName}: ${output.count} result${output.count === 1 ? '' : 's'}`;
+    if (typeof output.path === 'string') return `${maybeToolName}: ${output.path}`;
+    if (typeof output.isRepository === 'boolean') return `${maybeToolName}: ${output.isRepository ? 'repository found' : 'not a repository'}`;
+    return maybeToolName;
+  }
+  return undefined;
+}

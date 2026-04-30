@@ -1,4 +1,4 @@
-import type { BoundedJsonObject } from './live-artifacts';
+import type { BoundedJsonObject, BoundedJsonValue } from './live-artifacts';
 
 export type ConnectorStatus = 'available' | 'connected' | 'error' | 'disabled';
 
@@ -51,7 +51,13 @@ export interface ConnectorExecuteRequest {
 }
 
 export interface ConnectorExecuteResponse {
+  ok: true;
   connectorId: string;
+  accountLabel?: string;
   toolName: string;
-  output: BoundedJsonObject;
+  safety: ConnectorToolSafety;
+  output: BoundedJsonValue;
+  outputSummary?: string;
+  providerExecutionId?: string;
+  metadata?: BoundedJsonObject;
 }
