@@ -16,6 +16,7 @@ import {
 } from './artifact-manifest.js';
 
 const FORBIDDEN_SEGMENT = /^$|^\.\.?$/;
+const RESERVED_PROJECT_FILE_SEGMENTS = new Set(['.live-artifacts']);
 
 export function projectDir(projectsRoot, projectId) {
   if (!isSafeId(projectId)) throw new Error('invalid project id');
@@ -193,7 +194,19 @@ export function validateProjectPath(raw) {
   if (parts.length === 0 || parts.some((p) => FORBIDDEN_SEGMENT.test(p))) {
     throw new Error('invalid file name');
   }
+  if (parts.some((part) => RESERVED_PROJECT_FILE_SEGMENTS.has(part))) {
+    throw new Error('reserved project path');
+  }
   return parts.join('/');
+}
+
+export function isReservedProjectFilePath(raw) {
+  try {
+    const normalized = String(raw ?? '').replace(/\\/g, '/');
+    return normalized.split('/').filter(Boolean).some((part) => RESERVED_PROJECT_FILE_SEGMENTS.has(part));
+  } catch {
+    return false;
+  }
 }
 
 // Replace anything outside [A-Za-z0-9._-] with underscore. Spaces collapse
