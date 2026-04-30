@@ -1,5 +1,7 @@
 import type { ChatRequest } from './api/chat';
+import type { ConnectorDetail } from './api/connectors';
 import type { ProjectFile } from './api/files';
+import type { LiveArtifact } from './api/live-artifacts';
 import type { HealthResponse } from './api/registry';
 import type { ApiErrorResponse } from './errors';
 import type { ChatSseEvent } from './sse/chat';
@@ -47,3 +49,74 @@ export const exampleApiErrorResponse: ApiErrorResponse = {
 };
 
 export const exampleHealthResponse: HealthResponse = { ok: true, service: 'daemon' };
+
+export const exampleLiveArtifact: LiveArtifact = {
+  schemaVersion: 1,
+  id: 'live_artifact_1',
+  projectId: 'project_1',
+  createdByRunId: 'run_1',
+  title: 'Launch Metrics',
+  slug: 'launch-metrics',
+  status: 'active',
+  pinned: false,
+  preview: { type: 'html', entry: 'index.html' },
+  refreshStatus: 'idle',
+  createdAt: '2026-04-29T12:00:00.000Z',
+  updatedAt: '2026-04-29T12:00:00.000Z',
+  tiles: [
+    {
+      id: 'tile_total_signups',
+      kind: 'metric',
+      title: 'Total signups',
+      renderJson: {
+        type: 'metric',
+        label: 'Signups',
+        value: 1280,
+        delta: '+12%',
+        tone: 'good',
+      },
+      provenanceJson: {
+        generatedAt: '2026-04-29T12:00:00.000Z',
+        generatedBy: 'agent',
+        sources: [{ label: 'User-provided launch notes', type: 'user_input' }],
+      },
+      refreshStatus: 'not_refreshable',
+    },
+  ],
+  document: {
+    format: 'html_template_v1',
+    templatePath: 'template.html',
+    generatedPreviewPath: 'index.html',
+    dataPath: 'data.json',
+    dataJson: {
+      title: 'Launch Metrics',
+      metrics: [{ label: 'Signups', value: 1280, delta: '+12%' }],
+    },
+  },
+};
+
+export const exampleConnectorDetail: ConnectorDetail = {
+  id: 'project_files',
+  name: 'Project files',
+  provider: 'open-design',
+  category: 'local',
+  description: 'Read compact summaries from files in the current project.',
+  status: 'available',
+  tools: [
+    {
+      name: 'project_files.search',
+      title: 'Search project files',
+      description: 'Search project filenames and text snippets.',
+      inputSchemaJson: { query: 'string' },
+      outputSchemaJson: { matches: [] },
+      safety: {
+        sideEffect: 'read',
+        approval: 'auto',
+        reason: 'Searches local project files without mutating data.',
+      },
+      refreshEligible: true,
+    },
+  ],
+  featuredToolNames: ['project_files.search'],
+  minimumApproval: 'auto',
+};
