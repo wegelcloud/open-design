@@ -18,6 +18,8 @@ export type LiveArtifactRefreshPermission = 'none' | 'manual_refresh_granted_for
 export type LiveArtifactOutputTransform = 'identity' | 'compact_table' | 'metric_summary';
 export type LiveArtifactProvenanceGenerator = 'agent' | 'refresh_runner';
 export type LiveArtifactProvenanceSourceType = 'connector' | 'local_file' | 'user_input' | 'derived';
+export type LiveArtifactRefreshStepStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped';
+export type LiveArtifactRefreshSourceType = 'document' | 'tile' | 'artifact';
 
 export interface LiveArtifactPreview {
   type: LiveArtifactPreviewType;
@@ -103,6 +105,43 @@ export interface LiveArtifact {
   document?: LiveArtifactDocument;
 }
 
+export interface LiveArtifactRefreshConnectorMetadata {
+  connectorId: string;
+  accountLabel?: string;
+  toolName: string;
+  approvalPolicy?: LiveArtifactConnectorApprovalPolicy;
+}
+
+export interface LiveArtifactRefreshSourceMetadata {
+  sourceType: LiveArtifactRefreshSourceType;
+  tileId?: string;
+  toolName?: string;
+  connector?: LiveArtifactRefreshConnectorMetadata;
+}
+
+export interface LiveArtifactRefreshErrorRecord {
+  code?: string;
+  message: string;
+  path?: string;
+}
+
+export interface LiveArtifactRefreshLogEntry {
+  schemaVersion: 1;
+  projectId: string;
+  artifactId: string;
+  refreshId: string;
+  sequence: number;
+  step: string;
+  status: LiveArtifactRefreshStepStatus;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  source?: LiveArtifactRefreshSourceMetadata;
+  error?: LiveArtifactRefreshErrorRecord;
+  metadata?: BoundedJsonObject;
+  createdAt: string;
+}
+
 export interface LiveArtifactCreateInput {
   title: string;
   slug?: string;
@@ -142,6 +181,9 @@ const MAX_LONG_TEXT_LENGTH = 16 * 1024;
 const MAX_TILES = 100;
 const MAX_PROVENANCE_SOURCES = 50;
 const MAX_MAPPING_PATHS = 100;
+const MAX_REFRESH_STEP_LENGTH = 128;
+const MAX_REFRESH_ERROR_CODE_LENGTH = 128;
+const MAX_REFRESH_ERROR_MESSAGE_LENGTH = 2_048;
 
 const LIVE_ARTIFACT_BOUNDED_JSON_CONSTRAINTS = {
   maxDepth: 8,
@@ -238,6 +280,18 @@ const PROVENANCE_SOURCE_TYPES = new Set<LiveArtifactProvenanceSource['type']>([
   'local_file',
   'user_input',
   'derived',
+]);
+const REFRESH_STEP_STATUSES = new Set<LiveArtifactRefreshStepStatus>([
+  'running',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'skipped',
+]);
+const REFRESH_SOURCE_TYPES = new Set<LiveArtifactRefreshSourceType>([
+  'document',
+  'tile',
+  'artifact',
 ]);
 const EXECUTABLE_RENDER_JSON_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /<\s*script\b/i, message: 'script elements are not supported in live artifact render JSON' },
@@ -556,6 +610,55 @@ function validateSource(value: unknown, path: string, issues: LiveArtifactValida
   return source;
 }
 
+function validateRefreshSourceMetadata(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactRefreshSourceMetadata | undefined {
+  if (!isPlainObject(value)) {
+    issues.push({ path, message: `${path} must be an object` });
+    return undefined;
+  }
+  const sourceType = validateEnum(value.sourceType, REFRESH_SOURCE_TYPES, `${path}.sourceType`, issues);
+  const tileId = asOptionalString(value.tileId, `${path}.tileId`, issues, MAX_ID_LENGTH);
+  const toolName = asOptionalString(value.toolName, `${path}.toolName`, issues, MAX_ID_LENGTH);
+  let connector: LiveArtifactRefreshConnectorMetadata | undefined;
+  if (value.connector !== undefined) {
+    if (!isPlainObject(value.connector)) {
+      issues.push({ path: `${path}.connector`, message: `${path}.connector must be an object` });
+    } else {
+      const connectorId = asString(value.connector.connectorId, `${path}.connector.connectorId`, issues, MAX_ID_LENGTH);
+      const accountLabel = asOptionalString(value.connector.accountLabel, `${path}.connector.accountLabel`, issues, MAX_SHORT_TEXT_LENGTH);
+      const connectorToolName = asString(value.connector.toolName, `${path}.connector.toolName`, issues, MAX_ID_LENGTH);
+      const approvalPolicy = value.connector.approvalPolicy === undefined
+        ? undefined
+        : validateEnum(value.connector.approvalPolicy, CONNECTOR_APPROVAL_POLICIES, `${path}.connector.approvalPolicy`, issues);
+      if (connectorId !== undefined && connectorToolName !== undefined) {
+        connector = { connectorId, toolName: connectorToolName };
+        if (accountLabel !== undefined) connector.accountLabel = accountLabel;
+        if (approvalPolicy !== undefined) connector.approvalPolicy = approvalPolicy;
+      }
+    }
+  }
+  if (sourceType === undefined) return undefined;
+  const source: LiveArtifactRefreshSourceMetadata = { sourceType };
+  if (tileId !== undefined) source.tileId = tileId;
+  if (toolName !== undefined) source.toolName = toolName;
+  if (connector !== undefined) source.connector = connector;
+  return source;
+}
+
+function validateRefreshErrorRecord(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactRefreshErrorRecord | undefined {
+  if (!isPlainObject(value)) {
+    issues.push({ path, message: `${path} must be an object` });
+    return undefined;
+  }
+  const code = asOptionalString(value.code, `${path}.code`, issues, MAX_REFRESH_ERROR_CODE_LENGTH);
+  const message = asString(value.message, `${path}.message`, issues, MAX_REFRESH_ERROR_MESSAGE_LENGTH);
+  const errorPath = asOptionalString(value.path, `${path}.path`, issues, MAX_PATH_LENGTH);
+  if (message === undefined) return undefined;
+  const record: LiveArtifactRefreshErrorRecord = { message };
+  if (code !== undefined) record.code = code;
+  if (errorPath !== undefined) record.path = errorPath;
+  return record;
+}
+
 function validateProvenance(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactProvenance | undefined {
   if (!isPlainObject(value)) {
     issues.push({ path, message: `${path} must be an object` });
@@ -831,6 +934,53 @@ export function validatePersistedLiveArtifact(value: unknown, path = 'liveArtifa
   if (lastRefreshedAt !== undefined) liveArtifact.lastRefreshedAt = lastRefreshedAt;
   if (document !== undefined) liveArtifact.document = document;
   return ok(liveArtifact);
+}
+
+export function validateLiveArtifactRefreshLogEntry(value: unknown, path = 'refreshLogEntry'): LiveArtifactValidationResult<LiveArtifactRefreshLogEntry> {
+  const issues: LiveArtifactValidationIssue[] = [];
+  if (!isPlainObject(value)) return fail([{ path, message: `${path} must be an object` }]);
+
+  if (value.schemaVersion !== 1) issues.push({ path: `${path}.schemaVersion`, message: `${path}.schemaVersion must be 1` });
+  const projectId = asString(value.projectId, `${path}.projectId`, issues, MAX_ID_LENGTH);
+  const artifactId = asString(value.artifactId, `${path}.artifactId`, issues, MAX_ID_LENGTH);
+  const refreshId = asString(value.refreshId, `${path}.refreshId`, issues, MAX_ID_LENGTH);
+  const sequence = validateOptionalInteger(value.sequence, `${path}.sequence`, issues, 0, Number.MAX_SAFE_INTEGER);
+  const step = asString(value.step, `${path}.step`, issues, MAX_REFRESH_STEP_LENGTH);
+  const status = validateEnum(value.status, REFRESH_STEP_STATUSES, `${path}.status`, issues);
+  const startedAt = validateIsoDate(value.startedAt, `${path}.startedAt`, issues);
+  const finishedAt = value.finishedAt === undefined ? undefined : validateIsoDate(value.finishedAt, `${path}.finishedAt`, issues);
+  const durationMs = validateOptionalInteger(value.durationMs, `${path}.durationMs`, issues, 0, Number.MAX_SAFE_INTEGER);
+  const source = value.source === undefined ? undefined : validateRefreshSourceMetadata(value.source, `${path}.source`, issues);
+  const error = value.error === undefined ? undefined : validateRefreshErrorRecord(value.error, `${path}.error`, issues);
+  let metadata: BoundedJsonObject | undefined;
+  if (value.metadata !== undefined) {
+    const metadataResult = validateBoundedJsonObject(value.metadata, `${path}.metadata`);
+    if (metadataResult.ok) metadata = metadataResult.value;
+    else issues.push(...metadataResult.issues);
+  }
+  const createdAt = validateIsoDate(value.createdAt, `${path}.createdAt`, issues);
+
+  if (issues.length > 0 || projectId === undefined || artifactId === undefined || refreshId === undefined || sequence === undefined || step === undefined || status === undefined || startedAt === undefined || createdAt === undefined) {
+    return fail(issues);
+  }
+
+  const entry: LiveArtifactRefreshLogEntry = {
+    schemaVersion: 1,
+    projectId,
+    artifactId,
+    refreshId,
+    sequence,
+    step,
+    status,
+    startedAt,
+    createdAt,
+  };
+  if (finishedAt !== undefined) entry.finishedAt = finishedAt;
+  if (durationMs !== undefined) entry.durationMs = durationMs;
+  if (source !== undefined) entry.source = source;
+  if (error !== undefined) entry.error = error;
+  if (metadata !== undefined) entry.metadata = metadata;
+  return ok(entry);
 }
 
 export function validateLiveArtifactCreateInput(value: unknown, path = 'input'): LiveArtifactValidationResult<LiveArtifactCreateInput> {

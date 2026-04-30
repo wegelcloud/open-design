@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { deleteProjectFile, listFiles, readProjectFile, writeProjectFile } from '../src/projects.js';
 import {
+  appendLiveArtifactRefreshLogEntry,
+  compactLiveArtifactRefreshError,
   createLiveArtifact,
   ensureLiveArtifactStoreLayout,
   generateLiveArtifactId,
@@ -14,6 +16,7 @@ import {
   ensureLiveArtifactPreview,
   liveArtifactStorePaths,
   liveArtifactTilePath,
+  listLiveArtifactRefreshLogEntries,
   listLiveArtifacts,
   regenerateLiveArtifactPreview,
   updateLiveArtifact,
@@ -335,6 +338,116 @@ describe('live artifact store layout', () => {
       templatePath: 'template.html',
       generatedPreviewPath: 'index.html',
       dataPath: 'data.json',
+    });
+  });
+
+  it('appends and reads compact refresh log entries without rewriting prior records', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    const created = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: validCreateInput(),
+    });
+
+    const first = await appendLiveArtifactRefreshLogEntry({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+      refreshId: 'refresh-000001',
+      sequence: 0,
+      step: 'tile:tile-1:execute',
+      status: 'running',
+      startedAt: '2026-04-30T10:00:00.000Z',
+      source: {
+        sourceType: 'tile',
+        tileId: 'tile-1',
+        toolName: 'github.issues.list',
+        connector: {
+          connectorId: 'github',
+          accountLabel: 'octo-org',
+          toolName: 'issues.list',
+          approvalPolicy: 'manual_refresh_granted_for_read_only',
+        },
+      },
+      metadata: { rows: 3, transform: 'compact_table' },
+      now: new Date('2026-04-30T10:00:00.010Z'),
+    });
+    const afterFirstAppend = await readFile(created.paths.refreshesJsonlPath, 'utf8');
+
+    const second = await appendLiveArtifactRefreshLogEntry({
+      projectsRoot,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+      refreshId: 'refresh-000001',
+      sequence: 1,
+      step: 'tile:tile-1:execute',
+      status: 'failed',
+      startedAt: '2026-04-30T10:00:00.000Z',
+      finishedAt: '2026-04-30T10:00:01.250Z',
+      error: Object.assign(new Error('Provider returned too many rows with a long diagnostic'), { code: 'TOO_MANY_ROWS', path: 'tiles.0' }),
+      now: new Date('2026-04-30T10:00:01.260Z'),
+    });
+
+    expect(first).toMatchObject({
+      schemaVersion: 1,
+      projectId: 'project-1',
+      artifactId: created.artifact.id,
+      refreshId: 'refresh-000001',
+      sequence: 0,
+      status: 'running',
+      source: {
+        sourceType: 'tile',
+        tileId: 'tile-1',
+        toolName: 'github.issues.list',
+        connector: { connectorId: 'github', accountLabel: 'octo-org', toolName: 'issues.list' },
+      },
+      metadata: { rows: 3, transform: 'compact_table' },
+    });
+    expect(second).toMatchObject({
+      status: 'failed',
+      durationMs: 1250,
+      error: { code: 'TOO_MANY_ROWS', message: 'Provider returned too many rows with a long diagnostic', path: 'tiles.0' },
+    });
+
+    const logText = await readFile(created.paths.refreshesJsonlPath, 'utf8');
+    expect(logText.startsWith(afterFirstAppend)).toBe(true);
+    expect(logText.trim().split('\n')).toHaveLength(2);
+    expect(logText).not.toContain('\n{\n');
+    await expect(listLiveArtifactRefreshLogEntries({ projectsRoot, projectId: 'project-1', artifactId: created.artifact.id })).resolves.toEqual([
+      first,
+      second,
+    ]);
+  });
+
+  it('rejects unsafe refresh log metadata and compacts arbitrary errors', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    const created = await createLiveArtifact({
+      projectsRoot,
+      projectId: 'project-1',
+      input: validCreateInput(),
+    });
+
+    expect(compactLiveArtifactRefreshError('plain failure')).toEqual({ message: 'plain failure' });
+    await expect(
+      appendLiveArtifactRefreshLogEntry({
+        projectsRoot,
+        projectId: 'project-1',
+        artifactId: created.artifact.id,
+        refreshId: 'refresh-000001',
+        sequence: 0,
+        step: 'source:read',
+        status: 'failed',
+        startedAt: '2026-04-30T10:00:00.000Z',
+        finishedAt: '2026-04-30T10:00:00.100Z',
+        metadata: { headers: { authorization: 'Bearer secret' } },
+        error: { message: 'Credential-like metadata must not be persisted' },
+      }),
+    ).rejects.toMatchObject({
+      name: 'LiveArtifactStoreValidationError',
+      issues: expect.arrayContaining([
+        expect.objectContaining({ path: 'refreshLogEntry.metadata.headers' }),
+        expect.objectContaining({ path: 'refreshLogEntry.metadata.headers.authorization' }),
+      ]),
     });
   });
 

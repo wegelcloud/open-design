@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { ensureProject, projectDir } from '../projects.js';
 import { renderHtmlTemplateV1 } from './render.js';
-import type { BoundedJsonObject, LiveArtifact, LiveArtifactCreateInput, LiveArtifactProvenance, LiveArtifactUpdateInput, LiveArtifactValidationIssue } from './schema.js';
-import { validateBoundedJsonObject, validateLiveArtifactCreateInput, validateLiveArtifactUpdateInput, validatePersistedLiveArtifact } from './schema.js';
+import type { BoundedJsonObject, LiveArtifact, LiveArtifactCreateInput, LiveArtifactProvenance, LiveArtifactRefreshErrorRecord, LiveArtifactRefreshLogEntry, LiveArtifactRefreshSourceMetadata, LiveArtifactRefreshStepStatus, LiveArtifactUpdateInput, LiveArtifactValidationIssue } from './schema.js';
+import { validateBoundedJsonObject, validateLiveArtifactCreateInput, validateLiveArtifactRefreshLogEntry, validateLiveArtifactUpdateInput, validatePersistedLiveArtifact } from './schema.js';
 
 export type LiveArtifactSummary = Omit<LiveArtifact, 'document' | 'tiles'> & {
   tileCount: number;
@@ -109,6 +109,29 @@ export interface UpdateLiveArtifactOptions {
 }
 
 export interface RegenerateLiveArtifactPreviewOptions {
+  projectsRoot: string;
+  projectId: string;
+  artifactId: string;
+}
+
+export interface AppendLiveArtifactRefreshLogEntryOptions {
+  projectsRoot: string;
+  projectId: string;
+  artifactId: string;
+  refreshId: string;
+  sequence: number;
+  step: string;
+  status: LiveArtifactRefreshStepStatus;
+  startedAt: Date | string;
+  finishedAt?: Date | string;
+  durationMs?: number;
+  source?: LiveArtifactRefreshSourceMetadata;
+  error?: LiveArtifactRefreshErrorRecord | unknown;
+  metadata?: BoundedJsonObject;
+  now?: Date;
+}
+
+export interface ListLiveArtifactRefreshLogEntriesOptions {
   projectsRoot: string;
   projectId: string;
   artifactId: string;
@@ -264,6 +287,53 @@ function toSummary(artifact: LiveArtifact): LiveArtifactSummary {
 
 function validationError(path: string, message: string): LiveArtifactStoreValidationError {
   return new LiveArtifactStoreValidationError(message, [{ path, message }]);
+}
+
+function toIsoDate(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+export function compactLiveArtifactRefreshError(error: unknown): LiveArtifactRefreshErrorRecord {
+  if (error && typeof error === 'object') {
+    const record = error as { code?: unknown; message?: unknown; path?: unknown };
+    const compact: LiveArtifactRefreshErrorRecord = {
+      message: truncateText(typeof record.message === 'string' ? record.message : String(error), 2_048),
+    };
+    if (typeof record.code === 'string' && record.code.length > 0) compact.code = truncateText(record.code, 128);
+    if (typeof record.path === 'string' && record.path.length > 0) compact.path = truncateText(record.path, 260);
+    return compact;
+  }
+
+  return { message: truncateText(String(error), 2_048) };
+}
+
+function normalizeRefreshLogEntry(options: AppendLiveArtifactRefreshLogEntryOptions): LiveArtifactRefreshLogEntry {
+  const startedAt = toIsoDate(options.startedAt);
+  const finishedAt = options.finishedAt === undefined ? undefined : toIsoDate(options.finishedAt);
+  const durationMs = options.durationMs ?? (
+    finishedAt === undefined ? undefined : Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt))
+  );
+  const entry: LiveArtifactRefreshLogEntry = {
+    schemaVersion: 1,
+    projectId: options.projectId,
+    artifactId: options.artifactId,
+    refreshId: options.refreshId,
+    sequence: options.sequence,
+    step: options.step,
+    status: options.status,
+    startedAt,
+    createdAt: (options.now ?? new Date()).toISOString(),
+  };
+  if (finishedAt !== undefined) entry.finishedAt = finishedAt;
+  if (durationMs !== undefined) entry.durationMs = durationMs;
+  if (options.source !== undefined) entry.source = options.source;
+  if (options.error !== undefined) entry.error = compactLiveArtifactRefreshError(options.error);
+  if (options.metadata !== undefined) entry.metadata = options.metadata;
+  return entry;
 }
 
 async function readPersistedLiveArtifact(paths: LiveArtifactStorePaths): Promise<LiveArtifact> {
@@ -471,6 +541,53 @@ export async function getLiveArtifact(options: GetLiveArtifactOptions): Promise<
   const artifact = await readLiveArtifactWithDataJsonCache(paths);
   assertArtifactMatchesStorage(artifact, options.projectId, artifactId);
   return { artifact, paths };
+}
+
+export async function appendLiveArtifactRefreshLogEntry(
+  options: AppendLiveArtifactRefreshLogEntryOptions,
+): Promise<LiveArtifactRefreshLogEntry> {
+  const artifactId = validateLiveArtifactStorageId(options.artifactId);
+  const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
+  const current = await readPersistedLiveArtifact(paths);
+  assertArtifactMatchesStorage(current, options.projectId, artifactId);
+
+  const normalized = normalizeRefreshLogEntry({ ...options, artifactId });
+  const result = validateLiveArtifactRefreshLogEntry(normalized);
+  if (!result.ok) throw new LiveArtifactStoreValidationError(result.error, result.issues);
+
+  await appendFile(paths.refreshesJsonlPath, `${JSON.stringify(result.value)}\n`, 'utf8');
+  return result.value;
+}
+
+export async function listLiveArtifactRefreshLogEntries(
+  options: ListLiveArtifactRefreshLogEntriesOptions,
+): Promise<LiveArtifactRefreshLogEntry[]> {
+  const artifactId = validateLiveArtifactStorageId(options.artifactId);
+  const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
+  const current = await readPersistedLiveArtifact(paths);
+  assertArtifactMatchesStorage(current, options.projectId, artifactId);
+
+  const text = await readTextFileOrDefault(paths.refreshesJsonlPath, '');
+  const entries: LiveArtifactRefreshLogEntry[] = [];
+  for (const [index, line] of text.split('\n').entries()) {
+    if (line.trim().length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw validationError(`refreshes.jsonl.${index + 1}`, 'live artifact refresh log contains invalid JSON');
+      }
+      throw error;
+    }
+    const result = validateLiveArtifactRefreshLogEntry(parsed, `refreshes.jsonl.${index + 1}`);
+    if (!result.ok) throw new LiveArtifactStoreValidationError(result.error, result.issues);
+    if (result.value.projectId !== options.projectId || result.value.artifactId !== artifactId) {
+      throw validationError(`refreshes.jsonl.${index + 1}`, 'live artifact refresh log entry does not match storage scope');
+    }
+    entries.push(result.value);
+  }
+  return entries;
 }
 
 export async function regenerateLiveArtifactPreview(options: RegenerateLiveArtifactPreviewOptions): Promise<LiveArtifactPreviewRenderRecord> {
