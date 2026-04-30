@@ -202,8 +202,12 @@ function derivePreflight(skillBody: string): string {
   if (/references\/components\.md/.test(skillBody)) refs.push('`references/components.md`');
   if (/references\/checklist\.md/.test(skillBody)) refs.push('`references/checklist.md`');
   if (/references\/artifact-schema\.md/.test(skillBody)) refs.push('`references/artifact-schema.md`');
-  if (/references\/connector-policy\.md/.test(skillBody)) refs.push('`references/connector-policy.md`');
-  if (/references\/refresh-contract\.md/.test(skillBody)) refs.push('`references/refresh-contract.md`');
+  if (/references\/connector-policy\.md|connector-policy\.md/.test(skillBody)) {
+    refs.push('`references/connector-policy.md`');
+  }
+  if (/references\/refresh-contract\.md|refresh-contract\.md/.test(skillBody)) {
+    refs.push('`references/refresh-contract.md`');
+  }
   if (refs.length === 0) return '';
   return ` **Pre-flight (do this before any other tool):** Read ${refs.join(', ')} via the path written in the skill-root preamble. If the skill asks for daemon wrapper commands, use the runtime tool environment documented below; it provides the daemon URL and whether a run-scoped tool token is available without exposing token internals. The seed template defines the class system you'll paste into; the layouts file is the only acceptable source of section/screen/slide skeletons; the checklist and live-artifact references are your validation gate before emitting \`<artifact>\` or registering a live artifact. Skipping this step is the #1 reason output regresses to generic AI-slop.`;
 }

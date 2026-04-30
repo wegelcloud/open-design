@@ -69,6 +69,7 @@ export async function listSkills(skillsRoot) {
 // the skill folder. We prepend a short preamble so any capable code agent can
 // open those files via absolute paths.
 function withSkillRootPreamble(body, dir) {
+  const referencedFiles = collectReferencedSideFiles(body);
   const preamble = [
     "> **Skill root (absolute):** `" + dir + "`",
     ">",
@@ -76,10 +77,25 @@ function withSkillRootPreamble(body, dir) {
     "> below references relative paths such as `assets/template.html` or",
     "> `references/layouts.md`, resolve them against the skill root above and",
     "> open them via their full absolute path.",
+    ...(referencedFiles.length > 0
+      ? [
+          ">",
+          "> Known side files in this skill: " +
+            referencedFiles.map((file) => "`" + file + "`").join(", ") +
+            ".",
+        ]
+      : []),
     "",
     "",
   ].join("\n");
   return preamble + body;
+}
+
+function collectReferencedSideFiles(body) {
+  const files = new Set();
+  const matches = body.matchAll(/\b(?:assets|references)\/[A-Za-z0-9._-]+\b/g);
+  for (const match of matches) files.add(match[0]);
+  return Array.from(files).sort();
 }
 
 async function dirHasAttachments(dir) {

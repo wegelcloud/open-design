@@ -1,0 +1,53 @@
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, it } from 'vitest';
+
+import { composeSystemPrompt } from './system';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '../../../..');
+const liveArtifactRoot = path.join(repoRoot, 'skills/live-artifact');
+const liveArtifactSkillPath = path.join(repoRoot, 'skills/live-artifact/SKILL.md');
+const liveArtifactSkillMarkdown = readFileSync(liveArtifactSkillPath, 'utf8');
+const liveArtifactSkillBody = [
+  `> **Skill root (absolute):** \`${liveArtifactRoot}\``,
+  '>',
+  '> This skill ships side files alongside `SKILL.md`. When the workflow',
+  '> below references relative paths such as `assets/template.html` or',
+  '> `references/layouts.md`, resolve them against the skill root above and',
+  '> open them via their full absolute path.',
+  '>',
+  '> Known side files in this skill: `references/artifact-schema.md`, `references/connector-policy.md`, `references/refresh-contract.md`.',
+  '',
+  '',
+  liveArtifactSkillMarkdown.replace(/^---[\s\S]*?---\n\n/, '').trim(),
+].join('\n');
+
+describe('composeSystemPrompt', () => {
+  it('injects live-artifact skill guidance and metadata intent', () => {
+    const prompt = composeSystemPrompt({
+      skillName: 'live-artifact',
+      skillMode: 'prototype',
+      skillBody: liveArtifactSkillBody,
+      metadata: {
+        kind: 'prototype',
+        intent: 'live-artifact',
+      },
+    });
+
+    expect(prompt).toContain('## Active skill — live-artifact');
+    expect(prompt).toContain(`> **Skill root (absolute):** \`${liveArtifactRoot}\``);
+    expect(prompt).toContain('**Pre-flight (do this before any other tool):**');
+    expect(prompt).toContain('`references/artifact-schema.md`');
+    expect(prompt).toContain('`references/connector-policy.md`');
+    expect(prompt).toContain('`references/refresh-contract.md`');
+    expect(prompt).toContain('use the runtime tool environment documented below');
+    expect(prompt).toContain('provides the daemon URL and whether a run-scoped tool token is available');
+    expect(prompt).toContain('od tools live-artifacts create --input artifact.json');
+    expect(prompt).toContain('Prefer the `live-artifact` skill workflow when available');
+    expect(prompt).toContain('The first output should be a live artifact/dashboard/report');
+  });
+});

@@ -42,9 +42,9 @@ Create an Open Design live artifact: a project-scoped, previewable HTML artifact
 live-artifact/
 ├── SKILL.md
 └── references/
-    ├── artifact-schema.md      ← artifact files, DTO shape, template binding rules
-    ├── connector-policy.md     ← connector safety, redaction, credential boundaries
-    └── refresh-contract.md     ← refresh permissions, source metadata, snapshots
+    ├── artifact-schema.md      ← `references/artifact-schema.md`: artifact files, DTO shape, template binding rules
+    ├── connector-policy.md     ← `references/connector-policy.md`: connector safety, redaction, credential boundaries
+    └── refresh-contract.md     ← `references/refresh-contract.md`: refresh permissions, source metadata, snapshots
 ```
 
 ## Current status
