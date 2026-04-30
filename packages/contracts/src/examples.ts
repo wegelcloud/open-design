@@ -1,7 +1,7 @@
 import type { ChatRequest } from './api/chat';
 import type { ConnectorDetail } from './api/connectors';
 import type { ProjectFile } from './api/files';
-import type { LiveArtifact } from './api/live-artifacts';
+import type { LiveArtifact, LiveArtifactCreateInput, LiveArtifactUpdateInput } from './api/live-artifacts';
 import type { HealthResponse } from './api/registry';
 import type { ApiErrorResponse } from './errors';
 import type { ChatSseEvent } from './sse/chat';
@@ -93,6 +93,31 @@ export const exampleLiveArtifact: LiveArtifact = {
       metrics: [{ label: 'Signups', value: 1280, delta: '+12%' }],
     },
   },
+};
+
+export const exampleLiveArtifactCreateInput: LiveArtifactCreateInput = {
+  title: 'Launch Metrics',
+  slug: 'launch-metrics',
+  pinned: false,
+  status: 'active',
+  preview: { type: 'html', entry: 'index.html' },
+  tiles: exampleLiveArtifact.tiles,
+  document: {
+    format: 'html_template_v1',
+    templatePath: 'template.html',
+    generatedPreviewPath: 'index.html',
+    dataPath: 'data.json',
+    dataJson: {
+      title: 'Launch Metrics',
+      metrics: [{ label: 'Signups', value: 1280, delta: '+12%' }],
+    },
+  },
+};
+
+export const exampleLiveArtifactUpdateInput: LiveArtifactUpdateInput = {
+  title: 'Launch Metrics Dashboard',
+  pinned: true,
+  preview: { type: 'html', entry: 'index.html' },
 };
 
 export const exampleConnectorDetail: ConnectorDetail = {

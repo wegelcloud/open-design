@@ -103,15 +103,6 @@ interface LiveArtifact {
   document?: LiveArtifactDocument;
 }
 
-export interface LiveArtifactValidationIssue {
-  path: string;
-  message: string;
-}
-
-export type LiveArtifactValidationResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: string; issues: LiveArtifactValidationIssue[] };
-
 export interface LiveArtifactCreateInput {
   title: string;
   slug?: string;
@@ -132,6 +123,15 @@ export interface LiveArtifactUpdateInput {
   tiles?: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 }
+
+export interface LiveArtifactValidationIssue {
+  path: string;
+  message: string;
+}
+
+export type LiveArtifactValidationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string; issues: LiveArtifactValidationIssue[] };
 
 const MAX_ID_LENGTH = 128;
 const MAX_TITLE_LENGTH = 200;

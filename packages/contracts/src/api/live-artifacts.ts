@@ -176,6 +176,41 @@ export interface LiveArtifact {
   document?: LiveArtifactDocument;
 }
 
+export type LiveArtifactDaemonOwnedInputField =
+  | 'id'
+  | 'projectId'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'createdByRunId'
+  | 'schemaVersion'
+  | 'refreshStatus'
+  | 'lastRefreshedAt';
+
+export type LiveArtifactRejectDaemonOwnedInputFields = {
+  [Field in LiveArtifactDaemonOwnedInputField]?: never;
+};
+
+export type LiveArtifactCreateInput = LiveArtifactRejectDaemonOwnedInputFields & {
+  title: string;
+  slug?: string;
+  sessionId?: string;
+  pinned?: boolean;
+  status?: LiveArtifactStatus;
+  preview: LiveArtifactPreview;
+  tiles?: LiveArtifactTile[];
+  document?: LiveArtifactDocument;
+};
+
+export type LiveArtifactUpdateInput = LiveArtifactRejectDaemonOwnedInputFields & {
+  title?: string;
+  slug?: string;
+  pinned?: boolean;
+  status?: LiveArtifactStatus;
+  preview?: LiveArtifactPreview;
+  tiles?: LiveArtifactTile[];
+  document?: LiveArtifactDocument;
+};
+
 export type LiveArtifactSummary = Omit<LiveArtifact, 'document' | 'tiles'> & {
   tileCount: number;
   hasDocument: boolean;
