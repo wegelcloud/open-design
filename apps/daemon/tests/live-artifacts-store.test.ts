@@ -30,6 +30,7 @@ import {
 } from '../src/live-artifacts/store.js';
 import {
   LiveArtifactRefreshAbortError,
+  executeLocalDaemonRefreshSource,
   LiveArtifactRefreshRunRegistry,
   normalizeLiveArtifactRefreshTimeouts,
   withLiveArtifactRefreshRun,
@@ -776,6 +777,81 @@ describe('live artifact store layout', () => {
         expect.objectContaining({ path: 'refreshLogEntry.metadata.headers' }),
         expect.objectContaining({ path: 'refreshLogEntry.metadata.headers.authorization' }),
       ]),
+    });
+  });
+
+  it('executes local project file refresh sources with safe bounded outputs', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    await writeProjectFile(projectsRoot, 'project-1', 'metrics.json', JSON.stringify({ title: 'Q2 Metrics', rows: [{ name: 'Revenue', value: 42 }] }));
+    await writeProjectFile(projectsRoot, 'project-1', 'notes/report.md', 'Launch dashboard mentions Revenue and activation.');
+
+    await expect(executeLocalDaemonRefreshSource({
+      projectsRoot,
+      projectId: 'project-1',
+      source: {
+        type: 'daemon_tool',
+        toolName: 'project_files.search',
+        input: { query: 'Revenue', maxResults: 10 },
+        refreshPermission: 'manual_refresh_granted_for_read_only',
+      },
+    })).resolves.toMatchObject({
+      toolName: 'project_files.search',
+      query: 'Revenue',
+      count: 2,
+      matches: expect.arrayContaining([
+        expect.objectContaining({ path: 'metrics.json' }),
+        expect.objectContaining({ path: 'notes/report.md', preview: expect.stringContaining('Revenue') }),
+      ]),
+    });
+
+    await expect(executeLocalDaemonRefreshSource({
+      projectsRoot,
+      projectId: 'project-1',
+      source: {
+        type: 'daemon_tool',
+        toolName: 'project_files.read_json',
+        input: { path: 'metrics.json' },
+        refreshPermission: 'manual_refresh_granted_for_read_only',
+      },
+    })).resolves.toMatchObject({
+      toolName: 'project_files.read_json',
+      path: 'metrics.json',
+      json: { title: 'Q2 Metrics', rows: [{ name: 'Revenue', value: 42 }] },
+    });
+
+    await expect(executeLocalDaemonRefreshSource({
+      projectsRoot,
+      projectId: 'project-1',
+      source: {
+        type: 'daemon_tool',
+        toolName: 'project_files.read_json',
+        input: { path: '../secret.json' },
+        refreshPermission: 'manual_refresh_granted_for_read_only',
+      },
+    })).rejects.toThrow(/invalid file name|path escapes|reserved project path/);
+  });
+
+  it('executes git.summary as a read-only local refresh source', async () => {
+    const projectsRoot = await makeProjectsRoot();
+    await writeProjectFile(projectsRoot, 'project-1', 'index.html', '<h1>Draft</h1>');
+
+    const summary = await executeLocalDaemonRefreshSource({
+      projectsRoot,
+      projectId: 'project-1',
+      source: {
+        type: 'daemon_tool',
+        toolName: 'git.summary',
+        input: { maxCommits: 5 },
+        refreshPermission: 'manual_refresh_granted_for_read_only',
+      },
+    });
+
+    expect(summary).toMatchObject({
+      toolName: 'git.summary',
+      isRepository: false,
+      status: [],
+      recentCommits: [],
+      diffStat: [],
     });
   });
 

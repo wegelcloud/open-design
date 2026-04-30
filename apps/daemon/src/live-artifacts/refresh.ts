@@ -1,4 +1,11 @@
-import type { LiveArtifactRefreshSourceMetadata } from './schema.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+import { listFiles, projectDir, readProjectFile, validateProjectPath } from '../projects.js';
+import type { BoundedJsonObject, BoundedJsonValue, LiveArtifactRefreshSourceMetadata, LiveArtifactTileSource } from './schema.js';
+import { validateBoundedJsonObject } from './schema.js';
+
+const execFileAsync = promisify(execFile);
 
 export const DEFAULT_LIVE_ARTIFACT_SOURCE_TIMEOUT_MS = 30_000;
 export const DEFAULT_LIVE_ARTIFACT_TOTAL_TIMEOUT_MS = 120_000;
@@ -30,6 +37,30 @@ export interface LiveArtifactRefreshSourceExecutionOptions {
   step: string;
   source?: LiveArtifactRefreshSourceMetadata;
   sourceTimeoutMs?: number;
+}
+
+export type LocalDaemonRefreshToolName = 'project_files.search' | 'project_files.read_json' | 'git.summary';
+
+export interface ExecuteLocalDaemonRefreshSourceOptions {
+  projectsRoot: string;
+  projectId: string;
+  source: LiveArtifactTileSource;
+  signal?: AbortSignal;
+}
+
+export interface ProjectFilesSearchInput extends BoundedJsonObject {
+  query?: string;
+  maxResults?: number;
+}
+
+export interface ProjectFilesReadJsonInput extends BoundedJsonObject {
+  path?: string;
+  file?: string;
+  name?: string;
+}
+
+export interface GitSummaryInput extends BoundedJsonObject {
+  maxCommits?: number;
 }
 
 export class LiveArtifactRefreshAbortError extends Error {
@@ -189,5 +220,164 @@ export async function withLiveArtifactRefreshSourceTimeout<T>(
   } finally {
     clearTimeout(sourceTimeout);
     run.signal.removeEventListener('abort', onRunAbort);
+  }
+}
+
+function isLocalDaemonRefreshToolName(value: string | undefined): value is LocalDaemonRefreshToolName {
+  return value === 'project_files.search' || value === 'project_files.read_json' || value === 'git.summary';
+}
+
+function asBoundedRefreshOutput(value: BoundedJsonObject): BoundedJsonObject {
+  const result = validateBoundedJsonObject(value, 'localRefreshOutput');
+  if (!result.ok) {
+    const firstIssue = result.issues[0];
+    throw new Error(firstIssue === undefined ? result.error : `${firstIssue.path}: ${firstIssue.message}`);
+  }
+  return result.value;
+}
+
+function optionalString(value: BoundedJsonValue | undefined, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`${field} must be a string`);
+  return value;
+}
+
+function optionalPositiveInteger(value: BoundedJsonValue | undefined, field: string, defaultValue: number, maxValue: number): number {
+  if (value === undefined) return defaultValue;
+  if (!Number.isSafeInteger(value) || typeof value !== 'number' || value < 1) throw new Error(`${field} must be a positive integer`);
+  return Math.min(value, maxValue);
+}
+
+function selectJsonPath(input: ProjectFilesReadJsonInput): string {
+  const rawPath = optionalString(input.path, 'input.path') ?? optionalString(input.file, 'input.file') ?? optionalString(input.name, 'input.name');
+  if (rawPath === undefined) throw new Error('project_files.read_json requires input.path');
+  return validateProjectPath(rawPath);
+}
+
+function compactTextPreview(text: string, query: string | undefined): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= 240) return normalized;
+  if (query === undefined || query.trim().length === 0) return `${normalized.slice(0, 240)}…`;
+  const index = normalized.toLowerCase().indexOf(query.toLowerCase());
+  if (index < 0) return `${normalized.slice(0, 240)}…`;
+  const start = Math.max(0, index - 80);
+  return `${start > 0 ? '…' : ''}${normalized.slice(start, start + 240)}…`;
+}
+
+function isTextLikeFile(file: { kind?: string; mime?: string; name: string }): boolean {
+  return file.kind === 'code' || file.kind === 'text' || file.kind === 'html' || file.mime?.startsWith('text/') === true || file.name.endsWith('.json');
+}
+
+async function executeProjectFilesSearch(options: ExecuteLocalDaemonRefreshSourceOptions): Promise<BoundedJsonObject> {
+  const input = options.source.input as ProjectFilesSearchInput;
+  const query = optionalString(input.query, 'input.query')?.trim();
+  const maxResults = optionalPositiveInteger(input.maxResults, 'input.maxResults', 25, 100);
+  const allFiles = await listFiles(options.projectsRoot, options.projectId) as Array<{ name: string; path: string; type: string; size: number; mtime: number; kind?: string; mime?: string }>;
+  const matches: BoundedJsonObject[] = [];
+  const normalizedQuery = query?.toLowerCase();
+
+  for (const file of allFiles) {
+    if (options.signal?.aborted === true) throw options.signal.reason;
+    if (matches.length >= maxResults) break;
+    const pathMatches = normalizedQuery === undefined || file.path.toLowerCase().includes(normalizedQuery) || file.name.toLowerCase().includes(normalizedQuery);
+    let preview: string | undefined;
+    let matched = pathMatches;
+
+    if (!matched && normalizedQuery !== undefined && isTextLikeFile(file) && file.size <= 128 * 1024) {
+      try {
+        const entry = await readProjectFile(options.projectsRoot, options.projectId, file.path);
+        const text = entry.buffer.toString('utf8');
+        matched = text.toLowerCase().includes(normalizedQuery);
+        if (matched) preview = compactTextPreview(text, query);
+      } catch {
+        // Ignore unreadable files during search; read_json reports hard failures.
+      }
+    }
+
+    if (!matched) continue;
+    const result: BoundedJsonObject = {
+      path: file.path,
+      name: file.name,
+      size: file.size,
+      mtime: file.mtime,
+      kind: file.kind ?? 'file',
+      mime: file.mime ?? 'application/octet-stream',
+    };
+    if (preview !== undefined) result.preview = preview;
+    matches.push(result);
+  }
+
+  return asBoundedRefreshOutput({ toolName: 'project_files.search', query: query ?? '', count: matches.length, truncated: allFiles.length > matches.length && matches.length >= maxResults, matches });
+}
+
+async function executeProjectFilesReadJson(options: ExecuteLocalDaemonRefreshSourceOptions): Promise<BoundedJsonObject> {
+  const filePath = selectJsonPath(options.source.input as ProjectFilesReadJsonInput);
+  if (!filePath.endsWith('.json')) throw new Error('project_files.read_json only supports .json files');
+  const entry = await readProjectFile(options.projectsRoot, options.projectId, filePath);
+  if (entry.size > 256 * 1024) throw new Error('project_files.read_json file exceeds 256KB');
+  if (options.signal?.aborted === true) throw options.signal.reason;
+  let parsed: BoundedJsonValue;
+  try {
+    parsed = JSON.parse(entry.buffer.toString('utf8')) as BoundedJsonValue;
+  } catch {
+    throw new Error(`project_files.read_json could not parse JSON at ${filePath}`);
+  }
+  return asBoundedRefreshOutput({ toolName: 'project_files.read_json', path: entry.path, size: entry.size, json: parsed });
+}
+
+function compactExecOutput(value: string): string[] {
+  return value.split('\n').map((line) => line.trimEnd()).filter(Boolean).slice(0, 100);
+}
+
+async function runGit(projectPath: string, args: string[], signal: AbortSignal | undefined): Promise<string> {
+  try {
+    const result = await execFileAsync('git', args, { cwd: projectPath, signal, timeout: 10_000, maxBuffer: 128 * 1024 });
+    return result.stdout.toString();
+  } catch (error) {
+    const maybeError = error as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string; code?: unknown };
+    if (maybeError.code === 128) return '';
+    throw new Error(maybeError.stderr?.toString().trim() || maybeError.message || 'git command failed');
+  }
+}
+
+async function executeGitSummary(options: ExecuteLocalDaemonRefreshSourceOptions): Promise<BoundedJsonObject> {
+  const input = options.source.input as GitSummaryInput;
+  const maxCommits = optionalPositiveInteger(input.maxCommits, 'input.maxCommits', 10, 50);
+  const dir = projectDir(options.projectsRoot, options.projectId);
+  const insideWorkTree = (await runGit(dir, ['rev-parse', '--is-inside-work-tree'], options.signal)).trim() === 'true';
+  if (!insideWorkTree) return asBoundedRefreshOutput({ toolName: 'git.summary', isRepository: false, branch: '', status: [], recentCommits: [], diffStat: [] });
+
+  const [branch, status, recentCommits, diffStat] = await Promise.all([
+    runGit(dir, ['branch', '--show-current'], options.signal),
+    runGit(dir, ['status', '--short'], options.signal),
+    runGit(dir, ['log', `--max-count=${maxCommits}`, '--pretty=format:%h %s'], options.signal),
+    runGit(dir, ['diff', '--stat', '--', '.'], options.signal),
+  ]);
+
+  return asBoundedRefreshOutput({
+    toolName: 'git.summary',
+    isRepository: true,
+    branch: branch.trim(),
+    status: compactExecOutput(status),
+    recentCommits: compactExecOutput(recentCommits),
+    diffStat: compactExecOutput(diffStat),
+  });
+}
+
+export async function executeLocalDaemonRefreshSource(options: ExecuteLocalDaemonRefreshSourceOptions): Promise<BoundedJsonObject> {
+  if (options.source.type !== 'daemon_tool') {
+    throw new Error('local daemon refresh sources require source.type daemon_tool');
+  }
+  if (!isLocalDaemonRefreshToolName(options.source.toolName)) {
+    throw new Error(`unsupported local daemon refresh tool: ${options.source.toolName ?? '<missing>'}`);
+  }
+
+  switch (options.source.toolName) {
+    case 'project_files.search':
+      return executeProjectFilesSearch(options);
+    case 'project_files.read_json':
+      return executeProjectFilesReadJson(options);
+    case 'git.summary':
+      return executeGitSummary(options);
   }
 }
