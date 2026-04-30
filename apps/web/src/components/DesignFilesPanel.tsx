@@ -4,6 +4,7 @@ import type { Dict } from '../i18n/types';
 import { projectFileUrl } from '../providers/registry';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind } from '../types';
 import { Icon } from './Icon';
+import { LiveArtifactBadges } from './LiveArtifactBadges';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -178,7 +179,14 @@ export function DesignFilesPanel({
                       </span>
                       <span className="df-row-name-wrap">
                         <span className="df-row-name">{artifact.title}</span>
-                        <span className="df-row-sub">{liveArtifactLabel(artifact, t)}</span>
+                        <span className="df-row-sub">
+                          <span>{t('designFiles.kindLiveArtifact')}</span>
+                          <LiveArtifactBadges
+                            compact
+                            status={artifact.status}
+                            refreshStatus={artifact.refreshStatus}
+                          />
+                        </span>
                       </span>
                       <span className="df-row-time">
                         {relativeTime(Date.parse(artifact.updatedAt) || Date.now(), t)}
@@ -430,16 +438,6 @@ function kindLabel(kind: ProjectFileKind, t: TranslateFn): string {
   if (kind === 'presentation') return t('designFiles.kindPresentation');
   if (kind === 'spreadsheet') return t('designFiles.kindSpreadsheet');
   return t('designFiles.kindBinary');
-}
-
-function liveArtifactLabel(
-  artifact: LiveArtifactWorkspaceEntry,
-  t: TranslateFn,
-): string {
-  const parts = [t('designFiles.kindLiveArtifact')];
-  if (artifact.refreshStatus !== 'never') parts.push(artifact.refreshStatus);
-  if (artifact.status === 'archived') parts.push(artifact.status);
-  return parts.join(' · ');
 }
 
 function relativeTime(ts: number, t: TranslateFn): string {

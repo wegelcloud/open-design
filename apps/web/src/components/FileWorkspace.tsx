@@ -9,12 +9,14 @@ import {
 import {
   liveArtifactSummaryToWorkspaceEntry,
   type LiveArtifactSummary,
+  type LiveArtifactWorkspaceEntry,
   type OpenTabsState,
   type ProjectFile,
 } from '../types';
 import { DesignFilesPanel } from './DesignFilesPanel';
 import { FileViewer } from './FileViewer';
 import { Icon } from './Icon';
+import { LiveArtifactBadges } from './LiveArtifactBadges';
 import { PasteTextDialog } from './PasteTextDialog';
 import { SketchEditor, type SketchDocument, type SketchItem } from './SketchEditor';
 
@@ -371,6 +373,7 @@ export function FileWorkspace({
               }
               onClose={() => closeTab(name)}
               kind={kind}
+              liveArtifact={liveArtifact}
             />
           );
         })}
@@ -463,6 +466,7 @@ function Tab({
   onClose,
   closable = true,
   kind,
+  liveArtifact,
 }: {
   label: string;
   active: boolean;
@@ -470,6 +474,7 @@ function Tab({
   onClose?: () => void;
   closable?: boolean;
   kind?: ProjectFile['kind'] | 'live-artifact';
+  liveArtifact?: LiveArtifactWorkspaceEntry;
 }) {
   const t = useT();
   const iconName = kindIconName(kind);
@@ -493,6 +498,14 @@ function Tab({
         </span>
       ) : null}
       <span className="ws-tab-label">{label}</span>
+      {liveArtifact ? (
+        <LiveArtifactBadges
+          compact
+          className="ws-live-artifact-badges"
+          status={liveArtifact.status}
+          refreshStatus={liveArtifact.refreshStatus}
+        />
+      ) : null}
       {closable && onClose ? (
         <button
           type="button"

@@ -3,6 +3,7 @@ import { useT } from '../i18n';
 import { fetchLiveArtifacts } from '../providers/registry';
 import type { DesignSystemSummary, LiveArtifactSummary, Project, SkillSummary } from '../types';
 import { Icon } from './Icon';
+import { LiveArtifactBadges } from './LiveArtifactBadges';
 
 type SubTab = 'recent' | 'yours';
 
@@ -133,7 +134,6 @@ export function DesignsTab({
             const ds = dsName(p.designSystemId);
             if (item.type === 'live-artifact') {
               const artifact = item.liveArtifact;
-              const refreshable = artifact.refreshStatus !== 'never';
               return (
                 <div
                   key={`live:${artifact.id}`}
@@ -149,10 +149,11 @@ export function DesignsTab({
                     <span className="live-artifact-thumb-glyph">●</span>
                   </div>
                   <div className="design-card-meta-block">
-                    <div className="design-card-badges" aria-label={t('designs.liveArtifactBadgesAria')}>
-                      <span className="design-badge live">{t('designs.badgeLive')}</span>
-                      {refreshable ? <span className="design-badge refreshable">{t('designs.badgeRefreshable')}</span> : null}
-                    </div>
+                    <LiveArtifactBadges
+                      className="design-card-badges"
+                      status={artifact.status}
+                      refreshStatus={artifact.refreshStatus}
+                    />
                     <div className="design-card-name" title={artifact.title}>{artifact.title}</div>
                     <div className="design-card-meta">
                       <span className="ds">{p.name}</span>

@@ -2170,13 +2170,14 @@ button.connector-action { padding: 5px 10px; font-size: 12px; }
   font-size: 18px;
   line-height: 1;
 }
-.design-card-badges {
+.design-card-badges,
+.live-artifact-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
   min-height: 18px;
 }
-.design-badge,
+.live-artifact-badge,
 .design-live-count {
   display: inline-flex;
   align-items: center;
@@ -2189,15 +2190,41 @@ button.connector-action { padding: 5px 10px; font-size: 12px; }
   text-transform: uppercase;
   background: var(--bg-panel);
 }
-.design-badge.live {
+.live-artifact-badge.live {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
   background: color-mix(in srgb, var(--accent) 9%, var(--bg-panel));
 }
-.design-badge.refreshable {
+.live-artifact-badge.refreshable {
   color: #0f766e;
   border-color: rgba(15, 118, 110, 0.2);
   background: rgba(15, 118, 110, 0.08);
+}
+.live-artifact-badge.refreshing {
+  color: #1d4ed8;
+  border-color: rgba(29, 78, 216, 0.22);
+  background: rgba(29, 78, 216, 0.08);
+}
+.live-artifact-badge.refresh-failed {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.22);
+  background: rgba(180, 35, 24, 0.08);
+}
+.live-artifact-badge.archived {
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+  background: var(--bg-subtle);
+}
+.live-artifact-badges.compact {
+  display: inline-flex;
+  gap: 4px;
+  min-height: 0;
+  vertical-align: middle;
+}
+.live-artifact-badges.compact .live-artifact-badge {
+  padding: 1px 5px;
+  font-size: 9px;
+  line-height: 1.25;
 }
 .design-live-count {
   position: absolute;
@@ -2374,6 +2401,14 @@ button.connector-action { padding: 5px 10px; font-size: 12px; }
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 180px;
+}
+.ws-live-artifact-badges {
+  flex-wrap: nowrap;
+  max-width: 145px;
+  overflow: hidden;
+}
+.ws-live-artifact-badges .live-artifact-badge:not(.live):not(.refreshing):not(.refresh-failed):not(.archived) {
+  display: none;
 }
 .ws-tab-close {
   border: none;
@@ -2558,6 +2593,10 @@ button.connector-action { padding: 5px 10px; font-size: 12px; }
 .df-row-sub {
   font-size: 11px;
   color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .df-row-time {
   font-size: 11.5px;
