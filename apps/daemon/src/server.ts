@@ -130,6 +130,23 @@ export function createAgentRuntimeEnv(
   return env;
 }
 
+export function createAgentRuntimeToolPrompt(
+  daemonUrl: string,
+  toolTokenGrant: { token?: string } | null = null,
+): string {
+  const tokenLine = toolTokenGrant?.token
+    ? '- `OD_TOOL_TOKEN` is available in your environment for this run. Use it only through project wrapper commands; do not print, persist, or override it.'
+    : '- `OD_TOOL_TOKEN` is not available for this run, so `/api/tools/*` wrapper commands may be unavailable.';
+
+  return [
+    '## Runtime tool environment',
+    '',
+    `- Daemon URL: \`${daemonUrl}\` (also available as \`OD_DAEMON_URL\`).`,
+    tokenLine,
+    '- Prefer project wrapper commands such as `od tools ...` over raw HTTP. The wrappers read these environment values automatically.',
+  ].join('\n');
+}
+
 /**
  * @param {ApiErrorCode} code
  * @param {string} message
@@ -1413,12 +1430,27 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     const attachmentHint = safeAttachments.length
       ? `\n\nAttached project files: ${safeAttachments.map((p) => `\`${p}\``).join(', ')}`
       : '';
+    const toolTokenGrant = cwd && typeof projectId === 'string' && projectId
+      ? toolTokenRegistry.mint({
+          runId,
+          projectId,
+          allowedEndpoints: CHAT_TOOL_ENDPOINTS,
+          allowedOperations: CHAT_TOOL_OPERATIONS,
+        })
+      : null;
+    let toolTokenRevoked = false;
+    const revokeToolToken = (reason) => {
+      if (toolTokenRevoked || !toolTokenGrant) return;
+      toolTokenRevoked = true;
+      toolTokenRegistry.revokeToken(toolTokenGrant.token, reason);
+    };
+    res.on('close', () => revokeToolToken('sse_end'));
+    res.on('finish', () => revokeToolToken('sse_end'));
+    const runtimeToolPrompt = createAgentRuntimeToolPrompt(daemonUrl, toolTokenGrant);
     const composed = [
       systemPrompt && systemPrompt.trim()
-        ? `# Instructions (read first)\n\n${systemPrompt.trim()}${cwdHint}\n\n---\n`
-        : cwdHint
-          ? `# Instructions${cwdHint}\n\n---\n`
-          : '',
+        ? `# Instructions (read first)\n\n${systemPrompt.trim()}\n\n${runtimeToolPrompt}${cwdHint}\n\n---\n`
+        : `# Instructions\n\n${runtimeToolPrompt}${cwdHint}\n\n---\n`,
       `# User request\n\n${message}${attachmentHint}`,
       safeImages.length ? `\n\n${safeImages.map((p) => `@${p}`).join(' ')}` : '',
     ].join('');
@@ -1511,6 +1543,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     // from issue #10 the rest of this block is meant to prevent.
     if (!resolvedBin) {
       cleanPromptFile();
+      revokeToolToken('child_exit');
       send('error', createSseErrorPayload(
         'AGENT_UNAVAILABLE',
         `Agent "${def.name}" (\`${def.bin}\`) is not installed or not on PATH. ` +
@@ -1519,23 +1552,6 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       ));
       return sse.end();
     }
-
-    const toolTokenGrant = cwd && typeof projectId === 'string' && projectId
-      ? toolTokenRegistry.mint({
-          runId,
-          projectId,
-          allowedEndpoints: CHAT_TOOL_ENDPOINTS,
-          allowedOperations: CHAT_TOOL_OPERATIONS,
-        })
-      : null;
-    let toolTokenRevoked = false;
-    const revokeToolToken = (reason) => {
-      if (toolTokenRevoked || !toolTokenGrant) return;
-      toolTokenRevoked = true;
-      toolTokenRegistry.revokeToken(toolTokenGrant.token, reason);
-    };
-    res.on('close', () => revokeToolToken('sse_end'));
-    res.on('finish', () => revokeToolToken('sse_end'));
 
     // npm shims on Windows are .cmd/.bat files; Node ≥21 refuses to spawn
     // those without `shell: true` (CVE-2024-27980). When `shell: true` is set
