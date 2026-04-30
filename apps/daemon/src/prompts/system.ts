@@ -29,17 +29,46 @@
  * The composed string is what the daemon sees as `systemPrompt` and what
  * the Anthropic path sends as `system`.
  */
-import type { ProjectMetadata, ProjectTemplate } from '../types';
-import { OFFICIAL_DESIGNER_PROMPT } from './official-system';
-import { DISCOVERY_AND_PHILOSOPHY } from './discovery';
-import { DECK_FRAMEWORK_DIRECTIVE } from './deck-framework';
+import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
+import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
+import { DECK_FRAMEWORK_DIRECTIVE } from './deck-framework.js';
+import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
+
+type ProjectMetadata = {
+  kind?: string;
+  fidelity?: string | null;
+  speakerNotes?: boolean | null;
+  animations?: boolean | null;
+  templateId?: string | null;
+  templateLabel?: string | null;
+  inspirationDesignSystemIds?: string[];
+  imageModel?: string | null;
+  imageAspect?: string | null;
+  imageStyle?: string | null;
+  videoModel?: string | null;
+  videoLength?: number | null;
+  videoAspect?: string | null;
+  audioKind?: string | null;
+  audioModel?: string | null;
+  audioDuration?: number | null;
+  voice?: string | null;
+};
+type ProjectTemplate = { name: string; description?: string | null; files: Array<{ name: string; content: string }> };
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
 
 export interface ComposeInput {
   skillBody?: string | undefined;
   skillName?: string | undefined;
-  skillMode?: 'prototype' | 'deck' | 'template' | 'design-system' | undefined;
+  skillMode?:
+    | 'prototype'
+    | 'deck'
+    | 'template'
+    | 'design-system'
+    | 'image'
+    | 'video'
+    | 'audio'
+    | undefined;
   designSystemBody?: string | undefined;
   designSystemTitle?: string | undefined;
   // Project-level metadata captured by the new-project panel. Drives the
@@ -111,6 +140,17 @@ export function composeSystemPrompt({
     parts.push(`\n\n---\n\n${DECK_FRAMEWORK_DIRECTIVE}`);
   }
 
+  const isMediaSurface =
+    skillMode === 'image' ||
+    skillMode === 'video' ||
+    skillMode === 'audio' ||
+    metadata?.kind === 'image' ||
+    metadata?.kind === 'video' ||
+    metadata?.kind === 'audio';
+  if (isMediaSurface) {
+    parts.push(MEDIA_GENERATION_CONTRACT);
+  }
+
   return parts.join('');
 }
 
@@ -126,11 +166,6 @@ function renderMetadataBlock(
   );
   lines.push('');
   lines.push(`- **kind**: ${metadata.kind}`);
-  if (metadata.intent === 'live-artifact') {
-    lines.push(
-      '- **intent**: live-artifact — the user chose New live artifact. The first output should be a live artifact/dashboard/report, not a one-off static mockup. Prefer the `live-artifact` skill workflow when available, keep source data compact, and register through the daemon live-artifact tool path once that wrapper/tooling is available.',
-    );
-  }
 
   if (metadata.kind === 'prototype') {
     lines.push(
@@ -149,6 +184,61 @@ function renderMetadataBlock(
     if (metadata.templateLabel) {
       lines.push(`- **template**: ${metadata.templateLabel}`);
     }
+  }
+  if (metadata.kind === 'image') {
+    lines.push(
+      `- **imageModel**: ${metadata.imageModel ?? '(unknown — ask: which image model to use)'}`,
+    );
+    lines.push(
+      `- **aspectRatio**: ${metadata.imageAspect ?? '(unknown — ask: 1:1, 16:9, 9:16, 4:3, 3:4)'}`,
+    );
+    if (metadata.imageStyle) {
+      lines.push(`- **styleNotes**: ${metadata.imageStyle}`);
+    }
+    lines.push('');
+    lines.push(
+      'This is an **image** project. Plan the prompt carefully, then dispatch via the **media generation contract** using `od media generate --surface image --model <imageModel>`. Do NOT emit `<artifact>` HTML for media surfaces.',
+    );
+  }
+  if (metadata.kind === 'video') {
+    lines.push(
+      `- **videoModel**: ${metadata.videoModel ?? '(unknown — ask: which video model to use)'}`,
+    );
+    lines.push(
+      `- **lengthSeconds**: ${typeof metadata.videoLength === 'number' ? metadata.videoLength : '(unknown — ask: 3s / 5s / 10s)'}`,
+    );
+    lines.push(
+      `- **aspectRatio**: ${metadata.videoAspect ?? '(unknown — ask: 16:9, 9:16, 1:1)'}`,
+    );
+    lines.push('');
+    lines.push(
+      'This is a **video** project. Plan the shotlist and motion, then dispatch via the **media generation contract** using `od media generate --surface video --model <videoModel> --length <seconds> --aspect <ratio>`. Do NOT emit `<artifact>` HTML.',
+    );
+    if (metadata.videoModel === 'hyperframes-html') {
+      lines.push(
+        'Special case: `hyperframes-html` is a local HTML-to-MP4 renderer, not a photoreal text-to-video model. Treat it like a motion design renderer, ask at most one clarifying question, then dispatch immediately.',
+      );
+    }
+  }
+  if (metadata.kind === 'audio') {
+    lines.push(
+      `- **audioKind**: ${metadata.audioKind ?? '(unknown — ask: music / speech / sfx)'}`,
+    );
+    lines.push(
+      `- **audioModel**: ${metadata.audioModel ?? '(unknown — ask: which audio model to use)'}`,
+    );
+    lines.push(
+      `- **durationSeconds**: ${typeof metadata.audioDuration === 'number' ? metadata.audioDuration : '(unknown — ask: target duration)'}`,
+    );
+    if (metadata.voice) {
+      lines.push(`- **voice**: ${metadata.voice}`);
+    } else if (metadata.audioKind === 'speech') {
+      lines.push('- **voice**: (unknown — ask: voice id / accent / pacing)');
+    }
+    lines.push('');
+    lines.push(
+      'This is an **audio** project. Lock the content intent first, then dispatch via the **media generation contract** using `od media generate --surface audio --audio-kind <kind> --model <audioModel> --duration <seconds>` and add `--voice <voice-id>` for speech when you have a provider-specific voice id. Do NOT emit `<artifact>` HTML.',
+    );
   }
 
   if (metadata.inspirationDesignSystemIds && metadata.inspirationDesignSystemIds.length > 0) {
@@ -201,13 +291,6 @@ function derivePreflight(skillBody: string): string {
   if (/references\/themes\.md/.test(skillBody)) refs.push('`references/themes.md`');
   if (/references\/components\.md/.test(skillBody)) refs.push('`references/components.md`');
   if (/references\/checklist\.md/.test(skillBody)) refs.push('`references/checklist.md`');
-  if (/references\/artifact-schema\.md/.test(skillBody)) refs.push('`references/artifact-schema.md`');
-  if (/references\/connector-policy\.md|connector-policy\.md/.test(skillBody)) {
-    refs.push('`references/connector-policy.md`');
-  }
-  if (/references\/refresh-contract\.md|refresh-contract\.md/.test(skillBody)) {
-    refs.push('`references/refresh-contract.md`');
-  }
   if (refs.length === 0) return '';
-  return ` **Pre-flight (do this before any other tool):** Read ${refs.join(', ')} via the path written in the skill-root preamble. If the skill asks for daemon wrapper commands, use the runtime tool environment documented below; it provides the daemon URL and whether a run-scoped tool token is available without exposing token internals. The seed template defines the class system you'll paste into; the layouts file is the only acceptable source of section/screen/slide skeletons; the checklist and live-artifact references are your validation gate before emitting \`<artifact>\` or registering a live artifact. Skipping this step is the #1 reason output regresses to generic AI-slop.`;
+  return ` **Pre-flight (do this before any other tool):** Read ${refs.join(', ')} via the path written in the skill-root preamble. The seed template defines the class system you'll paste into; the layouts file is the only acceptable source of section/screen/slide skeletons; the checklist is your P0/P1/P2 gate before emitting \`<artifact>\`. Skipping this step is the #1 reason output regresses to generic AI-slop.`;
 }

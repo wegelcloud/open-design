@@ -1,14 +1,16 @@
 // Supported UI locales. Adding a new locale requires creating a new
 // dictionary in `./locales/` and registering it in `./index.tsx`.
-export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'pt-BR';
+export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'pt-BR' | 'ru' | 'fa';
 
-export const LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'pt-BR'];
+export const LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'pt-BR', 'ru', 'fa'];
 
 export const LOCALE_LABEL: Record<Locale, string> = {
   'en': 'English',
   'zh-CN': '简体中文',
   'zh-TW': '繁體中文',
   'pt-BR': 'Português (Brasil)',
+  'ru': 'Русский',
+  'fa': 'فارسی',
 };
 
 // Translation dictionary shape — flat keys, dot-namespaced. We keep it
@@ -101,12 +103,23 @@ export interface Dict {
   'settings.modelCustom': string;
   'settings.modelCustomLabel': string;
   'settings.modelCustomPlaceholder': string;
+  'settings.mediaProviders': string;
+  'settings.mediaProvidersHint': string;
+  'settings.mediaProviderApiKey': string;
+  'settings.mediaProviderBaseUrl': string;
+  'settings.mediaProviderConfigured': string;
+  'settings.mediaProviderUnset': string;
+  'settings.mediaProviderClear': string;
+  'settings.mediaProviderPlaceholder': string;
+  'settings.mediaProviderBaseUrlPlaceholder': string;
 
   // Entry view / tabs
   'entry.tabDesigns': string;
   'entry.tabExamples': string;
   'entry.tabDesignSystems': string;
   'entry.tabConnectors': string;
+  'entry.tabImageTemplates': string;
+  'entry.tabVideoTemplates': string;
   'entry.openSettingsTitle': string;
   'entry.openSettingsAria': string;
   'entry.resizeAria': string;
@@ -138,6 +151,9 @@ export interface Dict {
   'newproj.titleLiveArtifact': string;
   'newproj.titleDeck': string;
   'newproj.titleTemplate': string;
+  'newproj.titleImage': string;
+  'newproj.titleVideo': string;
+  'newproj.titleAudio': string;
   'newproj.titleOther': string;
   'newproj.namePlaceholder': string;
   'newproj.fidelityLabel': string;
@@ -178,6 +194,41 @@ export interface Dict {
   'newproj.dsFootClear': string;
   'newproj.dsBadgeDefault': string;
   'newproj.dsPrimaryFallback': string;
+  'newproj.surfaceImage': string;
+  'newproj.surfaceVideo': string;
+  'newproj.surfaceAudio': string;
+  'newproj.modelLabel': string;
+  'newproj.aspectLabel': string;
+  'newproj.imageStyleLabel': string;
+  'newproj.imageStylePlaceholder': string;
+  'newproj.videoLengthLabel': string;
+  'newproj.videoLengthSeconds': string;
+  'newproj.audioKindLabel': string;
+  'newproj.audioKindMusic': string;
+  'newproj.audioKindSpeech': string;
+  'newproj.audioKindSfx': string;
+  'newproj.audioDurationLabel': string;
+  'newproj.audioDurationSeconds': string;
+  'newproj.voiceLabel': string;
+  'newproj.voicePlaceholder': string;
+
+  // Prompt templates
+  'promptTemplates.searchPlaceholder': string;
+  'promptTemplates.countLabel': string;
+  'promptTemplates.emptyImage': string;
+  'promptTemplates.emptyVideo': string;
+  'promptTemplates.emptyNoMatch': string;
+  'promptTemplates.attributionFooter': string;
+  'promptTemplates.openPreviewTitle': string;
+  'promptTemplates.sourcePrefix': string;
+  'promptTemplates.fetchError': string;
+  'promptTemplates.promptLabel': string;
+  'promptTemplates.copyPrompt': string;
+  'promptTemplates.copyDone': string;
+  'promptTemplates.modelHint': string;
+  'promptTemplates.openSource': string;
+  'promptTemplates.openFullscreen': string;
+  'promptTemplates.closeFullscreen': string;
 
   // Designs tab
   'designs.subRecent': string;
@@ -199,9 +250,26 @@ export interface Dict {
   'designs.statusRefreshing': string;
   'designs.statusRefreshFailed': string;
   'designs.statusRefreshed': string;
+  'designs.status.notStarted': string;
+  'designs.status.queued': string;
+  'designs.status.running': string;
+  'designs.status.awaitingInput': string;
+  'designs.status.succeeded': string;
+  'designs.status.failed': string;
+  'designs.status.canceled': string;
+  'designs.viewToggleAria': string;
+  'designs.viewGrid': string;
+  'designs.viewKanban': string;
+  'designs.kanbanEmptyColumn': string;
+  'designs.deleteAria': string;
 
   // Examples tab
   'examples.typeLabel': string;
+  'examples.surfaceLabel': string;
+  'examples.surfaceWeb': string;
+  'examples.surfaceImage': string;
+  'examples.surfaceVideo': string;
+  'examples.surfaceAudio': string;
   'examples.scenarioLabel': string;
   'examples.modeAll': string;
   'examples.modePrototypeDesktop': string;
@@ -238,9 +306,17 @@ export interface Dict {
   'examples.tagDesignSystem': string;
   'examples.tagMobilePrototype': string;
   'examples.tagDesktopPrototype': string;
+  'examples.tagImage': string;
+  'examples.tagVideo': string;
+  'examples.tagAudio': string;
   'examples.previewLabel': string;
 
   // Design systems tab
+  'ds.surfaceLabel': string;
+  'ds.surfaceWeb': string;
+  'ds.surfaceImage': string;
+  'ds.surfaceVideo': string;
+  'ds.surfaceAudio': string;
   'ds.searchPlaceholder': string;
   'ds.emptyNoMatch': string;
   'ds.badgeDefault': string;
@@ -414,6 +490,12 @@ export interface Dict {
   'fileViewer.open': string;
   'fileViewer.imageMeta': string;
   'fileViewer.sketchMeta': string;
+  'fileViewer.markdownStreamingMeta': string;
+  'fileViewer.markdownErrorMeta': string;
+  'fileViewer.markdownStreamingStatus': string;
+  'fileViewer.markdownErrorStatus': string;
+  'fileViewer.videoMeta': string;
+  'fileViewer.audioMeta': string;
   'fileViewer.reload': string;
   'fileViewer.reloadDisk': string;
   'fileViewer.copy': string;
@@ -471,6 +553,31 @@ export interface Dict {
   'liveArtifact.refresh.statusReady': string;
   'liveArtifact.refresh.statusSucceeded': string;
   'liveArtifact.refresh.statusFailed': string;
+  'fileViewer.deployToVercel': string;
+  'fileViewer.redeployToVercel': string;
+  'fileViewer.deployingToVercel': string;
+  'fileViewer.preparingPublicLink': string;
+  'fileViewer.copyDeployLink': string;
+  'fileViewer.deployModalTitle': string;
+  'fileViewer.deployModalSubtitle': string;
+  'fileViewer.vercelToken': string;
+  'fileViewer.vercelTokenGetLink': string;
+  'fileViewer.vercelTokenPlaceholder': string;
+  'fileViewer.vercelTokenReuseHint': string;
+  'fileViewer.vercelTokenRequired': string;
+  'fileViewer.vercelTeamId': string;
+  'fileViewer.vercelTeamSlug': string;
+  'fileViewer.optional': string;
+  'fileViewer.vercelPreviewOnly': string;
+  'fileViewer.savingConfig': string;
+  'fileViewer.deployConfigSaveFailed': string;
+  'fileViewer.deployFailed': string;
+  'fileViewer.deployResultLabel': string;
+  'fileViewer.deployLinkPreparingLabel': string;
+  'fileViewer.deployLinkDelayed': string;
+  'fileViewer.deployLinkProtectedLabel': string;
+  'fileViewer.deployLinkProtected': string;
+  'fileViewer.retryLink': string;
 
   // Question form (assistant question UX)
   'questionForm.submit': string;

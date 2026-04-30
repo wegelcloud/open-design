@@ -1,8 +1,11 @@
 import type {
   AgentInfo,
+  AudioKind,
   ChatAttachment,
   ChatMessage,
   Conversation,
+  DeployConfigResponse,
+  DeployProjectFileResponse,
   DesignSystemDetail,
   DesignSystemSummary,
   LiveArtifact,
@@ -14,8 +17,11 @@ import type {
   LiveArtifactSummary,
   LiveArtifactTile,
   LiveArtifactTileRefreshStatus,
+  MediaAspect,
+  ProjectDeploymentsResponse,
   PersistedAgentEvent,
   Project,
+  ProjectDisplayStatus,
   ProjectFile,
   ProjectFileKind,
   ProjectKind,
@@ -23,6 +29,7 @@ import type {
   ProjectTemplate,
   SkillDetail,
   SkillSummary,
+  UpdateDeployConfigRequest,
 } from '@open-design/contracts';
 
 export type ExecMode = 'daemon' | 'api';
@@ -103,6 +110,11 @@ export interface LiveArtifactPreviewRequest {
   previewUrl: string;
 }
 
+export interface MediaProviderCredentials {
+  apiKey: string;
+  baseUrl: string;
+}
+
 // Per-CLI model + reasoning the user picked in the model menu. Each agent
 // keeps its own slot so flipping between Codex and Gemini doesn't reset the
 // other one's choice. Missing entries fall back to the agent's first
@@ -124,6 +136,7 @@ export interface AppConfig {
   // least once (saved or skipped). Bootstrap skips the auto-popup when
   // this is set so refreshing the page doesn't re-prompt.
   onboardingCompleted?: boolean;
+  mediaProviders?: Record<string, MediaProviderCredentials>;
   // Per-CLI model picker state, keyed by agent id (e.g. `gemini`, `codex`).
   // Pre-existing configs without this field fall through to the agent's
   // declared default.
@@ -153,9 +166,39 @@ export interface AgentModelOption {
   label: string;
 }
 
+export type Surface = 'web' | 'image' | 'video' | 'audio';
+
+export interface PromptTemplateSource {
+  repo: string;
+  license: string;
+  author?: string;
+  url?: string;
+}
+
+export interface PromptTemplateSummary {
+  id: string;
+  surface: 'image' | 'video';
+  title: string;
+  summary: string;
+  category: string;
+  tags?: string[];
+  model?: string;
+  aspect?: MediaAspect;
+  previewImageUrl?: string;
+  previewVideoUrl?: string;
+  source: PromptTemplateSource;
+}
+
+export interface PromptTemplateDetail extends PromptTemplateSummary {
+  prompt: string;
+}
+
 export type {
   AgentInfo,
+  AudioKind,
   Conversation,
+  DeployConfigResponse,
+  DeployProjectFileResponse,
   DesignSystemDetail,
   DesignSystemSummary,
   LiveArtifact,
@@ -166,7 +209,10 @@ export type {
   LiveArtifactSummary,
   LiveArtifactTile,
   LiveArtifactTileRefreshStatus,
+  MediaAspect,
+  ProjectDeploymentsResponse,
   Project,
+  ProjectDisplayStatus,
   ProjectFile,
   ProjectFileKind,
   ProjectKind,
@@ -174,6 +220,7 @@ export type {
   ProjectTemplate,
   SkillDetail,
   SkillSummary,
+  UpdateDeployConfigRequest,
 };
 
 export interface OpenTabsState {

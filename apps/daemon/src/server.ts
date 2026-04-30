@@ -8,6 +8,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
+import { composeSystemPrompt } from './prompts/system.js';
 import {
   buildLiveArtifactsMcpServersForAgent,
   detectAgents,
@@ -19,15 +20,30 @@ import {
 import { listSkills } from './skills.js';
 import { listDesignSystems, readDesignSystem } from './design-systems.js';
 import { attachAcpSession } from './acp.js';
+import { attachPiRpcSession } from './pi-rpc.js';
 import { createClaudeStreamHandler } from './claude-stream.js';
 import { createCopilotStreamHandler } from './copilot-stream.js';
 import { createJsonEventStreamHandler } from './json-event-stream.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
+import { createChatRunService } from './runs.js';
 import { importClaudeDesignZip } from './claude-design-import.js';
+import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
 import { buildDocumentPreview } from './document-preview.js';
 import { lintArtifact, renderFindingsForAgent } from './lint-artifact.js';
+import { generateMedia } from './media.js';
 import {
+  AUDIO_DURATIONS_SEC,
+  AUDIO_MODELS_BY_KIND,
+  IMAGE_MODELS,
+  MEDIA_ASPECTS,
+  MEDIA_PROVIDERS,
+  VIDEO_LENGTHS_SEC,
+  VIDEO_MODELS,
+} from './media-models.js';
+import { readMaskedConfig, writeConfig } from './media-config.js';
+import {
+  decodeMultipartFilename,
   deleteProjectFile,
   ensureProject,
   listFiles,
@@ -43,12 +59,17 @@ import {
   deleteProject as dbDeleteProject,
   deleteTemplate,
   getConversation,
+  getDeployment,
+  getDeploymentById,
   getProject,
   getTemplate,
   insertConversation,
   insertProject,
   insertTemplate,
+  listProjectsAwaitingInput,
   listConversations,
+  listDeployments,
+  listLatestProjectRunStatuses,
   listMessages,
   listProjects,
   listTabs,
@@ -57,6 +78,7 @@ import {
   setTabs,
   updateConversation,
   updateProject,
+  upsertDeployment,
   upsertMessage,
 } from './db.js';
 import {
@@ -73,6 +95,16 @@ import { refreshLiveArtifact } from './live-artifacts/refresh-service.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
 import { configureConnectorCredentialStore, FileConnectorCredentialStore } from './connectors/service.js';
 import { CHAT_TOOL_ENDPOINTS, CHAT_TOOL_OPERATIONS, toolTokenRegistry } from './tool-tokens.js';
+import {
+  buildDeployFileSet,
+  checkDeploymentUrl,
+  DeployError,
+  deployToVercel,
+  publicDeployConfig,
+  readVercelConfig,
+  VERCEL_PROVIDER_ID,
+  writeVercelConfig,
+} from './deploy.js';
 
 /** @typedef {import('@open-design/contracts').ApiErrorCode} ApiErrorCode */
 /** @typedef {import('@open-design/contracts').ApiError} ApiError */
@@ -85,20 +117,85 @@ import { CHAT_TOOL_ENDPOINTS, CHAT_TOOL_OPERATIONS, toolTokenRegistry } from './
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export function resolveProjectRoot(moduleDir: string): string {
-  const daemonDir = path.basename(moduleDir) === 'dist'
+  const base = path.basename(moduleDir);
+  const daemonDir = base === 'dist' || base === 'src'
     ? path.dirname(moduleDir)
     : moduleDir;
   return path.resolve(daemonDir, '../..');
 }
 
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
+const RESOURCE_ROOT_ENV = 'OD_RESOURCE_ROOT';
+
+function isPathWithin(base, target) {
+  const relativePath = path.relative(path.resolve(base), path.resolve(target));
+  return relativePath === '' || (relativePath.length > 0 && !relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
+function resolveProcessResourcesPath() {
+  if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
+    return process.resourcesPath;
+  }
+
+  // Packaged daemon sidecars run under the bundled Node binary rather than the
+  // Electron root process, so `process.resourcesPath` is unavailable there.
+  // Infer the macOS app Resources directory from that bundled Node path.
+  const resourcesMarker = `${path.sep}Contents${path.sep}Resources${path.sep}`;
+  const markerIndex = process.execPath.indexOf(resourcesMarker);
+  if (markerIndex === -1) return null;
+
+  return process.execPath.slice(0, markerIndex + resourcesMarker.length - 1);
+}
+
+export function resolveDaemonResourceRoot({
+  configured = process.env[RESOURCE_ROOT_ENV],
+  safeBases = [PROJECT_ROOT, resolveProcessResourcesPath()],
+} = {}) {
+  if (!configured || configured.length === 0) return null;
+
+  const resolved = path.resolve(configured);
+  const normalizedSafeBases = safeBases
+    .filter((base) => typeof base === 'string' && base.length > 0)
+    .map((base) => path.resolve(base));
+
+  if (!normalizedSafeBases.some((base) => isPathWithin(base, resolved))) {
+    throw new Error(`${RESOURCE_ROOT_ENV} must be under the workspace root or app resources path`);
+  }
+
+  return resolved;
+}
+
+function resolveDaemonResourceDir(resourceRoot, segment, fallback) {
+  return resourceRoot ? path.join(resourceRoot, segment) : fallback;
+}
+
+const DAEMON_RESOURCE_ROOT = resolveDaemonResourceRoot();
 // Built web app lives in `out/` — that's where Next.js writes the static
 // export configured in next.config.ts. The folder name used to be `dist/`
 // when this project shipped with Vite; the daemon serves whatever the
 // frontend toolchain emits, no further config needed.
 const STATIC_DIR = path.join(PROJECT_ROOT, 'apps', 'web', 'out');
-const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
-const DESIGN_SYSTEMS_DIR = path.join(PROJECT_ROOT, 'design-systems');
+const OD_BIN = path.join(PROJECT_ROOT, 'apps', 'daemon', 'dist', 'cli.js');
+const SKILLS_DIR = resolveDaemonResourceDir(
+  DAEMON_RESOURCE_ROOT,
+  'skills',
+  path.join(PROJECT_ROOT, 'skills'),
+);
+const DESIGN_SYSTEMS_DIR = resolveDaemonResourceDir(
+  DAEMON_RESOURCE_ROOT,
+  'design-systems',
+  path.join(PROJECT_ROOT, 'design-systems'),
+);
+const FRAMES_DIR = resolveDaemonResourceDir(
+  DAEMON_RESOURCE_ROOT,
+  'frames',
+  path.join(PROJECT_ROOT, 'assets', 'frames'),
+);
+const PROMPT_TEMPLATES_DIR = resolveDaemonResourceDir(
+  DAEMON_RESOURCE_ROOT,
+  'prompt-templates',
+  path.join(PROJECT_ROOT, 'prompt-templates'),
+);
 const RUNTIME_DATA_DIR = process.env.OD_DATA_DIR
   ? path.resolve(PROJECT_ROOT, process.env.OD_DATA_DIR)
   : path.join(PROJECT_ROOT, '.od');
@@ -180,6 +277,20 @@ export function createAgentRuntimeToolPrompt(
     tokenLine,
     '- Prefer project wrapper commands such as `od tools ...` over raw HTTP. The wrappers read these environment values automatically.',
   ].join('\n');
+}
+
+export function normalizeProjectDisplayStatus(status) {
+  return status === 'starting' || status === 'queued' ? 'running' : status;
+}
+
+export function composeProjectDisplayStatus(baseStatus, awaitingInputProjects, projectId) {
+  if (baseStatus.value === 'succeeded' && awaitingInputProjects.has(projectId)) {
+    return { ...baseStatus, value: 'awaiting_input' };
+  }
+  return {
+    ...baseStatus,
+    value: normalizeProjectDisplayStatus(baseStatus.value),
+  };
 }
 
 /**
@@ -375,7 +486,8 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
     filename: (_req, file, cb) => {
-      const safe = file.originalname.replace(/[^\w.\-]/g, '_');
+      file.originalname = decodeMultipartFilename(file.originalname);
+      const safe = sanitizeName(file.originalname);
       cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`);
     },
   }),
@@ -386,7 +498,8 @@ const importUpload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
     filename: (_req, file, cb) => {
-      const safe = file.originalname.replace(/[^\w.\-]/g, '_');
+      file.originalname = decodeMultipartFilename(file.originalname);
+      const safe = sanitizeName(file.originalname);
       cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`);
     },
   }),
@@ -408,9 +521,12 @@ const projectUpload = multer({
       }
     },
     filename: (_req, file, cb) => {
-      // Reuse the same sanitiser used everywhere else, then prepend a
-      // base36 timestamp so multiple uploads with the same original name
-      // don't clobber each other.
+      // multer@1 hands us latin1-decoded multipart filenames; restore the
+      // original UTF-8 so the response (and the on-disk name) preserves
+      // non-ASCII characters instead of mangling them. Then run the
+      // shared sanitiser and prepend a base36 timestamp so multiple
+      // uploads with the same original name don't clobber each other.
+      file.originalname = decodeMultipartFilename(file.originalname);
       const safe = sanitizeName(file.originalname);
       cb(null, `${Date.now().toString(36)}-${safe}`);
     },
@@ -466,6 +582,52 @@ function sendMulterError(res, err) {
   return sendApiError(res, 500, 'INTERNAL_ERROR', 'upload failed');
 }
 
+const mediaTasks = new Map();
+const TASK_TTL_AFTER_DONE_MS = 10 * 60 * 1000;
+
+function createMediaTask(taskId, projectId, info = {}) {
+  const task = {
+    id: taskId,
+    projectId,
+    status: 'queued',
+    surface: info.surface,
+    model: info.model,
+    progress: [],
+    file: null,
+    error: null,
+    startedAt: Date.now(),
+    endedAt: null,
+    waiters: new Set(),
+  };
+  mediaTasks.set(taskId, task);
+  return task;
+}
+
+function appendTaskProgress(task, line) {
+  task.progress.push(line);
+  notifyTaskWaiters(task);
+}
+
+function notifyTaskWaiters(task) {
+  const wakers = Array.from(task.waiters);
+  for (const w of wakers) {
+    try {
+      w();
+    } catch {
+      // Never let one bad waiter block the rest.
+    }
+  }
+  if (
+    (task.status === 'done' || task.status === 'failed') &&
+    !task._gcScheduled
+  ) {
+    task._gcScheduled = true;
+    setTimeout(() => {
+      if (task.waiters.size === 0) mediaTasks.delete(task.id);
+    }, TASK_TTL_AFTER_DONE_MS).unref?.();
+  }
+}
+
 export function createSseResponse(res, { keepAliveIntervalMs = SSE_KEEPALIVE_INTERVAL_MS } = {}) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -500,8 +662,9 @@ export function createSseResponse(res, { keepAliveIntervalMs = SSE_KEEPALIVE_INT
 
   return {
     /** @param {ChatSseEvent['event'] | ProxySseEvent['event'] | string} event */
-    send(event, data) {
+    send(event, data, id = null) {
       if (!canWrite()) return false;
+      if (id !== null && id !== undefined) res.write(`id: ${id}\n`);
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
       return true;
@@ -551,13 +714,48 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
 
   app.get('/api/projects', (_req, res) => {
     try {
+      const latestRunStatuses = listLatestProjectRunStatuses(db);
+      const awaitingInputProjects = listProjectsAwaitingInput(db);
+      const activeRunStatuses = new Map();
+      for (const run of design.runs.list()) {
+        if (!run.projectId) continue;
+        const runStatus = projectStatusFromRun(run);
+        if (design.runs.isTerminal(run.status)) {
+          const existing = latestRunStatuses.get(run.projectId);
+          if (!existing || run.updatedAt > (existing.updatedAt ?? 0)) {
+            latestRunStatuses.set(run.projectId, runStatus);
+          }
+        } else {
+          const existing = activeRunStatuses.get(run.projectId);
+          if (!existing || run.updatedAt > (existing.updatedAt ?? 0)) {
+            activeRunStatuses.set(run.projectId, runStatus);
+          }
+        }
+      }
       /** @type {import('@open-design/contracts').ProjectsResponse} */
-      const body = { projects: listProjects(db) };
+      const body = {
+        projects: listProjects(db).map((project) => ({
+          ...project,
+          status: composeProjectDisplayStatus(
+            activeRunStatuses.get(project.id) ?? latestRunStatuses.get(project.id) ?? { value: 'not_started' },
+            awaitingInputProjects,
+            project.id,
+          ),
+        })),
+      };
       res.json(body);
     } catch (err) {
       sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
     }
   });
+
+  function projectStatusFromRun(run) {
+    return {
+      value: normalizeProjectDisplayStatus(run.status),
+      updatedAt: run.updatedAt,
+      runId: run.id,
+    };
+  }
 
   app.post('/api/projects', async (req, res) => {
     try {
@@ -929,6 +1127,31 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     }
   });
 
+  app.get('/api/prompt-templates', async (_req, res) => {
+    try {
+      const templates = await listPromptTemplates(PROMPT_TEMPLATES_DIR);
+      res.json({
+        promptTemplates: templates.map(({ prompt: _prompt, ...rest }) => rest),
+      });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/prompt-templates/:surface/:id', async (req, res) => {
+    try {
+      const tpl = await readPromptTemplate(
+        PROMPT_TEMPLATES_DIR,
+        req.params.surface,
+        req.params.id,
+      );
+      if (!tpl) return res.status(404).json({ error: 'prompt template not found' });
+      res.json({ promptTemplate: tpl });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // Showcase HTML for a design system — palette swatches, typography
   // samples, sample components, and the full DESIGN.md rendered as prose.
   // Built at request time from the on-disk DESIGN.md so any update to the
@@ -1293,11 +1516,109 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
 
   app.use('/artifacts', express.static(ARTIFACTS_DIR));
 
+  // ---- Deploy --------------------------------------------------------------
+
+  app.get('/api/deploy/config', async (_req, res) => {
+    try {
+      /** @type {import('@open-design/contracts').DeployConfigResponse} */
+      const body = publicDeployConfig(await readVercelConfig());
+      res.json(body);
+    } catch (err) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err?.message || err));
+    }
+  });
+
+  app.put('/api/deploy/config', async (req, res) => {
+    try {
+      /** @type {import('@open-design/contracts').DeployConfigResponse} */
+      const body = await writeVercelConfig(req.body || {});
+      res.json(body);
+    } catch (err) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err?.message || err));
+    }
+  });
+
+  app.get('/api/projects/:id/deployments', (req, res) => {
+    try {
+      /** @type {import('@open-design/contracts').ProjectDeploymentsResponse} */
+      const body = { deployments: listDeployments(db, req.params.id) };
+      res.json(body);
+    } catch (err) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err?.message || err));
+    }
+  });
+
+  app.post('/api/projects/:id/deploy', async (req, res) => {
+    try {
+      const { fileName, providerId = VERCEL_PROVIDER_ID } = req.body || {};
+      if (providerId !== VERCEL_PROVIDER_ID) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'unsupported deploy provider');
+      }
+      if (typeof fileName !== 'string' || !fileName.trim()) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+
+      const prior = getDeployment(db, req.params.id, fileName, providerId);
+      const files = await buildDeployFileSet(PROJECTS_DIR, req.params.id, fileName);
+      const result = await deployToVercel({
+        config: await readVercelConfig(),
+        files,
+        projectId: req.params.id,
+      });
+      const now = Date.now();
+      /** @type {import('@open-design/contracts').DeployProjectFileResponse} */
+      const body = upsertDeployment(db, {
+        id: prior?.id ?? randomUUID(),
+        projectId: req.params.id,
+        fileName,
+        providerId,
+        url: result.url,
+        deploymentId: result.deploymentId,
+        deploymentCount: (prior?.deploymentCount ?? 0) + 1,
+        target: 'preview',
+        status: result.status,
+        statusMessage: result.statusMessage,
+        reachableAt: result.reachableAt,
+        createdAt: prior?.createdAt ?? now,
+        updatedAt: now,
+      });
+      res.json(body);
+    } catch (err) {
+      const status = err instanceof DeployError ? err.status : 400;
+      const init = err instanceof DeployError && err.details ? { details: err.details } : {};
+      sendApiError(res, status, status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST', String(err?.message || err), init);
+    }
+  });
+
+  app.post('/api/projects/:id/deployments/:deploymentId/check-link', async (req, res) => {
+    try {
+      const existing = getDeploymentById(db, req.params.id, req.params.deploymentId);
+      if (!existing) {
+        return sendApiError(res, 404, 'FILE_NOT_FOUND', 'deployment not found');
+      }
+      const result = await checkDeploymentUrl(existing.url);
+      const now = Date.now();
+      /** @type {import('@open-design/contracts').CheckDeploymentLinkResponse} */
+      const body = upsertDeployment(db, {
+        ...existing,
+        status: result.reachable ? 'ready' : (result.status || 'link-delayed'),
+        statusMessage: result.reachable
+          ? 'Public link is ready.'
+          : (result.statusMessage || 'Vercel is still preparing the public link.'),
+        reachableAt: result.reachable ? now : existing.reachableAt,
+        updatedAt: now,
+      });
+      res.json(body);
+    } catch (err) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err?.message || err));
+    }
+  });
+
   // Shared device frames (iPhone, Android, iPad, MacBook, browser chrome).
   // Skills can compose multi-screen / multi-device layouts by pointing at
   // these files via `<iframe src="/frames/iphone-15-pro.html?screen=...">`.
   // No mtime-based caching — frames are static and small.
-  app.use('/frames', express.static(path.join(PROJECT_ROOT, 'assets', 'frames')));
+  app.use('/frames', express.static(FRAMES_DIR));
 
   // Project files. Each project owns a flat folder under .od/projects/<id>/
   // containing every file the user has uploaded, pasted, sketched, or that
@@ -1424,6 +1745,199 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     }
   });
 
+  app.get('/api/media/models', (_req, res) => {
+    res.json({
+      providers: MEDIA_PROVIDERS,
+      image: IMAGE_MODELS,
+      video: VIDEO_MODELS,
+      audio: AUDIO_MODELS_BY_KIND,
+      aspects: MEDIA_ASPECTS,
+      videoLengthsSec: VIDEO_LENGTHS_SEC,
+      audioDurationsSec: AUDIO_DURATIONS_SEC,
+    });
+  });
+
+  app.get('/api/media/config', async (_req, res) => {
+    try {
+      const cfg = await readMaskedConfig(PROJECT_ROOT);
+      res.json(cfg);
+    } catch (err) {
+      res.status(500).json({ error: String(err && err.message ? err.message : err) });
+    }
+  });
+
+  app.put('/api/media/config', async (req, res) => {
+    try {
+      const cfg = await writeConfig(PROJECT_ROOT, req.body);
+      res.json(cfg);
+    } catch (err) {
+      const status = typeof err?.status === 'number' ? err.status : 400;
+      res.status(status).json({ error: String(err && err.message ? err.message : err) });
+    }
+  });
+
+  app.post('/api/projects/:id/media/generate', async (req, res) => {
+    if (!isLocalSameOrigin(req, port)) {
+      return res.status(403).json({
+        error: 'cross-origin request rejected: media generation is restricted to the local UI / CLI',
+      });
+    }
+
+    try {
+      const projectId = req.params.id;
+      const project = getProject(db, projectId);
+      if (!project) return res.status(404).json({ error: 'project not found' });
+
+      const taskId = randomUUID();
+      const task = createMediaTask(taskId, projectId, {
+        surface: req.body?.surface,
+        model: req.body?.model,
+      });
+      console.error(
+        `[task ${taskId.slice(0, 8)}] queued model=${req.body?.model} ` +
+          `surface=${req.body?.surface} ` +
+          `image=${req.body?.image ? 'yes' : 'no'} ` +
+          `compositionDir=${req.body?.compositionDir ? 'yes' : 'no'}`,
+      );
+
+      task.status = 'running';
+      generateMedia({
+        projectRoot: PROJECT_ROOT,
+        projectsRoot: PROJECTS_DIR,
+        projectId,
+        surface: req.body?.surface,
+        model: req.body?.model,
+        prompt: req.body?.prompt,
+        output: req.body?.output,
+        aspect: req.body?.aspect,
+        length: typeof req.body?.length === 'number' ? req.body.length : undefined,
+        duration:
+          typeof req.body?.duration === 'number' ? req.body.duration : undefined,
+        voice: req.body?.voice,
+        audioKind: req.body?.audioKind,
+        compositionDir: req.body?.compositionDir,
+        image: req.body?.image,
+        onProgress: (line) => appendTaskProgress(task, line),
+      })
+        .then((meta) => {
+          task.status = 'done';
+          task.file = meta;
+          task.endedAt = Date.now();
+          notifyTaskWaiters(task);
+          console.error(
+            `[task ${taskId.slice(0, 8)}] done size=${meta?.size} mime=${meta?.mime} ` +
+              `elapsed=${Math.round((task.endedAt - task.startedAt) / 1000)}s`,
+          );
+        })
+        .catch((err) => {
+          task.status = 'failed';
+          task.error = {
+            message: String(err && err.message ? err.message : err),
+            status: typeof err?.status === 'number' ? err.status : 400,
+            code: err?.code,
+          };
+          task.endedAt = Date.now();
+          notifyTaskWaiters(task);
+          console.error(
+            `[task ${taskId.slice(0, 8)}] failed status=${task.error.status} ` +
+              `message=${(task.error.message || '').slice(0, 240)}`,
+          );
+        });
+
+      res.status(202).json({
+        taskId,
+        status: task.status,
+        startedAt: task.startedAt,
+      });
+    } catch (err) {
+      const status = typeof err?.status === 'number' ? err.status : 400;
+      const code = err?.code;
+      const body = { error: String(err && err.message ? err.message : err) };
+      if (code) body.code = code;
+      res.status(status).json(body);
+    }
+  });
+
+  app.post('/api/media/tasks/:id/wait', async (req, res) => {
+    if (!isLocalSameOrigin(req, port)) {
+      return res.status(403).json({ error: 'cross-origin request rejected' });
+    }
+    const taskId = req.params.id;
+    const task = mediaTasks.get(taskId);
+    if (!task) return res.status(404).json({ error: 'task not found' });
+
+    const since = Number.isFinite(req.body?.since) ? Number(req.body.since) : 0;
+    const requestedTimeout = Number.isFinite(req.body?.timeoutMs)
+      ? Number(req.body.timeoutMs)
+      : 25_000;
+    const timeoutMs = Math.min(Math.max(requestedTimeout, 0), 25_000);
+
+    const respond = () => {
+      if (res.writableEnded) return;
+      const snapshot = {
+        taskId,
+        status: task.status,
+        startedAt: task.startedAt,
+        endedAt: task.endedAt,
+        progress: task.progress.slice(since),
+        nextSince: task.progress.length,
+      };
+      if (task.status === 'done') snapshot.file = task.file;
+      if (task.status === 'failed') snapshot.error = task.error;
+      res.json(snapshot);
+    };
+
+    if (
+      task.status === 'done' ||
+      task.status === 'failed' ||
+      task.progress.length > since
+    ) {
+      return respond();
+    }
+
+    let resolved = false;
+    const wake = () => {
+      if (resolved) return;
+      resolved = true;
+      task.waiters.delete(wake);
+      clearTimeout(timer);
+      respond();
+    };
+    task.waiters.add(wake);
+    const timer = setTimeout(wake, timeoutMs);
+    res.on('close', wake);
+  });
+
+  app.get('/api/projects/:id/media/tasks', (req, res) => {
+    if (!isLocalSameOrigin(req, port)) {
+      return res.status(403).json({ error: 'cross-origin request rejected' });
+    }
+    const projectId = req.params.id;
+    const includeDone =
+      req.query.includeDone === '1' || req.query.includeDone === 'true';
+    const tasks = [];
+    for (const t of mediaTasks.values()) {
+      if (t.projectId !== projectId) continue;
+      const isTerminal = t.status === 'done' || t.status === 'failed';
+      if (isTerminal && !includeDone) continue;
+      tasks.push({
+        taskId: t.id,
+        status: t.status,
+        startedAt: t.startedAt,
+        endedAt: t.endedAt,
+        elapsed: Math.round(((t.endedAt ?? Date.now()) - t.startedAt) / 1000),
+        surface: t.surface,
+        model: t.model,
+        progress: t.progress.slice(-3),
+        progressCount: t.progress.length,
+        ...(t.status === 'done' ? { file: t.file } : {}),
+        ...(t.status === 'failed' ? { error: t.error } : {}),
+      });
+    }
+    tasks.sort((a, b) => b.startedAt - a.startedAt);
+    res.json({ tasks });
+  });
+
   // Multi-file upload that the chat composer uses for paste/drop/picker.
   // Files land flat in the project folder; the response carries the same
   // metadata as listFiles so the client can stage them as ChatAttachments
@@ -1458,26 +1972,83 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     },
   );
 
-  app.post('/api/chat', async (req, res) => {
+  const design = {
+    runs: createChatRunService({ createSseResponse, createSseErrorPayload }),
+  };
+
+  const composeDaemonSystemPrompt = async ({ projectId, skillId, designSystemId }) => {
+    const project = typeof projectId === 'string' && projectId ? getProject(db, projectId) : null;
+    const effectiveSkillId = typeof skillId === 'string' && skillId ? skillId : project?.skillId;
+    const effectiveDesignSystemId = typeof designSystemId === 'string' && designSystemId ? designSystemId : project?.designSystemId;
+    const metadata = project?.metadata;
+
+    let skillBody;
+    let skillName;
+    let skillMode;
+    if (effectiveSkillId) {
+      const skill = (await listSkills(SKILLS_DIR)).find((s) => s.id === effectiveSkillId);
+      if (skill) {
+        skillBody = skill.body;
+        skillName = skill.name;
+        skillMode = skill.mode;
+      }
+    }
+
+    let designSystemBody;
+    let designSystemTitle;
+    if (effectiveDesignSystemId) {
+      const systems = await listDesignSystems(DESIGN_SYSTEMS_DIR);
+      const summary = systems.find((s) => s.id === effectiveDesignSystemId);
+      designSystemTitle = summary?.title;
+      designSystemBody = await readDesignSystem(DESIGN_SYSTEMS_DIR, effectiveDesignSystemId) ?? undefined;
+    }
+
+    const template = metadata?.kind === 'template' && typeof metadata.templateId === 'string'
+      ? getTemplate(db, metadata.templateId) ?? undefined
+      : undefined;
+
+    return composeSystemPrompt({
+      skillBody,
+      skillName,
+      skillMode,
+      designSystemBody,
+      designSystemTitle,
+      metadata,
+      template,
+    });
+  };
+
+  const startChatRun = async (chatBody, run) => {
     /** @type {Partial<ChatRequest> & { imagePaths?: string[] }} */
-    const chatBody = req.body || {};
+    chatBody = chatBody || {};
     const {
       agentId,
       message,
       systemPrompt,
       imagePaths = [],
       projectId,
+      conversationId,
+      assistantMessageId,
+      clientRequestId,
+      skillId,
+      designSystemId,
       attachments = [],
       model,
       reasoning,
     } = chatBody;
+    if (typeof projectId === 'string' && projectId) run.projectId = projectId;
+    if (typeof conversationId === 'string' && conversationId) run.conversationId = conversationId;
+    if (typeof assistantMessageId === 'string' && assistantMessageId) run.assistantMessageId = assistantMessageId;
+    if (typeof clientRequestId === 'string' && clientRequestId) run.clientRequestId = clientRequestId;
+    if (typeof agentId === 'string' && agentId) run.agentId = agentId;
     const def = getAgentDef(agentId);
-    if (!def) return sendApiError(res, 400, 'AGENT_UNAVAILABLE', `unknown agent: ${agentId}`);
-    if (!def.bin) return sendApiError(res, 400, 'AGENT_UNAVAILABLE', 'agent has no binary');
+    if (!def) return design.runs.fail(run, 'AGENT_UNAVAILABLE', `unknown agent: ${agentId}`);
+    if (!def.bin) return design.runs.fail(run, 'AGENT_UNAVAILABLE', 'agent has no binary');
     if (typeof message !== 'string' || !message.trim()) {
-      return sendApiError(res, 400, 'BAD_REQUEST', 'message required');
+      return design.runs.fail(run, 'BAD_REQUEST', 'message required');
     }
-    const runId = randomId();
+    if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
+    const runId = run.id;
 
     // Resolve the project working directory (creating the folder if it
     // doesn't exist yet). Without one we don't pass cwd to spawn — the
@@ -1493,6 +2064,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
         cwd = null;
       }
     }
+    if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
 
     // Sanitise supplied image paths: must live under UPLOAD_DIR.
     const safeImages = imagePaths.filter((p) => {
@@ -1557,10 +2129,17 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     res.on('close', () => revokeToolToken('sse_end'));
     res.on('finish', () => revokeToolToken('sse_end'));
     const runtimeToolPrompt = createAgentRuntimeToolPrompt(daemonUrl, toolTokenGrant);
+    const daemonSystemPrompt = await composeDaemonSystemPrompt({ projectId, skillId, designSystemId });
+    const instructionPrompt = [daemonSystemPrompt, runtimeToolPrompt, systemPrompt]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean)
+      .join('\n\n---\n\n');
     const composed = [
-      systemPrompt && systemPrompt.trim()
-        ? `# Instructions (read first)\n\n${systemPrompt.trim()}\n\n${runtimeToolPrompt}${cwdHint}\n\n---\n`
-        : `# Instructions\n\n${runtimeToolPrompt}${cwdHint}\n\n---\n`,
+      instructionPrompt
+        ? `# Instructions (read first)\n\n${instructionPrompt}${cwdHint}\n\n---\n`
+        : cwdHint
+          ? `# Instructions${cwdHint}\n\n---\n`
+          : '',
       `# User request\n\n${message}${attachmentHint}`,
       safeImages.length ? `\n\n${safeImages.map((p) => `@${p}`).join(' ')}` : '',
     ].join('');
@@ -1644,10 +2223,14 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       }
     }
 
+    run.promptFileCleaned = cleanPromptFile;
     const args = def.buildArgs(effectivePrompt, safeImages, extraAllowedDirs, agentOptions, { cwd });
 
     const sse = createSseResponse(res);
-    const send = sse.send;
+    const send = (event, data, id = null) => {
+      design.runs.emit(run, event, data);
+      return sse.send(event, data, id);
+    };
     const unregisterChatAgentEventSink = () => {
       activeChatAgentEventSinks.delete(runId);
     };
@@ -1672,7 +2255,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
           'Install it and refresh the agent list (GET /api/agents) before retrying.',
         { retryable: true },
       ));
-      return sse.end();
+      return design.runs.finish(run, 'failed', 1, null);
     }
 
     // npm shims on Windows are .cmd/.bat files; Node ≥21 refuses to spawn
@@ -1701,7 +2284,21 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     // case this branch covers.
     const useShell =
       process.platform === 'win32' && CMD_BAT_RE.test(resolvedBin);
+    const odMediaEnv = {
+      OD_BIN,
+      OD_DAEMON_URL: `http://127.0.0.1:${port}`,
+      ...(typeof projectId === 'string' && projectId && cwd
+        ? {
+            OD_PROJECT_ID: projectId,
+            OD_PROJECT_DIR: cwd,
+          }
+        : {}),
+    };
 
+    if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
+
+    run.status = 'running';
+    run.updatedAt = Date.now();
     send('start', {
       runId,
       agentId,
@@ -1723,12 +2320,13 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       // which causes `spawn ENAMETOOLONG` for any non-trivial prompt.
       const stdinMode = def.promptViaStdin || def.streamFormat === 'acp-json-rpc' || needsFilePrompt ? 'pipe' : 'ignore';
       child = spawn(resolvedBin, args, {
-        env: createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant),
+        env: { ...createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant), ...odMediaEnv },
         stdio: [stdinMode, 'pipe', 'pipe'],
         cwd: cwd || undefined,
         shell: useShell,
       });
-      if ((def.promptViaStdin || needsFilePrompt) && child.stdin) {
+      run.child = child;
+      if ((def.promptViaStdin || needsFilePrompt) && child.stdin && def.streamFormat !== 'pi-rpc') {
         // EPIPE from a fast-exiting CLI (bad auth, missing model, exit on
         // launch) would otherwise surface as an unhandled stream error and
         // crash the daemon. Swallow it — the regular exit/close handlers
@@ -1745,6 +2343,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       revokeToolToken('child_exit');
       unregisterChatAgentEventSink();
       send('error', createSseErrorPayload('AGENT_EXECUTION_FAILED', `spawn failed: ${err.message}`));
+      design.runs.finish(run, 'failed', 1, null);
       return sse.end();
     }
 
@@ -1763,6 +2362,14 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       const copilot = createCopilotStreamHandler((ev) => send('agent', ev));
       child.stdout.on('data', (chunk) => copilot.feed(chunk));
       child.on('close', () => copilot.flush());
+    } else if (def.streamFormat === 'pi-rpc') {
+      acpSession = attachPiRpcSession({
+        child,
+        prompt: composed,
+        cwd: cwd || PROJECT_ROOT,
+        model: safeModel,
+        send,
+      });
     } else if (def.streamFormat === 'acp-json-rpc') {
       acpSession = attachAcpSession({
         child,
@@ -1783,29 +2390,68 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     }
     child.stderr.on('data', (chunk) => send('stderr', { chunk }));
 
-    const kill = () => {
-      if (child && !child.killed) child.kill('SIGTERM');
-    };
-    res.on('close', () => {
-      if (!res.writableEnded) kill();
-    });
-
     child.on('error', (err) => {
       revokeToolToken('child_exit');
       unregisterChatAgentEventSink();
       send('error', createSseErrorPayload('AGENT_EXECUTION_FAILED', err.message));
-      sse.end();
+      design.runs.finish(run, 'failed', 1, null);
     });
     child.on('close', (code, signal) => {
       revokeToolToken('child_exit');
       unregisterChatAgentEventSink();
       if (acpSession?.hasFatalError()) {
-        return sse.end();
+        return design.runs.finish(run, 'failed', code ?? 1, signal ?? null);
       }
-      cleanPromptFile();
-      send('end', { code, signal });
-      sse.end();
+      const status = run.cancelRequested
+        ? 'canceled'
+        : code === 0
+          ? 'succeeded'
+          : 'failed';
+      design.runs.finish(run, status, code, signal);
     });
+  };
+
+  app.post('/api/runs', (req, res) => {
+    const run = design.runs.create(req.body || {});
+    /** @type {import('@open-design/contracts').ChatRunCreateResponse} */
+    const body = { runId: run.id };
+    res.status(202).json(body);
+    design.runs.start(run, () => startChatRun(req.body || {}, run));
+  });
+
+  app.get('/api/runs', (req, res) => {
+    const { projectId, conversationId, status } = req.query;
+    const runs = design.runs.list({ projectId, conversationId, status });
+    /** @type {import('@open-design/contracts').ChatRunListResponse} */
+    const body = { runs: runs.map(design.runs.statusBody) };
+    res.json(body);
+  });
+
+  app.get('/api/runs/:id', (req, res) => {
+    const run = design.runs.get(req.params.id);
+    if (!run) return sendApiError(res, 404, 'NOT_FOUND', 'run not found');
+    res.json(design.runs.statusBody(run));
+  });
+
+  app.get('/api/runs/:id/events', (req, res) => {
+    const run = design.runs.get(req.params.id);
+    if (!run) return sendApiError(res, 404, 'NOT_FOUND', 'run not found');
+    design.runs.stream(run, req, res);
+  });
+
+  app.post('/api/runs/:id/cancel', (req, res) => {
+    const run = design.runs.get(req.params.id);
+    if (!run) return sendApiError(res, 404, 'NOT_FOUND', 'run not found');
+    design.runs.cancel(run);
+    /** @type {import('@open-design/contracts').ChatRunCancelResponse} */
+    const body = { ok: true };
+    res.json(body);
+  });
+
+  app.post('/api/chat', (req, res) => {
+    const run = design.runs.create();
+    design.runs.stream(run, req, res);
+    design.runs.start(run, () => startChatRun(req.body || {}, run));
   });
 
   // ---- API Proxy (SSE) for OpenAI-compatible endpoints ---------------------
@@ -1991,6 +2637,24 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function isLocalSameOrigin(req, port) {
+  const allowedHosts = new Set([
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    `[::1]:${port}`,
+  ]);
+  const allowedOrigins = new Set([
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    `http://[::1]:${port}`,
+  ]);
+  const host = String(req.headers.host || '');
+  if (!allowedHosts.has(host)) return false;
+  const origin = req.headers.origin;
+  if (origin == null || origin === '') return true;
+  return allowedOrigins.has(String(origin));
 }
 
 function sanitizeSlug(s) {

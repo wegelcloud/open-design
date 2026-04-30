@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { composeSystemPrompt } from './system';
+import { composeSystemPrompt } from './system.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +35,7 @@ describe('composeSystemPrompt', () => {
       metadata: {
         kind: 'prototype',
         intent: 'live-artifact',
-      },
+      } as any,
     });
 
     expect(prompt).toContain('## Active skill — live-artifact');

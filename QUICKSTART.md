@@ -37,6 +37,12 @@ pnpm tools-dev run web # starts daemon + web in the foreground
 # open the web URL printed by tools-dev
 ```
 
+For the desktop shell and all managed sidecars in the background:
+
+```bash
+pnpm tools-dev # starts daemon + web + desktop in the background
+```
+
 On first load, the app detects your installed code-agent CLI (Claude Code / Codex / Gemini / OpenCode / Cursor Agent / Qwen), picks it automatically, and defaults to `web-prototype` skill + `Neutral Modern` design system. Type a prompt and hit **Send**. The agent streams into the left pane; the `<artifact>` tag is parsed out and the HTML renders live on the right. When it finishes, click **Save to disk** to persist the artifact under `./.od/artifacts/<timestamp>-<slug>/index.html`.
 
 The **Design system** dropdown ships with 71 built-in systems — 2 hand-authored starters (Neutral Modern, Warm Editorial) and 69 product systems imported from [`awesome-design-md`](https://github.com/VoltAgent/awesome-design-md), grouped by category (AI & LLM, Developer Tools, Productivity, Backend, Design Tools, Fintech, E-Commerce, Media, Automotive). Pick one to skin every prototype in that brand's aesthetic.
@@ -54,9 +60,13 @@ Pair a skill with a design system and a single prompt produces a layout-appropri
 pnpm tools-dev                 # daemon + web + desktop in the background
 pnpm tools-dev start web       # daemon + web in the background
 pnpm tools-dev run web         # daemon + web in the foreground (e2e/dev server)
+pnpm tools-dev restart         # restart daemon + web + desktop
+pnpm tools-dev restart --daemon-port 7457 --web-port 5175
 pnpm tools-dev status          # inspect managed runtimes
 pnpm tools-dev logs            # show daemon/web/desktop logs
+pnpm tools-dev check           # status + recent logs + common diagnostics
 pnpm tools-dev stop            # stop managed runtimes
+pnpm --filter @open-design/daemon build  # build apps/daemon/dist/cli.js for `od`
 pnpm build                     # production build + static export to apps/web/out/
 pnpm typecheck                 # workspace typecheck
 ```
@@ -64,6 +74,36 @@ pnpm typecheck                 # workspace typecheck
 `pnpm tools-dev` is the only local lifecycle entry point. Do not use the removed legacy root aliases (`pnpm dev`, `pnpm dev:all`, `pnpm daemon`, `pnpm preview`, `pnpm start`).
 
 During local development, `tools-dev` starts the daemon first, passes its port into `apps/web`, and `apps/web/next.config.ts` rewrites `/api/*`, `/artifacts/*`, and `/frames/*` to that daemon port so the App Router app can talk to the sibling Express process without CORS setup.
+
+## Media generation / agent dispatcher checks
+
+Image, video, audio, and HyperFrames skills call the local `od` CLI through environment variables injected by the daemon when it spawns an agent:
+
+- `OD_BIN` — absolute path to `apps/daemon/dist/cli.js`.
+- `OD_DAEMON_URL` — the running daemon URL.
+- `OD_PROJECT_ID` — the active project id.
+- `OD_PROJECT_DIR` — the active project's file directory.
+
+If media generation fails with `OD_BIN: parameter not set`, `apps/daemon/dist/cli.js` missing, or `failed to reach daemon at http://127.0.0.1:0`, rebuild the daemon CLI and restart the managed runtime:
+
+```bash
+pnpm --filter @open-design/daemon build
+pnpm tools-dev restart --daemon-port 7457 --web-port 5175
+ls -la apps/daemon/dist/cli.js
+curl -s http://127.0.0.1:7457/api/health
+```
+
+Then open the project from the Open Design app again instead of resuming an old terminal agent session. A daemon-spawned agent should see values like:
+
+```bash
+echo "OD_BIN=$OD_BIN"
+echo "OD_PROJECT_ID=$OD_PROJECT_ID"
+echo "OD_PROJECT_DIR=$OD_PROJECT_DIR"
+echo "OD_DAEMON_URL=$OD_DAEMON_URL"
+ls -la "$OD_BIN"
+```
+
+`OD_DAEMON_URL` must be a real daemon port such as `http://127.0.0.1:7457`, not `http://127.0.0.1:0`. The `:0` value is only an internal "pick a free port" launch hint and should not leak into agent sessions.
 
 For the daemon-only production mode, the daemon serves the static Next.js export itself at `http://localhost:7456`, so no reverse proxy is involved.
 
@@ -174,6 +214,7 @@ open-design/
 
 - **"no agents found on PATH"** — install one of: `claude`, `codex`, `gemini`, `opencode`, `cursor-agent`, `qwen`, `copilot`. Or switch to "Anthropic API · BYOK" in the top bar and paste a key in **Settings**.
 - **daemon 500 on /api/chat** — check the daemon terminal for the stderr tail; usually the CLI rejected its args. Different CLIs take different argv shapes; see `apps/daemon/src/agents.ts` `buildArgs` if you need to tweak.
+- **media generation says `OD_BIN` is missing or daemon URL is `:0`** — run the media dispatcher checks above. Do not resume the old CLI session; reopen the project from the Open Design app so the daemon can inject fresh `OD_*` variables.
 - **Codex loads too much plugin context** — start Open Design with `OD_CODEX_DISABLE_PLUGINS=1 pnpm tools-dev` to make daemon-spawned Codex processes run with `--disable plugins`.
 - **artifact never renders** — the model produced text without wrapping in `<artifact>`. Confirm the system prompt is going through (check daemon log) and consider switching to a more capable model or a stricter skill.
 

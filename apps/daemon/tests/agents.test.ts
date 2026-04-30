@@ -7,6 +7,7 @@ import { createLiveArtifactsMcpTools, handleLiveArtifactsMcpRequest } from '../s
 const codex = AGENT_DEFS.find((agent) => agent.id === 'codex');
 const hermes = AGENT_DEFS.find((agent) => agent.id === 'hermes');
 const kimi = AGENT_DEFS.find((agent) => agent.id === 'kimi');
+const cursorAgent = AGENT_DEFS.find((agent) => agent.id === 'cursor-agent');
 const originalDisablePlugins = process.env.OD_CODEX_DISABLE_PLUGINS;
 
 afterEach(() => {
@@ -22,11 +23,13 @@ test('codex args disable plugins when OD_CODEX_DISABLE_PLUGINS is 1', () => {
 
   const args = codex.buildArgs('', [], [], {}, { cwd: '/tmp/od-project' });
 
-  assert.deepEqual(args.slice(0, 6), [
+  assert.deepEqual(args.slice(0, 8), [
     'exec',
     '--json',
     '--skip-git-repo-check',
     '--full-auto',
+    '-c',
+    'sandbox_workspace_write.network_access=true',
     '--disable',
     'plugins',
   ]);
@@ -102,4 +105,19 @@ test('MCP-capable agents can discover equivalent live artifact and connector too
 
   const listed = await handleLiveArtifactsMcpRequest({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   assert.deepEqual(listed.result.tools.map((tool) => tool.name), tools.map((tool) => tool.name));
+});
+
+test('cursor-agent args deliver prompts via stdin without passing a literal dash prompt', () => {
+  const args = cursorAgent.buildArgs('', [], [], {}, { cwd: '/tmp/od-project' });
+
+  assert.deepEqual(args, [
+    '--print',
+    '--output-format',
+    'stream-json',
+    '--stream-partial-output',
+    '--force',
+    '--trust',
+    '--workspace',
+    '/tmp/od-project',
+  ]);
 });
