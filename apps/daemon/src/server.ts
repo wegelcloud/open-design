@@ -64,6 +64,7 @@ import {
   listLiveArtifacts,
   updateLiveArtifact,
 } from './live-artifacts/store.js';
+import { CHAT_TOOL_ENDPOINTS, CHAT_TOOL_OPERATIONS, toolTokenRegistry } from './tool-tokens.js';
 
 /** @typedef {import('@open-design/contracts').ApiErrorCode} ApiErrorCode */
 /** @typedef {import('@open-design/contracts').ApiError} ApiError */
@@ -1157,6 +1158,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     if (typeof message !== 'string' || !message.trim()) {
       return sendApiError(res, 400, 'BAD_REQUEST', 'message required');
     }
+    const runId = randomId();
 
     // Resolve the project working directory (creating the folder if it
     // doesn't exist yet). Without one we don't pass cwd to spawn — the
@@ -1325,6 +1327,24 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       ));
       return sse.end();
     }
+
+    const toolTokenGrant = cwd && typeof projectId === 'string' && projectId
+      ? toolTokenRegistry.mint({
+          runId,
+          projectId,
+          allowedEndpoints: CHAT_TOOL_ENDPOINTS,
+          allowedOperations: CHAT_TOOL_OPERATIONS,
+        })
+      : null;
+    let toolTokenRevoked = false;
+    const revokeToolToken = (reason) => {
+      if (toolTokenRevoked || !toolTokenGrant) return;
+      toolTokenRevoked = true;
+      toolTokenRegistry.revokeToken(toolTokenGrant.token, reason);
+    };
+    res.on('close', () => revokeToolToken('sse_end'));
+    res.on('finish', () => revokeToolToken('sse_end'));
+
     // npm shims on Windows are .cmd/.bat files; Node ≥21 refuses to spawn
     // those without `shell: true` (CVE-2024-27980). When `shell: true` is set
     // on Windows, Node escapes argv items for the cmd.exe shell — that
@@ -1353,6 +1373,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       process.platform === 'win32' && CMD_BAT_RE.test(resolvedBin);
 
     send('start', {
+      runId,
       agentId,
       bin: resolvedBin,
       streamFormat: def.streamFormat ?? 'plain',
@@ -1360,6 +1381,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       cwd,
       model: safeModel,
       reasoning: safeReasoning,
+      toolTokenExpiresAt: toolTokenGrant?.expiresAt ?? null,
     });
 
     let child;
@@ -1390,6 +1412,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       }
     } catch (err) {
       cleanPromptFile();
+      revokeToolToken('child_exit');
       send('error', createSseErrorPayload('AGENT_EXECUTION_FAILED', `spawn failed: ${err.message}`));
       return sse.end();
     }
@@ -1436,10 +1459,12 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
     });
 
     child.on('error', (err) => {
+      revokeToolToken('child_exit');
       send('error', createSseErrorPayload('AGENT_EXECUTION_FAILED', err.message));
       sse.end();
     });
     child.on('close', (code, signal) => {
+      revokeToolToken('child_exit');
       if (acpSession?.hasFatalError()) {
         return sse.end();
       }
