@@ -106,10 +106,14 @@ export function ChatPane({
   const logRef = useRef<HTMLDivElement | null>(null);
   const historyWrapRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<ChatComposerHandle | null>(null);
+  const didInitialScrollRef = useRef(false);
   const [tab, setTab] = useState<Tab>('chat');
   const [showConvList, setShowConvList] = useState(false);
   const [scrolledFromBottom, setScrolledFromBottom] = useState(false);
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
+  const hasActiveRunMessage = messages.some(
+    (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus),
+  );
   // Map each assistant message id to the user message that follows it
   // (if any) so QuestionFormView can render its locked "answered" state
   // with the user's picks.
@@ -124,6 +128,20 @@ export function ChatPane({
     }
     return map;
   })();
+
+  useEffect(() => {
+    didInitialScrollRef.current = false;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el || didInitialScrollRef.current || messages.length === 0) return;
+    didInitialScrollRef.current = true;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      setScrolledFromBottom(false);
+    });
+  }, [activeConversationId, messages.length]);
 
   useEffect(() => {
     const el = logRef.current;
@@ -337,6 +355,9 @@ export function ChatPane({
               ) : null}
               {messages.map((m, i) => {
                 const showDaySeparator = shouldShowDaySeparator(messages[i - 1], m);
+                const messageStreaming =
+                  m.role === 'assistant' &&
+                  ((streaming && m.id === lastAssistantId) || isActiveRunStatus(m.runStatus));
                 return (
                   <Fragment key={m.id}>
                     {showDaySeparator ? <DaySeparator ts={messageTime(m)} /> : null}
@@ -351,7 +372,7 @@ export function ChatPane({
                     ) : (
                       <AssistantMessage
                         message={m}
-                        streaming={streaming && m.id === lastAssistantId}
+                        streaming={messageStreaming}
                         projectId={projectId}
                         projectFileNames={projectFileNames}
                         onRequestOpenFile={onRequestOpenFile}
@@ -386,7 +407,7 @@ export function ChatPane({
             ref={composerRef}
             projectId={projectId}
             projectFiles={projectFiles}
-            streaming={streaming}
+            streaming={streaming || hasActiveRunMessage}
             initialDraft={initialDraft}
             onEnsureProject={onEnsureProject}
             onSend={onSend}
@@ -397,6 +418,10 @@ export function ChatPane({
       ) : null}
     </div>
   );
+}
+
+function isActiveRunStatus(status: ChatMessage['runStatus']): boolean {
+  return status === 'queued' || status === 'running';
 }
 
 function ConversationRow({
