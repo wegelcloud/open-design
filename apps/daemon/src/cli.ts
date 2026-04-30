@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // @ts-nocheck
 import { startServer } from './server.js';
+import { runLiveArtifactsMcpServer } from './mcp-live-artifacts-server.js';
 import { runConnectorsToolCli } from './tools-connectors-cli.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 
@@ -26,6 +27,16 @@ if (args[0] === 'tools' && args[1] === 'live-artifacts') {
       process.stderr.write(`${JSON.stringify({ ok: false, error: { message } })}\n`);
       process.exitCode = 1;
     });
+} else if (args[0] === 'mcp' && args[1] === 'live-artifacts') {
+  runLiveArtifactsMcpServer()
+    .then(({ exitCode }) => {
+      process.exitCode = exitCode;
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`${JSON.stringify({ ok: false, error: { message } })}\n`);
+      process.exitCode = 1;
+    });
 } else {
 let port = Number(process.env.OD_PORT) || 7456;
 let open = true;
@@ -40,6 +51,7 @@ for (let i = 0; i < args.length; i++) {
     console.log(`Usage: od [--port <n>] [--no-open]
        od tools live-artifacts <create|list|update|refresh> [options]
        od tools connectors <list|execute> [options]
+       od mcp live-artifacts
 
 Starts a local daemon that:
   * scans PATH for installed code-agent CLIs (claude, codex, gemini, opencode, cursor-agent, ...)

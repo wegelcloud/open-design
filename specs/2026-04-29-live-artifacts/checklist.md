@@ -337,7 +337,7 @@
 - [ ] Do not mutate user global MCP config automatically.
 - [ ] Keep skill + CLI path unchanged.
 - [ ] Add MCP discovery only for agents with mature MCP support.
-- [ ] Verify Claude Code or another MCP-capable agent can discover equivalent tools.
+- [x] Verify Claude Code or another MCP-capable agent can discover equivalent tools.
 
 ## Cross-cutting verification
 

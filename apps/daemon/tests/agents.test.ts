@@ -2,6 +2,7 @@
 import { afterEach, test } from 'vitest';
 import assert from 'node:assert/strict';
 import { AGENT_DEFS, buildLiveArtifactsMcpServersForAgent } from '../src/agents.js';
+import { createLiveArtifactsMcpTools, handleLiveArtifactsMcpRequest } from '../src/mcp-live-artifacts-server.js';
 
 const codex = AGENT_DEFS.find((agent) => agent.id === 'codex');
 const hermes = AGENT_DEFS.find((agent) => agent.id === 'hermes');
@@ -76,4 +77,29 @@ test('live artifact MCP discovery is limited to mature ACP agents', () => {
 
 test('live artifact MCP discovery is disabled when run-scoped tool auth is unavailable', () => {
   assert.deepEqual(buildLiveArtifactsMcpServersForAgent(hermes, { enabled: false }), []);
+});
+
+test('MCP-capable agents can discover equivalent live artifact and connector tools', async () => {
+  const tools = createLiveArtifactsMcpTools();
+  assert.deepEqual(tools.map((tool) => tool.name), [
+    'live_artifacts_create',
+    'live_artifacts_list',
+    'live_artifacts_update',
+    'live_artifacts_refresh',
+    'connectors_list',
+    'connectors_execute',
+  ]);
+
+  for (const tool of tools) {
+    assert.equal(typeof tool.description, 'string');
+    assert.match(tool.description, /Equivalent to `od tools /u);
+    assert.equal(tool.inputSchema.type, 'object');
+  }
+
+  const initialized = await handleLiveArtifactsMcpRequest({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+  assert.equal(initialized.result.serverInfo.name, 'open-design-live-artifacts');
+  assert.deepEqual(initialized.result.capabilities, { tools: {} });
+
+  const listed = await handleLiveArtifactsMcpRequest({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+  assert.deepEqual(listed.result.tools.map((tool) => tool.name), tools.map((tool) => tool.name));
 });
