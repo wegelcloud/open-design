@@ -150,6 +150,9 @@ export const zhCN: Dict = {
   'connectors.statusConnected': '已连接',
   'connectors.statusError': '错误',
   'connectors.statusDisabled': '已停用',
+  'connectors.gateTitle': '请先配置 Composio API 密钥',
+  'connectors.gateBody': '连接器需要 Composio API 密钥。请在设置中配置后即可启用可用的集成。',
+  'connectors.gateAction': '打开设置',
 
   'newproj.tabPrototype': '原型',
   'newproj.tabLiveArtifact': '新建实时制品',

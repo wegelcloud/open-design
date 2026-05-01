@@ -80,6 +80,10 @@ const DE_SKILL_COPY: Record<string, { description?: string; examplePrompt?: stri
     examplePrompt:
       'Erstellen Sie ein Kanban-Board für ein 5-köpfiges Growth-Team mitten im Sprint — Backlog, Doing, Review, Done.',
   },
+  'live-artifact': {
+    examplePrompt:
+      'Erstellen Sie ein interaktives Live-Artefakt mit Statuskarten, Datentabelle und einem Detailpanel, das auf Auswahländerungen reagiert.',
+  },
   'magazine-poster': {
     examplePrompt:
       'Entwerfen Sie ein Editorial-Poster im Magazin-Stil — ‚You don\'t need a designer to ship your first draft anymore.‘ Zeitungspapier, sechs nummerierte Abschnitte.',
@@ -329,6 +333,7 @@ const DE_PROMPT_TEMPLATE_CATEGORIES: Record<string, string> = {
   Advertising: 'Werbung',
   'Motion Graphics': 'Motion Graphics',
   Cinematic: 'Filmisch',
+  'Game UI': 'Game UI',
   'VFX / Fantasy': 'VFX / Fantasy',
   Anime: 'Anime',
   'Social / Meme': 'Social / Meme',
@@ -337,16 +342,26 @@ const DE_PROMPT_TEMPLATE_CATEGORIES: Record<string, string> = {
 const DE_PROMPT_TEMPLATE_TAGS: Record<string, string> = {
   '3d-render': '3D-Render',
   action: 'Action',
+  'ancient-china': 'Altes China',
   anime: 'Anime',
   cinematic: 'Filmisch',
   'cinematic-romance': 'Filmische Romanze',
   cyberpunk: 'Cyberpunk',
+  dance: 'Tanz',
   fantasy: 'Fantasy',
+  fashion: 'Fashion',
   food: 'Food',
+  'game-ui': 'Game UI',
+  hud: 'HUD',
+  mmo: 'MMO',
   nature: 'Natur',
+  'open-world': 'Open World',
   portrait: 'Porträt',
   product: 'Produkt',
+  sequence: 'Sequenz',
+  storyboard: 'Storyboard',
   typography: 'Typografie',
+  wuxia: 'Wuxia',
 };
 
 const DE_PROMPT_TEMPLATE_COPY: Record<string, Partial<Pick<PromptTemplateSummary, 'summary' | 'title'>>> = {
@@ -505,6 +520,11 @@ const DE_PROMPT_TEMPLATE_COPY: Record<string, Partial<Pick<PromptTemplateSummary
     summary:
       'Kräftiges professionelles Football-Signing-Poster zur Ankündigung eines Spielerwechsels zu Paris Saint-Germain.',
   },
+  'social-media-post-sensational-girl-dance-storyboard-8-shots': {
+    title: 'Social-Media-Post - Dance-Storyboard in 8 Shots',
+    summary:
+      'Acht konsistente Storyboard-Prompts für eine zusammenhängende Tanzsequenz mit globalen Stilvorgaben, Negativprompt und pro Shot definierter Bewegung.',
+  },
   'social-media-post-showa-day-retro-culture-magazine-cover': {
     title: 'Social-Media-Post - Retro-Kultur-Magazincover zum Showa Day',
     summary:
@@ -624,6 +644,11 @@ const DE_PROMPT_TEMPLATE_COPY: Record<string, Partial<Pick<PromptTemplateSummary
     title: 'Satire mit Katze in der Verbotenen Stadt',
     summary:
       'Komplexer Dark-Comedy-Prompt für Seedance 2.0 mit einem orangefarbenen Katzenbeamten und einem Hyänenkaiser in einer satirischen Qing-Dynastie-Szene.',
+  },
+  'game-ui-ancient-china-open-world-mmo-hud': {
+    title: 'Game UI - Antikes China Open-World-MMO-HUD',
+    summary:
+      'Erzeugt ein AAA-Game-HUD-Mockup für ein Open-World-MMO im antiken China mit Protagonistin, Quest-Tracker, Minimap, Statusleisten und Skill-Hotbar.',
   },
   'hollywood-haute-couture-fantasy-video-prompt': {
     title: 'Hollywood-Haute-Couture-Fantasy-Video-Prompt',

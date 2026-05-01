@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   designSystemId: null,
   onboardingCompleted: false,
   mediaProviders: {},
+  composio: {},
   agentModels: {},
 };
 
@@ -31,10 +32,49 @@ export function loadConfig(): AppConfig {
       ...DEFAULT_CONFIG,
       ...parsed,
       mediaProviders: { ...(parsed.mediaProviders ?? {}) },
+      composio: { ...(parsed.composio ?? {}) },
       agentModels: { ...(parsed.agentModels ?? {}) },
     };
   } catch {
     return { ...DEFAULT_CONFIG };
+  }
+}
+
+interface PublicComposioConfigResponse {
+  configured?: boolean;
+  apiKeyTail?: string;
+}
+
+export async function fetchComposioConfigFromDaemon(): Promise<AppConfig['composio'] | null> {
+  try {
+    const response = await fetch('/api/connectors/composio/config');
+    if (!response.ok) return null;
+    const payload = await response.json() as PublicComposioConfigResponse;
+    return {
+      apiKey: '',
+      apiKeyConfigured: Boolean(payload.configured),
+      apiKeyTail: payload.apiKeyTail ?? '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function syncComposioConfigToDaemon(
+  config: AppConfig['composio'] | undefined,
+): Promise<void> {
+  const apiKey = config?.apiKey ?? '';
+  const payload = {
+    ...(apiKey.trim() || !config?.apiKeyConfigured ? { apiKey } : {}),
+  };
+  try {
+    await fetch('/api/connectors/composio/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Daemon offline; localStorage keeps the user's copy for the next save.
   }
 }
 

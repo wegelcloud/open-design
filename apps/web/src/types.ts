@@ -139,10 +139,17 @@ export interface AppConfig {
   // this is set so refreshing the page doesn't re-prompt.
   onboardingCompleted?: boolean;
   mediaProviders?: Record<string, MediaProviderCredentials>;
+  composio?: ComposioSettings;
   // Per-CLI model picker state, keyed by agent id (e.g. `gemini`, `codex`).
   // Pre-existing configs without this field fall through to the agent's
   // declared default.
   agentModels?: Record<string, AgentModelChoice>;
+}
+
+export interface ComposioSettings {
+  apiKey?: string;
+  apiKeyConfigured?: boolean;
+  apiKeyTail?: string;
 }
 
 export type AgentEvent = PersistedAgentEvent;

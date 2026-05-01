@@ -14,8 +14,10 @@ import {
 import { navigate, useRoute } from './router';
 import {
   hasAnyConfiguredProvider,
+  fetchComposioConfigFromDaemon,
   loadConfig,
   saveConfig,
+  syncComposioConfigToDaemon,
   syncMediaProvidersToDaemon,
 } from './state/config';
 import {
@@ -38,10 +40,26 @@ import type {
   SkillSummary,
 } from './types';
 
+type SettingsSection = 'execution' | 'media' | 'composio' | 'language' | 'about';
+
+function normalizeSavedComposioConfig(config: AppConfig['composio']): AppConfig['composio'] {
+  const apiKey = config?.apiKey?.trim() ?? '';
+  if (apiKey) {
+    return {
+      ...config,
+      apiKey: '',
+      apiKeyConfigured: true,
+      apiKeyTail: apiKey.slice(-4),
+    };
+  }
+  return { ...(config ?? {}) };
+}
+
 export function App() {
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsWelcome, setSettingsWelcome] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection>('execution');
   const [daemonLive, setDaemonLive] = useState(false);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -63,7 +81,7 @@ export function App() {
       const alive = await daemonIsLive();
       if (cancelled) return;
       setDaemonLive(alive);
-      const [agentList, skillList, dsList, projectList, templateList, promptTemplateList, versionInfo] =
+      const [agentList, skillList, dsList, projectList, templateList, promptTemplateList, versionInfo, daemonComposioConfig] =
         await Promise.all([
           alive ? fetchAgents() : Promise.resolve([] as AgentInfo[]),
           alive ? fetchSkills() : Promise.resolve([] as SkillSummary[]),
@@ -74,6 +92,7 @@ export function App() {
           alive ? listTemplates() : Promise.resolve([] as ProjectTemplate[]),
           alive ? fetchPromptTemplates() : Promise.resolve([] as PromptTemplateSummary[]),
           alive ? fetchAppVersionInfo() : Promise.resolve(null),
+          alive ? fetchComposioConfigFromDaemon() : Promise.resolve(null),
         ]);
       if (cancelled) return;
       setAgents(agentList);
@@ -87,6 +106,10 @@ export function App() {
       setConfig((prev) => {
         const next = { ...prev };
         if (alive) {
+          const hasLocalComposioKey = Boolean(next.composio?.apiKey?.trim());
+          if (!hasLocalComposioKey && daemonComposioConfig) {
+            next.composio = daemonComposioConfig;
+          }
           if (!next.agentId) {
             const firstAvailable = agentList.find((a) => a.available);
             if (firstAvailable) next.agentId = firstAvailable.id;
@@ -102,6 +125,7 @@ export function App() {
         if (alive && hasAnyConfiguredProvider(next.mediaProviders)) {
           void syncMediaProvidersToDaemon(next.mediaProviders);
         }
+        if (alive) void syncComposioConfigToDaemon(next.composio);
 
         // Pop the onboarding modal only on the first run. Once the user has
         // saved or skipped past it once, we trust their stored config and
@@ -133,9 +157,14 @@ export function App() {
     // Saving from any settings dialog (welcome or regular) counts as
     // having completed onboarding — the user has actively chosen a
     // configuration, so future page loads can skip the auto-popup.
-    const withOnboarding: AppConfig = { ...next, onboardingCompleted: true };
+    const withOnboarding: AppConfig = {
+      ...next,
+      composio: normalizeSavedComposioConfig(next.composio),
+      onboardingCompleted: true,
+    };
     saveConfig(withOnboarding);
     void syncMediaProvidersToDaemon(withOnboarding.mediaProviders, { force: true });
+    void syncComposioConfigToDaemon(next.composio);
     setConfig(withOnboarding);
     setSettingsOpen(false);
   }, []);
@@ -292,8 +321,9 @@ export function App() {
     };
   }, [route, activeProject, projects, daemonLive]);
 
-  const openSettings = useCallback(() => {
+  const openSettings = useCallback((section: SettingsSection = 'execution') => {
     setSettingsWelcome(false);
+    setSettingsInitialSection(section);
     setSettingsOpen(true);
   }, []);
 
@@ -356,6 +386,7 @@ export function App() {
           daemonLive={daemonLive}
           appVersionInfo={appVersionInfo}
           welcome={settingsWelcome}
+          initialSection={settingsInitialSection}
           onSave={handleConfigSave}
           onClose={() => {
             // Dismissing the welcome modal (Skip for now / backdrop click)

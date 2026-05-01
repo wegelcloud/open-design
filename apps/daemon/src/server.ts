@@ -94,7 +94,9 @@ import {
 } from './live-artifacts/store.js';
 import { refreshLiveArtifact } from './live-artifacts/refresh-service.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
-import { configureConnectorCredentialStore, FileConnectorCredentialStore } from './connectors/service.js';
+import { configureConnectorCredentialStore, deleteConnectorCredentialsByProvider, FileConnectorCredentialStore } from './connectors/service.js';
+import { composioConnectorProvider } from './connectors/composio.js';
+import { configureComposioConfigStore, readPublicComposioConfig, writeComposioConfig } from './connectors/composio-config.js';
 import { CHAT_TOOL_ENDPOINTS, CHAT_TOOL_OPERATIONS, toolTokenRegistry } from './tool-tokens.js';
 import {
   buildDeployFileSet,
@@ -695,6 +697,7 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
   app.use(express.json({ limit: '4mb' }));
   const db = openDatabase(PROJECT_ROOT, { dataDir: RUNTIME_DATA_DIR });
   configureConnectorCredentialStore(new FileConnectorCredentialStore(RUNTIME_DATA_DIR));
+  configureComposioConfigStore(RUNTIME_DATA_DIR);
   let daemonUrl = `http://127.0.0.1:${port}`;
 
   if (process.env.OD_CODEX_DISABLE_PLUGINS === '1') {
@@ -725,6 +728,28 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
   });
 
   registerConnectorRoutes(app, { sendApiError, authorizeToolRequest, projectsRoot: PROJECTS_DIR });
+
+  app.get('/api/connectors/composio/config', (_req, res) => {
+    try {
+      res.json(readPublicComposioConfig());
+    } catch (err) {
+      res.status(500).json({ error: String(err && err.message ? err.message : err) });
+    }
+  });
+
+  app.put('/api/connectors/composio/config', (req, res) => {
+    try {
+      const before = readPublicComposioConfig();
+      const cfg = writeComposioConfig(req.body);
+      composioConnectorProvider.clearDiscoveryCache();
+      if (!cfg.configured || (before.configured && before.apiKeyTail !== cfg.apiKeyTail)) {
+        deleteConnectorCredentialsByProvider('composio');
+      }
+      res.json(cfg);
+    } catch (err) {
+      res.status(400).json({ error: String(err && err.message ? err.message : err) });
+    }
+  });
 
   // ---- Projects (DB-backed) -------------------------------------------------
 

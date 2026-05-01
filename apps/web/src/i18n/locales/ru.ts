@@ -151,6 +151,9 @@ export const ru: Dict = {
   'connectors.statusConnected': 'Подключено',
   'connectors.statusError': 'Ошибка',
   'connectors.statusDisabled': 'Отключено',
+  'connectors.gateTitle': 'Сначала настройте ключ Composio API',
+  'connectors.gateBody': 'Коннекторам нужен ключ Composio API. Добавьте его в настройках, чтобы разблокировать доступные интеграции.',
+  'connectors.gateAction': 'Открыть настройки',
 
   'newproj.tabPrototype': 'Прототип',
   'newproj.tabLiveArtifact': 'Новый live-артефакт',

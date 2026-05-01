@@ -150,6 +150,9 @@ export const zhTW: Dict = {
   'connectors.statusConnected': '已連接',
   'connectors.statusError': '錯誤',
   'connectors.statusDisabled': '已停用',
+  'connectors.gateTitle': '請先設定 Composio API 金鑰',
+  'connectors.gateBody': '連接器需要 Composio API 金鑰。請在設定中配置後即可啟用可用的整合。',
+  'connectors.gateAction': '開啟設定',
 
   'newproj.tabPrototype': '原型',
   'newproj.tabLiveArtifact': '新建即時成品',

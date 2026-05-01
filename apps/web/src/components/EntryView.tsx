@@ -49,7 +49,7 @@ interface Props {
   onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
   onDeleteProject: (id: string) => void;
   onChangeDefaultDesignSystem: (id: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: 'execution' | 'media' | 'composio' | 'language' | 'about') => void;
 }
 
 const SIDEBAR_MIN = 320;
@@ -218,7 +218,7 @@ export function EntryView({
       <AppChromeHeader
         actions={(
           <SettingsIconButton
-            onClick={onOpenSettings}
+            onClick={() => onOpenSettings()}
             title={t('entry.openSettingsTitle')}
             ariaLabel={t('entry.openSettingsAria')}
           />
@@ -243,7 +243,7 @@ export function EntryView({
             <button
               type="button"
               className="foot-pill"
-              onClick={onOpenSettings}
+              onClick={() => onOpenSettings()}
               title={t('settings.envConfigure')}
             >
               <Icon name="settings" size={12} />
@@ -327,6 +327,8 @@ export function EntryView({
                   <ConnectorsTab
                     connectors={connectors}
                     loading={connectorsLoading}
+                    composioConfigured={Boolean(config.composio?.apiKeyConfigured)}
+                    onOpenSettings={onOpenSettings}
                     onConnect={async (connectorId) => updateConnector(await connectConnector(connectorId))}
                     onDisconnect={async (connectorId) => updateConnector(await disconnectConnector(connectorId))}
                   />
@@ -369,15 +371,31 @@ export function EntryView({
 function ConnectorsTab({
   connectors,
   loading,
+  composioConfigured,
+  onOpenSettings,
   onConnect,
   onDisconnect,
 }: {
   connectors: ConnectorDetail[];
   loading: boolean;
+  composioConfigured: boolean;
+  onOpenSettings: (section?: 'execution' | 'media' | 'composio' | 'language' | 'about') => void;
   onConnect: (connectorId: string) => Promise<void> | void;
   onDisconnect: (connectorId: string) => Promise<void> | void;
 }) {
   const t = useT();
+
+  // Mask the grid whenever no Composio-backed connector has its auth
+  // configured. We also honor the local config.composio flag so the mask
+  // appears immediately when the key is cleared, before the next list fetch.
+  const anyComposioAuthConfigured = useMemo(
+    () =>
+      connectors.some(
+        (connector) => connector.auth?.provider === 'composio' && connector.auth.configured,
+      ),
+    [connectors],
+  );
+  const needsComposioKey = !composioConfigured && !anyComposioAuthConfigured;
 
   return (
     <div className="tab-panel connectors-panel">
@@ -392,10 +410,48 @@ function ConnectorsTab({
       {loading ? (
         <CenteredLoader label={t('common.loading')} />
       ) : (
-        <div className="connector-grid">
-          {connectors.map((connector) => (
-            <ConnectorCard key={connector.id} connector={connector} onConnect={onConnect} onDisconnect={onDisconnect} />
-          ))}
+        <div
+          className={`connector-grid-wrap${needsComposioKey ? ' is-masked' : ''}`}
+          data-testid="connector-grid-wrap"
+        >
+          <div
+            className="connector-grid"
+            aria-hidden={needsComposioKey || undefined}
+          >
+            {connectors.map((connector) => (
+              <ConnectorCard
+                key={connector.id}
+                connector={connector}
+                disabled={needsComposioKey}
+                onConnect={onConnect}
+                onDisconnect={onDisconnect}
+              />
+            ))}
+          </div>
+          {needsComposioKey ? (
+            <div
+              className="connector-gate"
+              role="region"
+              aria-label={t('connectors.gateTitle')}
+              data-testid="connector-gate"
+            >
+              <div className="connector-gate-card">
+                <div className="connector-gate-icon" aria-hidden>
+                  <Icon name="settings" size={20} />
+                </div>
+                <h3 className="connector-gate-title">{t('connectors.gateTitle')}</h3>
+                <p className="connector-gate-body">{t('connectors.gateBody')}</p>
+                <button
+                  type="button"
+                  className="primary connector-gate-action"
+                  onClick={() => onOpenSettings('composio')}
+                  data-testid="connector-gate-action"
+                >
+                  {t('connectors.gateAction')}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -404,19 +460,21 @@ function ConnectorsTab({
 
 function ConnectorCard({
   connector,
+  disabled = false,
   onConnect,
   onDisconnect,
 }: {
   connector: ConnectorDetail;
+  disabled?: boolean;
   onConnect: (connectorId: string) => Promise<void> | void;
   onDisconnect: (connectorId: string) => Promise<void> | void;
 }) {
   const t = useT();
-  const canConnect = connector.status === 'available';
-  const canDisconnect = connector.status === 'connected';
+  const canConnect = !disabled && connector.status === 'available';
+  const canDisconnect = !disabled && connector.status === 'connected';
 
   return (
-    <article className={`connector-card status-${connector.status}`}>
+    <article className={`connector-card status-${connector.status}${disabled ? ' is-locked' : ''}`}>
       <div className="connector-card-top">
         <div>
           <div className="connector-name-row">
@@ -444,10 +502,22 @@ function ConnectorCard({
         </div>
       </dl>
       <div className="connector-actions">
-        <button type="button" className="primary connector-action" disabled={!canConnect} onClick={() => onConnect(connector.id)}>
+        <button
+          type="button"
+          className="primary connector-action"
+          disabled={!canConnect}
+          tabIndex={disabled ? -1 : undefined}
+          onClick={() => onConnect(connector.id)}
+        >
           {canConnect ? t('connectors.connect') : statusLabel(connector.status, t)}
         </button>
-        <button type="button" className="ghost connector-action" disabled={!canDisconnect} onClick={() => onDisconnect(connector.id)}>
+        <button
+          type="button"
+          className="ghost connector-action"
+          disabled={!canDisconnect}
+          tabIndex={disabled ? -1 : undefined}
+          onClick={() => onDisconnect(connector.id)}
+        >
           {t('connectors.disconnect')}
         </button>
       </div>

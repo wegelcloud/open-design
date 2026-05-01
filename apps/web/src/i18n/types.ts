@@ -153,6 +153,9 @@ export interface Dict {
   'connectors.statusConnected': string;
   'connectors.statusError': string;
   'connectors.statusDisabled': string;
+  'connectors.gateTitle': string;
+  'connectors.gateBody': string;
+  'connectors.gateAction': string;
 
   // New project panel
   'newproj.tabPrototype': string;

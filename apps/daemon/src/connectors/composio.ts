@@ -1,12 +1,113 @@
 import crypto from 'node:crypto';
 
 import type { BoundedJsonObject, BoundedJsonValue } from '../live-artifacts/schema.js';
-import type { ConnectorCatalogDefinition, ConnectorCatalogToolDefinition } from './catalog.js';
+import { defineConnectorTool, type ConnectorCatalogDefinition, type ConnectorCatalogToolDefinition } from './catalog.js';
+import { readComposioConfig } from './composio-config.js';
 import { ConnectorServiceError, type ConnectorCredentialMaterial } from './service.js';
 
 const DEFAULT_COMPOSIO_BASE_URL = 'https://backend.composio.dev';
 const DEFAULT_COMPOSIO_TIMEOUT_MS = 30_000;
+const DEFAULT_COMPOSIO_USER_ID = 'open-design-local-user';
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+const STATIC_COMPOSIO_CATALOG: ConnectorCatalogDefinition[] = [
+  {
+    id: 'github',
+    name: 'GitHub',
+    provider: 'composio',
+    category: 'Developer',
+    description: 'Search and inspect GitHub repositories, issues, and pull requests.',
+    providerConnectorId: 'GITHUB',
+    authentication: 'composio',
+    tools: [
+      defineConnectorTool({
+        name: 'github.github_search_repositories',
+        providerToolId: 'GITHUB_SEARCH_REPOSITORIES',
+        title: 'Search repositories',
+        description: 'Search public and private repositories.',
+        inputSchemaJson: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false },
+        outputSchemaJson: { type: 'object', additionalProperties: true },
+        requiredScopes: ['read'],
+      }),
+      defineConnectorTool({
+        name: 'github.github_get_issue',
+        providerToolId: 'GITHUB_GET_ISSUE',
+        title: 'Get issue',
+        description: 'Read a GitHub issue by owner, repository, and issue number.',
+        inputSchemaJson: { type: 'object', properties: { owner: { type: 'string' }, repo: { type: 'string' }, issue_number: { type: 'number' } }, required: ['owner', 'repo', 'issue_number'], additionalProperties: false },
+        outputSchemaJson: { type: 'object', additionalProperties: true },
+        requiredScopes: ['issues:read'],
+      }),
+    ],
+    allowedToolNames: ['github.github_search_repositories', 'github.github_get_issue'],
+    featuredToolNames: ['github.github_search_repositories', 'github.github_get_issue'],
+    minimumApproval: 'auto',
+  },
+  {
+    id: 'notion',
+    name: 'Notion',
+    provider: 'composio',
+    category: 'Productivity',
+    description: 'Search and read Notion pages and databases.',
+    providerConnectorId: 'NOTION',
+    authentication: 'composio',
+    tools: [
+      defineConnectorTool({
+        name: 'notion.notion_search',
+        providerToolId: 'NOTION_SEARCH',
+        title: 'Search Notion',
+        description: 'Search Notion pages and databases.',
+        inputSchemaJson: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false },
+        outputSchemaJson: { type: 'object', additionalProperties: true },
+        requiredScopes: ['read'],
+      }),
+      defineConnectorTool({
+        name: 'notion.notion_fetch_database',
+        providerToolId: 'NOTION_FETCH_DATABASE',
+        title: 'Fetch database',
+        description: 'Read a Notion database by id.',
+        inputSchemaJson: { type: 'object', properties: { database_id: { type: 'string' } }, required: ['database_id'], additionalProperties: false },
+        outputSchemaJson: { type: 'object', additionalProperties: true },
+        requiredScopes: ['databases:read'],
+      }),
+    ],
+    allowedToolNames: ['notion.notion_search', 'notion.notion_fetch_database'],
+    featuredToolNames: ['notion.notion_search', 'notion.notion_fetch_database'],
+    minimumApproval: 'auto',
+  },
+  {
+    id: 'google_drive',
+    name: 'Google Drive',
+    provider: 'composio',
+    category: 'Storage',
+    description: 'Search and read files from Google Drive.',
+    providerConnectorId: 'GOOGLEDRIVE',
+    authentication: 'composio',
+    tools: [
+      defineConnectorTool({
+        name: 'google_drive.googledrive_search',
+        providerToolId: 'GOOGLEDRIVE_SEARCH',
+        title: 'Search Drive',
+        description: 'Search files in Google Drive.',
+        inputSchemaJson: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false },
+        outputSchemaJson: { type: 'object', additionalProperties: true },
+        requiredScopes: ['drive.readonly'],
+      }),
+      defineConnectorTool({
+        name: 'google_drive.googledrive_get_file',
+        providerToolId: 'GOOGLEDRIVE_GET_FILE',
+        title: 'Get file',
+        description: 'Read Google Drive file metadata by id.',
+        inputSchemaJson: { type: 'object', properties: { file_id: { type: 'string' } }, required: ['file_id'], additionalProperties: false },
+        outputSchemaJson: { type: 'object', additionalProperties: true },
+        requiredScopes: ['drive.readonly'],
+      }),
+    ],
+    allowedToolNames: ['google_drive.googledrive_search', 'google_drive.googledrive_get_file'],
+    featuredToolNames: ['google_drive.googledrive_search', 'google_drive.googledrive_get_file'],
+    minimumApproval: 'auto',
+  },
+];
 
 interface ComposioConnectedAccountResponse {
   id?: unknown;
@@ -35,6 +136,32 @@ interface ComposioAuthConfigResponse {
   toolkit?: { slug?: unknown };
   toolkit_slug?: unknown;
   toolkitSlug?: unknown;
+  auth_config?: { id?: unknown };
+}
+
+interface ComposioToolkitResponse {
+  slug?: unknown;
+  name?: unknown;
+  logo?: unknown;
+  description?: unknown;
+  categories?: unknown;
+}
+
+interface ComposioToolResponse {
+  slug?: unknown;
+  name?: unknown;
+  description?: unknown;
+  human_description?: unknown;
+  humanDescription?: unknown;
+  input_parameters?: unknown;
+  inputParameters?: unknown;
+  tags?: unknown;
+  scopes?: unknown;
+  oauth_scopes?: unknown;
+  oauthScopes?: unknown;
+  auth_scopes?: unknown;
+  authScopes?: unknown;
+  toolkit?: { slug?: unknown };
 }
 
 interface ComposioToolExecuteResponse {
@@ -74,7 +201,44 @@ export class ComposioConnectorProvider {
   private readonly pendingConnections = new Map<string, ComposioPendingConnection>();
 
   isConfigured(definition: ConnectorCatalogDefinition): boolean {
-    return Boolean(this.getApiKey() && (this.getConfiguredAuthConfigId(definition) || this.discoveredAuthConfigIds?.[definition.id]));
+    return Boolean(this.getApiKey() && this.discoveredAuthConfigIds?.[definition.id]);
+  }
+
+  clearDiscoveryCache(): void {
+    this.discoveredAuthConfigIds = undefined;
+  }
+
+  async listDefinitions(signal?: AbortSignal): Promise<ConnectorCatalogDefinition[]> {
+    const apiKey = this.getApiKey();
+    const authConfigs = apiKey ? await this.listAuthConfigsSafe(signal) : [];
+    const configuredByConnectorId = new Map<string, { authConfigId: string; toolkitSlug: string }>();
+    const discoveredAuthConfigIds: Record<string, string> = {};
+    for (const item of authConfigs) {
+      const authConfigId = getComposioAuthConfigId(item);
+      const toolkitSlug = getComposioToolkitSlug(item);
+      const status = getString(item.status)?.toUpperCase();
+      if (!authConfigId || !toolkitSlug || (status && status !== 'ENABLED')) continue;
+      const connectorId = connectorIdForToolkitSlug(toolkitSlug);
+      discoveredAuthConfigIds[connectorId] = authConfigId;
+      if (!configuredByConnectorId.has(connectorId)) configuredByConnectorId.set(connectorId, { authConfigId, toolkitSlug });
+    }
+    this.discoveredAuthConfigIds = discoveredAuthConfigIds;
+    const toolkits = apiKey ? await this.listToolkitsSafe(signal) : [];
+    const toolkitBySlug = new Map(toolkits.map((toolkit) => [normalizeComposioSlug(getString(toolkit.slug) ?? ''), toolkit]));
+    const definitions: ConnectorCatalogDefinition[] = [];
+    for (const staticDefinition of STATIC_COMPOSIO_CATALOG) {
+      const configuredEntry = configuredByConnectorId.get(staticDefinition.id);
+      const toolkitSlug = configuredEntry?.toolkitSlug ?? staticDefinition.providerConnectorId ?? staticDefinition.id;
+      const toolkit = toolkitBySlug.get(normalizeComposioSlug(toolkitSlug));
+      definitions.push(await this.definitionFromToolkit(staticDefinition, toolkitSlug, toolkit, signal));
+    }
+    return definitions;
+  }
+
+  async getDefinition(connectorId: string, signal?: AbortSignal): Promise<ConnectorCatalogDefinition | undefined> {
+    const discovered = (await this.listDefinitions(signal)).find((definition) => definition.id === connectorId);
+    if (discovered) return discovered;
+    return undefined;
   }
 
   async connect(definition: ConnectorCatalogDefinition, callbackUrl: string, signal?: AbortSignal): Promise<ComposioConnectionStart> {
@@ -82,7 +246,7 @@ export class ComposioConnectorProvider {
     if (!authConfigId) {
       throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio auth config is not configured for this connector', 503, {
         connectorId: definition.id,
-        env: composioAuthConfigEnvName(definition.id),
+        setting: 'apiKey',
       });
     }
 
@@ -194,33 +358,112 @@ export class ComposioConnectorProvider {
   }
 
   private async getAuthConfigId(definition: ConnectorCatalogDefinition, signal?: AbortSignal): Promise<string | undefined> {
-    const configured = this.getConfiguredAuthConfigId(definition);
-    if (configured) return configured;
     if (!this.discoveredAuthConfigIds) this.discoveredAuthConfigIds = await this.discoverAuthConfigIds(signal);
     return this.discoveredAuthConfigIds[definition.id];
   }
 
-  private getConfiguredAuthConfigId(definition: ConnectorCatalogDefinition): string | undefined {
-    return getNonEmptyEnv(composioAuthConfigEnvName(definition.id));
-  }
-
   private async discoverAuthConfigIds(signal?: AbortSignal): Promise<Record<string, string>> {
     if (!this.getApiKey()) return {};
-    const response = await this.request('/api/v3/auth_configs', { method: 'GET', ...(signal === undefined ? {} : { signal }) });
-    if (!response.ok) return {};
-    const payload = await response.json() as { items?: unknown; data?: unknown };
-    const items = Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : [];
+    const items = await this.listAuthConfigsSafe(signal);
     const discovered: Record<string, string> = {};
     for (const item of items) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const raw = item as ComposioAuthConfigResponse;
-      const authConfigId = getString(raw.id);
-      const toolkitSlug = getString(raw.toolkit?.slug) ?? getString(raw.toolkit_slug) ?? getString(raw.toolkitSlug);
-      const status = getString(raw.status)?.toUpperCase();
+      const authConfigId = getComposioAuthConfigId(item);
+      const toolkitSlug = getComposioToolkitSlug(item);
+      const status = getString(item.status)?.toUpperCase();
       if (!authConfigId || !toolkitSlug || (status && status !== 'ENABLED')) continue;
       discovered[connectorIdForToolkitSlug(toolkitSlug)] = authConfigId;
     }
     return discovered;
+  }
+
+  private async listAuthConfigs(signal?: AbortSignal): Promise<ComposioAuthConfigResponse[]> {
+    const response = await this.request('/api/v3/auth_configs', { method: 'GET', ...(signal === undefined ? {} : { signal }) });
+    if (!response.ok) return [];
+    const payload = await response.json() as { items?: unknown; data?: unknown };
+    const items = Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : [];
+    return items.filter((item): item is ComposioAuthConfigResponse => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+  }
+
+  private async listAuthConfigsSafe(signal?: AbortSignal): Promise<ComposioAuthConfigResponse[]> {
+    try {
+      return await this.listAuthConfigs(signal);
+    } catch {
+      return [];
+    }
+  }
+
+  private async listToolkits(signal?: AbortSignal): Promise<ComposioToolkitResponse[]> {
+    const response = await this.request('/api/v3.1/toolkits?limit=1000', { method: 'GET', ...(signal === undefined ? {} : { signal }) });
+    if (!response.ok) return [];
+    const payload = await response.json() as { items?: unknown; data?: unknown };
+    const items = Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : [];
+    return items.filter((item): item is ComposioToolkitResponse => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+  }
+
+  private async listToolkitsSafe(signal?: AbortSignal): Promise<ComposioToolkitResponse[]> {
+    try {
+      return await this.listToolkits(signal);
+    } catch {
+      return [];
+    }
+  }
+
+  private async listTools(toolkitSlug: string, signal?: AbortSignal): Promise<ComposioToolResponse[]> {
+    const searchParams = new URLSearchParams({ toolkit_slug: toolkitSlug.toLowerCase(), limit: '1000' });
+    const response = await this.request(`/api/v3.1/tools?${searchParams.toString()}`, { method: 'GET', ...(signal === undefined ? {} : { signal }) });
+    if (!response.ok) return [];
+    const payload = await response.json() as { items?: unknown; data?: unknown };
+    const items = Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : [];
+    return items.filter((item): item is ComposioToolResponse => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+  }
+
+  private async listToolsSafe(toolkitSlug: string, signal?: AbortSignal): Promise<ComposioToolResponse[]> {
+    try {
+      return await this.listTools(toolkitSlug, signal);
+    } catch {
+      return [];
+    }
+  }
+
+  private async definitionFromToolkit(staticDefinition: ConnectorCatalogDefinition, toolkitSlug: string, toolkit: ComposioToolkitResponse | undefined, signal?: AbortSignal): Promise<ConnectorCatalogDefinition> {
+    const connectorId = staticDefinition.id;
+    const liveTools = (await this.listToolsSafe(toolkitSlug, signal))
+      .filter((tool) => {
+        const toolToolkitSlug = getString(tool.toolkit?.slug);
+        return !toolToolkitSlug || normalizeComposioSlug(toolToolkitSlug) === normalizeComposioSlug(toolkitSlug);
+      })
+      .map((tool) => this.toolDefinitionFromComposioTool(connectorId, tool));
+    const liveToolsByName = new Map(liveTools.map((tool) => [tool.name, tool]));
+    const tools = staticDefinition.tools.map((tool) => mergeToolDefinition(tool, liveToolsByName.get(tool.name)));
+    const name = getString(toolkit?.name) ?? staticDefinition.name;
+    const category = firstCategoryName(toolkit?.categories) ?? staticDefinition.category;
+    const description = getString(toolkit?.description) ?? staticDefinition.description;
+    return {
+      ...staticDefinition,
+      id: connectorId,
+      name,
+      providerConnectorId: staticDefinition.providerConnectorId ?? toolkitSlug,
+      category,
+      ...(description === undefined ? {} : { description }),
+      tools,
+      allowedToolNames: staticDefinition.allowedToolNames,
+      ...(staticDefinition.featuredToolNames === undefined ? {} : { featuredToolNames: staticDefinition.featuredToolNames }),
+    };
+  }
+
+  private toolDefinitionFromComposioTool(connectorId: string, tool: ComposioToolResponse): ConnectorCatalogToolDefinition {
+    const providerToolId = getString(tool.slug) ?? getString(tool.name) ?? `${connectorId.toUpperCase()}_TOOL`;
+    const description = getString(tool.description) ?? getString(tool.human_description) ?? getString(tool.humanDescription) ?? '';
+    const requiredScopes = getStringArray(tool.scopes ?? tool.oauth_scopes ?? tool.oauthScopes ?? tool.auth_scopes ?? tool.authScopes ?? tool.tags);
+    return defineConnectorTool({
+      name: `${connectorId}.${normalizeToolName(providerToolId)}`,
+      providerToolId,
+      title: getString(tool.name) ?? titleFromSlug(providerToolId),
+      ...(description ? { description } : {}),
+      inputSchemaJson: toBoundedJsonObject(tool.input_parameters ?? tool.inputParameters) ?? { type: 'object', additionalProperties: true },
+      outputSchemaJson: { type: 'object', additionalProperties: true },
+      requiredScopes,
+    });
   }
 
   private connectionToCredentials(_definition: ConnectorCatalogDefinition, providerConnectionId: string, response: ComposioConnectedAccountResponse): ComposioConnectionCompletion {
@@ -257,9 +500,9 @@ export class ComposioConnectorProvider {
   private async request(path: string, input: { method: string; body?: string; signal?: AbortSignal }): Promise<Response> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
-      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio provider is not configured', 503, { env: 'COMPOSIO_API_KEY' });
+      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio provider is not configured', 503, { setting: 'apiKey' });
     }
-    const timeout = AbortSignal.timeout(Number(getNonEmptyEnv('COMPOSIO_TIMEOUT_MS')) || DEFAULT_COMPOSIO_TIMEOUT_MS);
+    const timeout = AbortSignal.timeout(DEFAULT_COMPOSIO_TIMEOUT_MS);
     const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
     return fetch(`${this.getBaseUrl().replace(/\/+$/, '')}${path}`, {
       method: input.method,
@@ -275,31 +518,49 @@ export class ComposioConnectorProvider {
   }
 
   private getApiKey(): string | undefined {
-    return getNonEmptyEnv('COMPOSIO_API_KEY');
+    return readComposioConfig().apiKey || undefined;
   }
 
   private getBaseUrl(): string {
-    return getNonEmptyEnv('COMPOSIO_BASE_URL') ?? DEFAULT_COMPOSIO_BASE_URL;
+    return DEFAULT_COMPOSIO_BASE_URL;
   }
 
   private getUserId(): string {
-    return getNonEmptyEnv('COMPOSIO_USER_ID') ?? 'open-design-local-user';
+    return DEFAULT_COMPOSIO_USER_ID;
   }
+}
+
+function mergeToolDefinition(staticTool: ConnectorCatalogToolDefinition, liveTool: ConnectorCatalogToolDefinition | undefined): ConnectorCatalogToolDefinition {
+  if (!liveTool) return staticTool;
+  return {
+    ...staticTool,
+    ...(liveTool.description === undefined ? {} : { description: liveTool.description }),
+    ...(liveTool.inputSchemaJson === undefined ? {} : { inputSchemaJson: liveTool.inputSchemaJson }),
+    ...(liveTool.outputSchemaJson === undefined ? {} : { outputSchemaJson: liveTool.outputSchemaJson }),
+    ...(liveTool.providerToolId === undefined ? {} : { providerToolId: liveTool.providerToolId }),
+    requiredScopes: liveTool.requiredScopes.length > 0 ? liveTool.requiredScopes : staticTool.requiredScopes,
+    safety: liveTool.safety,
+    refreshEligible: liveTool.refreshEligible,
+  };
 }
 
 export const composioConnectorProvider = new ComposioConnectorProvider();
 
-function composioAuthConfigEnvName(connectorId: string): string {
-  return `COMPOSIO_AUTH_CONFIG_${connectorId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
-}
-
-function getNonEmptyEnv(name: string): string | undefined {
-  const value = process.env[name];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
 function getString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim());
+}
+
+function getComposioAuthConfigId(response: ComposioAuthConfigResponse): string | undefined {
+  return getString(response.id) ?? getString(response.auth_config?.id);
+}
+
+function getComposioToolkitSlug(response: ComposioAuthConfigResponse): string | undefined {
+  return getString(response.toolkit?.slug) ?? getString(response.toolkit_slug) ?? getString(response.toolkitSlug);
 }
 
 function getComposioConnectionId(response: ComposioConnectedAccountResponse): string | undefined {
@@ -313,9 +574,37 @@ function appendOAuthStateToCallbackUrl(callbackUrl: string, state: string): stri
 }
 
 function connectorIdForToolkitSlug(toolkitSlug: string): string {
-  const normalized = toolkitSlug.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalized = normalizeComposioSlug(toolkitSlug);
   if (normalized === 'googledrive' || normalized === 'gdrive' || normalized === 'drive') return 'google_drive';
   return normalized;
+}
+
+function normalizeComposioSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeToolName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'tool';
+}
+
+function titleFromSlug(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\w\S*/g, (word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`);
+}
+
+function firstCategoryName(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) return item.trim();
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>;
+      const name = getString(record.name) ?? getString(record.slug);
+      if (name) return name;
+    }
+  }
+  return undefined;
 }
 
 async function getComposioErrorMessage(response: Response): Promise<string | undefined> {
@@ -338,4 +627,9 @@ function toBoundedJsonValue(value: unknown): BoundedJsonValue {
     return output;
   }
   return null;
+}
+
+function toBoundedJsonObject(value: unknown): BoundedJsonObject | undefined {
+  const bounded = toBoundedJsonValue(value);
+  return bounded && typeof bounded === 'object' && !Array.isArray(bounded) ? bounded : undefined;
 }

@@ -40,11 +40,11 @@ class TestConnectorService extends ConnectorService {
     super(statusService);
   }
 
-  override listDefinitions(): ConnectorCatalogDefinition[] {
+  override async listDefinitions(): Promise<ConnectorCatalogDefinition[]> {
     return [this.definition];
   }
 
-  override getDefinition(connectorId: string): ConnectorCatalogDefinition | undefined {
+  override async getDefinition(connectorId: string): Promise<ConnectorCatalogDefinition | undefined> {
     return connectorId === this.definition.id ? this.definition : undefined;
   }
 }
@@ -82,30 +82,6 @@ afterEach(() => {
 });
 
 describe('connector status service', () => {
-  it('reports local read-only connectors as connected with account labels', () => {
-    const service = new ConnectorService();
-
-    expect(service.getConnector('project_files')).toMatchObject({
-      status: 'connected',
-      accountLabel: 'Local project',
-    });
-    expect(service.getConnector('git')).toMatchObject({
-      status: 'connected',
-      accountLabel: 'Current repository',
-    });
-    expect(service.getConnector('github_public')).toMatchObject({
-      status: 'connected',
-      accountLabel: 'GitHub public API',
-      tools: [
-        expect.objectContaining({
-          name: 'github.public_repo_summary',
-          safety: expect.objectContaining({ sideEffect: 'read', approval: 'auto' }),
-          refreshEligible: true,
-        }),
-      ],
-    });
-  });
-
   it('supports available, connected, error, and disabled states', () => {
     const statusService = new ConnectorStatusService();
     const available = externalConnector();
@@ -152,7 +128,7 @@ describe('connector status service', () => {
     expect(credentialFile).toContain('oauth-refresh-token');
 
     await service.disconnect('external_docs');
-    expect(service.getConnector('external_docs')).toMatchObject({ status: 'available' });
+    await expect(service.getConnector('external_docs')).resolves.toMatchObject({ status: 'available' });
   });
 });
 
@@ -200,10 +176,24 @@ describe('connector read-only safety classification', () => {
 
 describe('connector execution policy', () => {
   it('rejects connector inputs that no longer match the current tool schema', async () => {
-    const service = new ConnectorService();
+    const definition = externalConnector({
+      tools: [{
+        name: 'docs.search',
+        title: 'Search docs',
+        requiredScopes: ['docs:read'],
+        inputSchemaJson: { type: 'object', properties: { query: { type: 'string' } }, additionalProperties: false },
+        safety: { sideEffect: 'read', approval: 'auto', reason: 'read-only docs search' },
+        refreshEligible: true,
+      }],
+      allowedToolNames: ['docs.search'],
+      minimumApproval: 'auto',
+    });
+    const statusService = new ConnectorStatusService();
+    statusService.connect(definition, 'docs@example.com', { token: 'secret' });
+    const service = new OutputTestConnectorService(definition, statusService);
 
     await expect(service.execute(
-      { connectorId: 'project_files', toolName: 'project_files.search', input: { unexpected: true } },
+      { connectorId: 'external_docs', toolName: 'docs.search', input: { unexpected: true } },
       { projectsRoot: '/tmp/open-design-test', projectId: 'project-a', purpose: 'agent_preview' },
     )).rejects.toMatchObject({ code: 'CONNECTOR_INPUT_SCHEMA_MISMATCH' });
   });

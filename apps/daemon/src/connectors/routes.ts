@@ -63,19 +63,19 @@ function connectorCallbackUrl(req: Request): string {
 export function registerConnectorRoutes(app: Express, options: RegisterConnectorRoutesOptions): void {
   const service = options.service ?? connectorService;
 
-  app.get('/api/connectors', (_req: Request, res: Response) => {
+  app.get('/api/connectors', async (_req: Request, res: Response) => {
     try {
-      res.json({ connectors: service.listConnectors() });
+      res.json({ connectors: await service.listConnectors() });
     } catch (err) {
       sendConnectorRouteError(res, err, options.sendApiError);
     }
   });
 
-  app.get('/api/connectors/:connectorId', (req: Request, res: Response) => {
+  app.get('/api/connectors/:connectorId', async (req: Request, res: Response) => {
     try {
       const connectorId = req.params.connectorId;
       if (!connectorId) return options.sendApiError(res, 400, 'CONNECTOR_NOT_FOUND', 'connectorId is required');
-      res.json({ connector: service.getConnector(connectorId) });
+      res.json({ connector: await service.getConnector(connectorId) });
     } catch (err) {
       sendConnectorRouteError(res, err, options.sendApiError);
     }
@@ -92,7 +92,7 @@ export function registerConnectorRoutes(app: Express, options: RegisterConnector
         options.sendApiError(res, 400, 'VALIDATION_FAILED', 'credentials must be an object');
         return;
       }
-      const definition = service.getDefinition(connectorId);
+      const definition = await service.getDefinition(connectorId);
       if (definition?.authentication === 'composio' && credentials !== undefined) {
         options.sendApiError(res, 400, 'VALIDATION_FAILED', 'Composio connector credentials can only be stored through OAuth callback completion');
         return;
@@ -140,7 +140,7 @@ export function registerConnectorRoutes(app: Express, options: RegisterConnector
     }
   });
 
-  app.get('/api/tools/connectors/list', (req: Request, res: Response) => {
+  app.get('/api/tools/connectors/list', async (req: Request, res: Response) => {
     try {
       if (!options.authorizeToolRequest) {
         options.sendApiError(res, 500, 'CONNECTOR_EXECUTION_FAILED', 'connector tool routes are not configured');
@@ -159,7 +159,7 @@ export function registerConnectorRoutes(app: Express, options: RegisterConnector
         options.sendApiError(res, 500, 'CONNECTOR_EXECUTION_FAILED', 'connector tool routes are not configured');
         return;
       }
-      res.json({ connectors: listConnectorTools({ grant, projectsRoot: options.projectsRoot, service }) });
+      res.json({ connectors: await listConnectorTools({ grant, projectsRoot: options.projectsRoot, service }) });
     } catch (err) {
       sendConnectorRouteError(res, err, options.sendApiError);
     }

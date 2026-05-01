@@ -1,15 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { executeLocalDaemonRefreshSource } from '../live-artifacts/refresh.js';
 import type { BoundedJsonObject, BoundedJsonValue } from '../live-artifacts/schema.js';
 
 import {
   classifyConnectorToolSafety,
   connectorDefinitionToDetail,
-  getConnectorCatalogDefinition,
   isRefreshEligibleConnectorToolSafety,
-  listConnectorCatalogDefinitions,
   type ConnectorDetail,
   type ConnectorCatalogDefinition,
   type ConnectorCatalogToolDefinition,
@@ -100,6 +97,7 @@ export interface ConnectorCredentialStore {
   get(connectorId: string): ConnectorCredentialRecord | undefined;
   set(record: ConnectorCredentialRecord): void;
   delete(connectorId: string): void;
+  deleteByProvider(provider: string): void;
 }
 
 export interface ConnectorStatusServiceOptions {
@@ -107,11 +105,7 @@ export interface ConnectorStatusServiceOptions {
   credentialStore?: ConnectorCredentialStore;
 }
 
-const LOCAL_CONNECTOR_ACCOUNT_LABELS: Record<string, string> = {
-  project_files: 'Local project',
-  git: 'Current repository',
-  github_public: 'GitHub public API',
-};
+const LOCAL_CONNECTOR_ACCOUNT_LABELS: Record<string, string> = {};
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -135,6 +129,12 @@ export class InMemoryConnectorCredentialStore implements ConnectorCredentialStor
 
   delete(connectorId: string): void {
     this.records.delete(connectorId);
+  }
+
+  deleteByProvider(provider: string): void {
+    for (const [connectorId, record] of this.records.entries()) {
+      if (record.credentials.provider === provider) this.records.delete(connectorId);
+    }
   }
 }
 
@@ -160,6 +160,18 @@ export class FileConnectorCredentialStore implements ConnectorCredentialStore {
     if (records[connectorId] === undefined) return;
     delete records[connectorId];
     this.writeRecords(records);
+  }
+
+  deleteByProvider(provider: string): void {
+    const records = this.readRecords();
+    let changed = false;
+    for (const [connectorId, record] of Object.entries(records)) {
+      if (record.credentials.provider === provider) {
+        delete records[connectorId];
+        changed = true;
+      }
+    }
+    if (changed) this.writeRecords(records);
   }
 
   private readRecords(): Record<string, ConnectorCredentialRecord> {
@@ -297,6 +309,13 @@ export class ConnectorStatusService {
 
   setCredentialStore(credentialStore: ConnectorCredentialStore): void {
     this.credentialStore = credentialStore;
+  }
+
+  deleteCredentialsByProvider(provider: string): void {
+    this.credentialStore?.deleteByProvider(provider);
+    for (const [connectorId, status] of this.statuses.entries()) {
+      if (status.status === 'connected') this.statuses.delete(connectorId);
+    }
   }
 
   getStatus(definition: ConnectorCatalogDefinition): ConnectorConnectionStatus {
@@ -479,12 +498,16 @@ export class ConnectorService {
     this.statusService.setCredentialStore(credentialStore);
   }
 
-  listDefinitions(): ConnectorCatalogDefinition[] {
-    return listConnectorCatalogDefinitions();
+  deleteCredentialsByProvider(provider: string): void {
+    this.statusService.deleteCredentialsByProvider(provider);
   }
 
-  getDefinition(connectorId: string): ConnectorCatalogDefinition | undefined {
-    return getConnectorCatalogDefinition(connectorId);
+  async listDefinitions(signal?: AbortSignal): Promise<ConnectorCatalogDefinition[]> {
+    return composioConnectorProvider.listDefinitions(signal);
+  }
+
+  async getDefinition(connectorId: string, signal?: AbortSignal): Promise<ConnectorCatalogDefinition | undefined> {
+    return composioConnectorProvider.getDefinition(connectorId, signal);
   }
 
   getStatus(definition: ConnectorCatalogDefinition): ConnectorConnectionStatus {
@@ -495,12 +518,12 @@ export class ConnectorService {
     return this.statusService.getCredential(connectorId);
   }
 
-  listConnectors(): ConnectorDetail[] {
-    return this.listDefinitions().map((definition) => this.toDetail(definition));
+  async listConnectors(signal?: AbortSignal): Promise<ConnectorDetail[]> {
+    return (await this.listDefinitions(signal)).map((definition) => this.toDetail(definition));
   }
 
-  getConnector(connectorId: string): ConnectorDetail {
-    const definition = this.getDefinition(connectorId);
+  async getConnector(connectorId: string, signal?: AbortSignal): Promise<ConnectorDetail> {
+    const definition = await this.getDefinition(connectorId, signal);
     if (!definition) {
       throw new ConnectorServiceError('CONNECTOR_NOT_FOUND', 'connector not found', 404);
     }
@@ -508,7 +531,7 @@ export class ConnectorService {
   }
 
   async connect(connectorId: string, options: { accountLabel?: string; credentials?: ConnectorCredentialMaterial; callbackUrl?: string; signal?: AbortSignal } = {}): Promise<ConnectorConnectResult> {
-    const definition = this.getDefinition(connectorId);
+    const definition = await this.getDefinition(connectorId, options.signal);
     if (!definition) {
       throw new ConnectorServiceError('CONNECTOR_NOT_FOUND', 'connector not found', 404);
     }
@@ -535,7 +558,7 @@ export class ConnectorService {
   }
 
   async disconnect(connectorId: string): Promise<ConnectorDetail> {
-    const definition = this.getDefinition(connectorId);
+    const definition = await this.getDefinition(connectorId);
     if (!definition) {
       throw new ConnectorServiceError('CONNECTOR_NOT_FOUND', 'connector not found', 404);
     }
@@ -547,7 +570,7 @@ export class ConnectorService {
   }
 
   async completeComposioConnection(input: { connectorId: string; state: string; providerConnectionId?: string; status?: string; signal?: AbortSignal }): Promise<ConnectorDetail> {
-    const definition = this.getDefinition(input.connectorId);
+    const definition = await this.getDefinition(input.connectorId, input.signal);
     if (!definition) {
       throw new ConnectorServiceError('CONNECTOR_NOT_FOUND', 'connector not found', 404);
     }
@@ -560,7 +583,7 @@ export class ConnectorService {
   }
 
   async execute(request: ConnectorExecuteRequest, context: ConnectorExecutionContext): Promise<ConnectorExecuteResponse> {
-    const definition = this.getDefinition(request.connectorId);
+    const definition = await this.getDefinition(request.connectorId, context.signal);
     if (!definition) {
       throw new ConnectorServiceError('CONNECTOR_NOT_FOUND', 'connector not found', 404);
     }
@@ -656,26 +679,15 @@ export class ConnectorService {
   }
 
   protected async executeConnectorProviderTool(request: ConnectorExecuteRequest, context: ConnectorExecutionContext): Promise<BoundedJsonObject> {
-    const definition = this.getDefinition(request.connectorId);
+    const definition = await this.getDefinition(request.connectorId, context.signal);
     const tool = definition?.tools.find((candidate) => candidate.name === request.toolName);
     if (definition?.authentication === 'composio' && tool) {
       return composioConnectorProvider.execute(definition, tool, request.input, this.getCredential(request.connectorId)?.credentials, context.signal);
     }
 
-    if (request.connectorId === 'github_public' && request.toolName === 'github.public_repo_summary') {
-      return executeGithubPublicRepoSummary(request.input, context.signal);
-    }
-
-    return await executeLocalDaemonRefreshSource({
-      projectsRoot: context.projectsRoot,
-      projectId: context.projectId,
-      source: {
-        type: 'daemon_tool',
-        toolName: request.toolName,
-        input: request.input,
-        refreshPermission: 'none',
-      },
-      ...(context.signal === undefined ? {} : { signal: context.signal }),
+    throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'connector provider is not implemented', 501, {
+      connectorId: request.connectorId,
+      toolName: request.toolName,
     });
   }
 
@@ -732,51 +744,8 @@ export function configureConnectorCredentialStore(credentialStore: ConnectorCred
   connectorService.setCredentialStore(credentialStore);
 }
 
-function requiredStringInput(input: BoundedJsonObject, key: string): string {
-  const value = input[key];
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new ConnectorServiceError('CONNECTOR_INPUT_SCHEMA_MISMATCH', `input.${key} must be a non-empty string`, 400, { key });
-  }
-  return value.trim();
-}
-
-function validateGithubPathSegment(value: string, key: string): string {
-  if (!/^[A-Za-z0-9_.-]+$/.test(value)) {
-    throw new ConnectorServiceError('CONNECTOR_INPUT_SCHEMA_MISMATCH', `input.${key} contains unsupported characters`, 400, { key });
-  }
-  return value;
-}
-
-async function executeGithubPublicRepoSummary(input: BoundedJsonObject, signal?: AbortSignal): Promise<BoundedJsonObject> {
-  const owner = validateGithubPathSegment(requiredStringInput(input, 'owner'), 'owner');
-  const repo = validateGithubPathSegment(requiredStringInput(input, 'repo'), 'repo');
-  const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'open-design-local-daemon',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    ...(signal ? { signal } : {}),
-  });
-  if (!response.ok) {
-    throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', `GitHub public repository summary failed with HTTP ${response.status}`, response.status === 404 ? 404 : 502, {
-      connectorId: 'github_public',
-      toolName: 'github.public_repo_summary',
-      httpStatus: response.status,
-    });
-  }
-  const json = await response.json() as Record<string, unknown>;
-  return {
-    toolName: 'github.public_repo_summary',
-    fullName: typeof json.full_name === 'string' ? json.full_name : `${owner}/${repo}`,
-    description: typeof json.description === 'string' ? json.description : '',
-    stars: typeof json.stargazers_count === 'number' ? json.stargazers_count : 0,
-    forks: typeof json.forks_count === 'number' ? json.forks_count : 0,
-    openIssues: typeof json.open_issues_count === 'number' ? json.open_issues_count : 0,
-    defaultBranch: typeof json.default_branch === 'string' ? json.default_branch : '',
-    url: typeof json.html_url === 'string' ? json.html_url : `https://github.com/${owner}/${repo}`,
-    updatedAt: typeof json.updated_at === 'string' ? json.updated_at : '',
-  };
+export function deleteConnectorCredentialsByProvider(provider: string): void {
+  connectorService.deleteCredentialsByProvider(provider);
 }
 
 function summarizeConnectorOutput(output: BoundedJsonValue): string | undefined {

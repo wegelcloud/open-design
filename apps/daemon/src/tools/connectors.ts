@@ -8,10 +8,11 @@ export interface ConnectorToolContext {
   service?: ConnectorService;
 }
 
-export function listConnectorTools(context: ConnectorToolContext): ReturnType<ConnectorService['listConnectors']> {
+export async function listConnectorTools(context: ConnectorToolContext): Promise<Awaited<ReturnType<ConnectorService['listConnectors']>>> {
   const service = context.service ?? connectorService;
-  return service.listDefinitions()
-    .map((definition) => ({ definition, connector: service.getConnector(definition.id) }))
+  const definitions = await service.listDefinitions();
+  const entries = await Promise.all(definitions.map(async (definition) => ({ definition, connector: await service.getConnector(definition.id) })));
+  return entries
     .filter(({ connector }) => connector.status === 'connected')
     .map(({ definition, connector }) => ({
       ...connector,

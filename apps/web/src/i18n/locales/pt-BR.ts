@@ -151,6 +151,9 @@ export const ptBR: Dict = {
   'connectors.statusConnected': 'Conectado',
   'connectors.statusError': 'Erro',
   'connectors.statusDisabled': 'Desativado',
+  'connectors.gateTitle': 'Configure a chave da API Composio',
+  'connectors.gateBody': 'Os conectores exigem uma chave da API Composio. Adicione-a em Configurações para desbloquear as integrações disponíveis.',
+  'connectors.gateAction': 'Abrir configurações',
 
   'newproj.tabPrototype': 'Protótipo',
   'newproj.tabLiveArtifact': 'Novo artefato live',

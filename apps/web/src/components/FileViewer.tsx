@@ -498,11 +498,7 @@ const LIVE_ARTIFACT_VIEWER_TABS: Array<{ id: LiveArtifactViewerTab; label: strin
 
 type LiveArtifactTile = LiveArtifact['tiles'][number];
 
-const READ_ONLY_REFRESH_TOOL_NAMES = new Set([
-  'project_files.search',
-  'project_files.read_json',
-  'git.summary',
-]);
+const READ_ONLY_REFRESH_TOOL_NAMES = new Set<string>();
 
 function isReadOnlyRefreshEligibleTile(tile: LiveArtifactTile): boolean {
   const source = tile.sourceJson;

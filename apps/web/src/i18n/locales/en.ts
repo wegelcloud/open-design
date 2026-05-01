@@ -152,6 +152,9 @@ export const en: Dict = {
   'connectors.statusConnected': 'Connected',
   'connectors.statusError': 'Error',
   'connectors.statusDisabled': 'Disabled',
+  'connectors.gateTitle': 'Configure Composio API key',
+  'connectors.gateBody': 'Connectors require a Composio API key. Add it in Settings to unlock available integrations.',
+  'connectors.gateAction': 'Open settings',
 
   'newproj.tabPrototype': 'Prototype',
   'newproj.tabLiveArtifact': 'New live artifact',

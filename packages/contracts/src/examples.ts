@@ -141,27 +141,28 @@ export const exampleLiveArtifactUpdateInput: LiveArtifactUpdateInput = {
 };
 
 export const exampleConnectorDetail: ConnectorDetail = {
-  id: 'project_files',
-  name: 'Project files',
-  provider: 'open-design',
-  category: 'local',
-  description: 'Read compact summaries from files in the current project.',
+  id: 'github',
+  name: 'GitHub',
+  provider: 'composio',
+  category: 'developer',
+  description: 'Search repositories, issues, pull requests, commits, and releases from a connected GitHub account via Composio.',
   status: 'available',
   tools: [
     {
-      name: 'project_files.search',
-      title: 'Search project files',
-      description: 'Search project filenames and text snippets.',
-      inputSchemaJson: { query: 'string' },
-      outputSchemaJson: { matches: [] },
+      name: 'github.search_issues_and_pull_requests',
+      title: 'Search issues and pull requests',
+      description: 'Search issues and pull requests across repositories visible to the connected account.',
+      inputSchemaJson: { type: 'object', additionalProperties: true },
+      outputSchemaJson: { type: 'object', additionalProperties: true },
       safety: {
         sideEffect: 'read',
         approval: 'auto',
-        reason: 'Searches local project files without mutating data.',
+        reason: 'Tool name, scope, or description indicates explicit read-only behavior.',
       },
       refreshEligible: true,
     },
   ],
-  featuredToolNames: ['project_files.search'],
+  auth: { provider: 'composio', configured: false },
+  featuredToolNames: ['github.search_issues_and_pull_requests'],
   minimumApproval: 'auto',
 };

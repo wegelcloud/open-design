@@ -153,6 +153,9 @@ export const fa: Dict = {
   'connectors.statusConnected': 'متصل',
   'connectors.statusError': 'خطا',
   'connectors.statusDisabled': 'غیرفعال',
+  'connectors.gateTitle': 'ابتدا کلید Composio API را پیکربندی کنید',
+  'connectors.gateBody': 'اتصال‌دهنده‌ها به کلید Composio API نیاز دارند. برای فعال‌سازی ادغام‌های موجود، آن را در تنظیمات اضافه کنید.',
+  'connectors.gateAction': 'باز کردن تنظیمات',
 
   'newproj.tabPrototype': 'نمونه اولیه',
   'newproj.tabLiveArtifact': 'مصنوع زنده جدید',
