@@ -75,6 +75,7 @@ type WinPaths = {
   installMarkerPath: string;
   installTimingPath: string;
   nsisLogPath: string;
+  nsisIncludePath: string;
   packagedConfigPath: string;
   resourceRoot: string;
   setupPath: string;
@@ -255,6 +256,7 @@ function resolveWinPaths(config: ToolPackConfig): WinPaths {
     installTimingPath: join(namespaceRoot, "logs", "install.timing.json"),
     latestYmlPath: join(namespaceRoot, "builder", "latest.yml"),
     nsisLogPath: join(namespaceRoot, "logs", "nsis.log"),
+    nsisIncludePath: join(namespaceRoot, "nsis", "installer.nsh"),
     packagedConfigPath: join(namespaceRoot, "open-design-config.json"),
     resourceRoot: join(namespaceRoot, "resources", "open-design"),
     setupPath: join(namespaceRoot, "builder", `${PRODUCT_NAME}-${namespaceToken}-setup.exe`),
@@ -272,6 +274,92 @@ function resolveWinPaths(config: ToolPackConfig): WinPaths {
 
 function resolveWinProductUserDataRoot(): string {
   return join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), PRODUCT_NAME);
+}
+
+function resolveWinUninstallLocalDataRoot(config: ToolPackConfig): string {
+  return config.portable ? `$APPDATA\\${PRODUCT_NAME}` : config.roots.runtime.namespaceRoot;
+}
+
+function escapeNsisString(value: string): string {
+  return value.replace(/"/g, '$\\"').replace(/\r?\n/g, "$\\r$\\n");
+}
+
+async function writeNsisInclude(config: ToolPackConfig, paths: WinPaths): Promise<void> {
+  const localDataRoot = escapeNsisString(resolveWinUninstallLocalDataRoot(config));
+  await mkdir(dirname(paths.nsisIncludePath), { recursive: true });
+  await writeFile(
+    paths.nsisIncludePath,
+    `!include LogicLib.nsh
+!include nsDialogs.nsh
+
+Var /GLOBAL odRemoveLocalData
+Var /GLOBAL odRemoveLocalDataCheckbox
+Var /GLOBAL odLocalDataRoot
+
+LangString OD_REMOVE_LOCAL_DATA_TITLE 1033 "Remove local data"
+LangString OD_REMOVE_LOCAL_DATA_TITLE 2052 "删除本地数据"
+LangString OD_REMOVE_LOCAL_DATA_TITLE 1028 "刪除本機資料"
+LangString OD_REMOVE_LOCAL_DATA_TITLE 1046 "Remover dados locais"
+LangString OD_REMOVE_LOCAL_DATA_TITLE 1049 "Удалить локальные данные"
+LangString OD_REMOVE_LOCAL_DATA_TITLE 1065 "حذف داده‌های محلی"
+
+LangString OD_REMOVE_LOCAL_DATA_HINT 1033 "Choose whether the uninstaller should remove Open Design data stored on this computer."
+LangString OD_REMOVE_LOCAL_DATA_HINT 2052 "请选择卸载程序是否删除此电脑上保存的 Open Design 数据。"
+LangString OD_REMOVE_LOCAL_DATA_HINT 1028 "請選擇解除安裝程式是否刪除此電腦上儲存的 Open Design 資料。"
+LangString OD_REMOVE_LOCAL_DATA_HINT 1046 "Escolha se o desinstalador deve remover os dados do Open Design armazenados neste computador."
+LangString OD_REMOVE_LOCAL_DATA_HINT 1049 "Выберите, должен ли деинсталлятор удалить данные Open Design, сохраненные на этом компьютере."
+LangString OD_REMOVE_LOCAL_DATA_HINT 1065 "انتخاب کنید که حذف‌کننده داده‌های Open Design ذخیره‌شده در این رایانه را حذف کند یا نه."
+
+LangString OD_REMOVE_LOCAL_DATA_CHECKBOX 1033 "Remove local Open Design data:"
+LangString OD_REMOVE_LOCAL_DATA_CHECKBOX 2052 "删除本地 Open Design 数据："
+LangString OD_REMOVE_LOCAL_DATA_CHECKBOX 1028 "刪除本機 Open Design 資料："
+LangString OD_REMOVE_LOCAL_DATA_CHECKBOX 1046 "Remover dados locais do Open Design:"
+LangString OD_REMOVE_LOCAL_DATA_CHECKBOX 1049 "Удалить локальные данные Open Design:"
+LangString OD_REMOVE_LOCAL_DATA_CHECKBOX 1065 "حذف داده‌های محلی Open Design:"
+
+!macro customUnWelcomePage
+  !insertmacro MUI_UNPAGE_WELCOME
+  UninstPage custom un.OpenDesignLocalDataPage un.OpenDesignLocalDataPageLeave
+!macroend
+
+Function un.OpenDesignLocalDataPage
+  StrCpy $odRemoveLocalData "1"
+  StrCpy $odLocalDataRoot "${localDataRoot}"
+  nsDialogs::Create 1018
+  Pop $0
+  \${If} $0 == error
+    Abort
+  \${EndIf}
+
+  \${NSD_CreateLabel} 0 0 100% 24u "$(OD_REMOVE_LOCAL_DATA_HINT)"
+  Pop $0
+  \${NSD_CreateCheckbox} 0 34u 100% 36u "$(OD_REMOVE_LOCAL_DATA_CHECKBOX) $odLocalDataRoot"
+  Pop $odRemoveLocalDataCheckbox
+  \${NSD_Check} $odRemoveLocalDataCheckbox
+  nsDialogs::Show
+FunctionEnd
+
+Function un.OpenDesignLocalDataPageLeave
+  \${NSD_GetState} $odRemoveLocalDataCheckbox $0
+  \${If} $0 == \${BST_CHECKED}
+    StrCpy $odRemoveLocalData "1"
+  \${Else}
+    StrCpy $odRemoveLocalData "0"
+  \${EndIf}
+FunctionEnd
+
+!macro customUnInstall
+  \${If} $odLocalDataRoot == ""
+    StrCpy $odLocalDataRoot "${localDataRoot}"
+  \${EndIf}
+  \${If} $odRemoveLocalData != "0"
+    DetailPrint "Removing local Open Design data: $odLocalDataRoot"
+    RMDir /r "$odLocalDataRoot"
+  \${EndIf}
+!macroend
+`,
+    "utf8",
+  );
 }
 
 function resolveWinProductNamespaceRoot(config: ToolPackConfig): string {
@@ -656,6 +744,7 @@ async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths): Prom
       createStartMenuShortcut: true,
       deleteAppDataOnUninstall: false,
       displayLanguageSelector: false,
+      include: paths.nsisIncludePath,
       installerLanguages: Object.values(NSIS_INSTALLER_LANGUAGE_BY_WEB_LOCALE),
       language: "1033",
       multiLanguageInstaller: true,
@@ -675,6 +764,7 @@ async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths): Prom
 
   await removeTree(paths.appBuilderOutputRoot);
   await mkdir(dirname(paths.appBuilderConfigPath), { recursive: true });
+  await writeNsisInclude(config, paths);
   await writeFile(paths.appBuilderConfigPath, `${JSON.stringify(builderConfig, null, 2)}\n`, "utf8");
   const build = async () => {
     await execFileAsync(process.execPath, [
