@@ -723,4 +723,111 @@ describe('all-caps-no-tracking', () => {
     const findings = lintArtifact(html);
     expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeUndefined();
   });
+
+  it('flags a 3rem heading with 1px tracking (rem font-size resolves to 48px, 0.06em floor = 2.88px)', () => {
+    // Regression: the px-vs-element-font-size resolution previously
+    // matched only `font-size: <n>px`, so a `font-size: 3rem` heading
+    // fell through to the lenient `>= 1px` fallback and accepted 1px
+    // tracking — even though the rendered ~48px display has a 2.88px
+    // floor and 1px is well below the 0.06em rule. The helper now
+    // resolves `rem` font-size via the same root assumption used for
+    // tracking and applies the strict per-element floor.
+    const html = `
+      <style>
+        .display { font-size: 3rem; text-transform: uppercase; letter-spacing: 1px; }
+      </style>
+      <h1 class="display">Headline</h1>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeDefined();
+  });
+
+  it('passes a 3rem heading with 0.06em tracking (em path is unaffected by font-size unit)', () => {
+    // Sanity check: the rem font-size fix must not regress the em
+    // letter-spacing branch. `0.06em` is the rule, regardless of how
+    // font-size is expressed.
+    const html = `
+      <style>
+        .display { font-size: 3rem; text-transform: uppercase; letter-spacing: 0.06em; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeUndefined();
+  });
+
+  it('passes a 3rem heading with 3px tracking (3 ≥ 48 * 0.06 = 2.88)', () => {
+    const html = `
+      <style>
+        .display { font-size: 3rem; text-transform: uppercase; letter-spacing: 3px; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeUndefined();
+  });
+
+  it('flags a tokenized display size with 1px tracking (var() resolves to 3rem, then to 48px)', () => {
+    // Regression: same root cause via a CSS variable. The agent often
+    // hides the size behind a token (`--display-size: 3rem`); after
+    // `resolveCssVars` the body reads `font-size: 3rem;` and must take
+    // the same strict-floor branch. Without the fix, the rule slipped
+    // past via the lenient fallback.
+    const html = `
+      <style>
+        :root { --display-size: 3rem; }
+        .display { font-size: var(--display-size); text-transform: uppercase; letter-spacing: 1px; }
+      </style>
+      <h1 class="display">Headline</h1>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeDefined();
+  });
+
+  it('flags a tokenized px display size with 1px tracking', () => {
+    // The token-resolution path must also catch a px-valued token —
+    // `font-size: var(--display-size)` with `--display-size: 48px`
+    // resolves the same way and the 2.88px floor still applies.
+    const html = `
+      <style>
+        :root { --display-size: 48px; }
+        .display { font-size: var(--display-size); text-transform: uppercase; letter-spacing: 1px; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeDefined();
+  });
+
+  it('flags a heading with 1em font-size (unresolvable unit) and 1px tracking', () => {
+    // When the rule explicitly declares font-size in a unit we cannot
+    // resolve (`em`, `%`, `calc(...)`, unresolved var), the helper
+    // refuses the lenient body-text fallback — the element might be
+    // arbitrarily large. The rule must use `em` letter-spacing or an
+    // explicit px/rem font-size to be verifiable.
+    const html = `
+      <style>
+        .display { font-size: 2em; text-transform: uppercase; letter-spacing: 1px; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeDefined();
+  });
+
+  it('passes a heading with 1em font-size and 0.06em tracking (em path is verifiable)', () => {
+    // The conservative refusal applies only when the caller leans on
+    // the px fallback. Em letter-spacing is per-element by definition,
+    // so an em font-size declaration is irrelevant to the check.
+    const html = `
+      <style>
+        .display { font-size: 2em; text-transform: uppercase; letter-spacing: 0.08em; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeUndefined();
+  });
+
+  it('flags inline 3rem heading with 1px tracking', () => {
+    // Same regression reproduced through the inline-style branch.
+    const html = `<h1 style="font-size: 3rem; text-transform: uppercase; letter-spacing: 1px">Headline</h1>`;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'all-caps-no-tracking')).toBeDefined();
+  });
 });

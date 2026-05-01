@@ -500,14 +500,25 @@ function escapeRe(s) {
 // it enforces is the per-element em floor; convert `rem` to absolute
 // px and reuse the same px-vs-element-font-size resolution.
 //
-// px (and the converted-rem path) resolve in two steps:
-//   1. If the same rule body declares `font-size: <n>px`, compare px
-//      tracking against `n * 0.06` — exact translation of the em rule.
-//   2. Otherwise (font-size inherited or in a different unit), use a
-//      conservative `>= 1px` absolute fallback. That stays correct for
-//      the typical body-text default of 16px (1px / 16px ≈ 0.0625em,
-//      just over the floor) and for any smaller label (1px / 14px ≈
-//      0.071em, 1px / 12px ≈ 0.083em).
+// px (and the converted-rem path) resolve in three steps:
+//   1. If the same rule body declares `font-size` in `px` or `rem`
+//      (after `var()` resolution), convert it to absolute px and
+//      compare px tracking against `fs * 0.06` — exact translation
+//      of the em rule. `rem` font sizes resolve via the same root
+//      assumption used for tracking, so a `font-size: 3rem` heading
+//      enforces a 2.88px floor instead of the lenient body fallback.
+//   2. If the rule explicitly declares a `font-size` in a unit we
+//      can't resolve (`em`, `%`, `calc(...)`, an unresolved var,
+//      etc.), refuse the lenient fallback: the heading might be
+//      arbitrarily large, in which case 1px tracking is well below
+//      0.06em. Treat as missing tracking — the agent can either
+//      switch to `em` letter-spacing or declare an explicit px/rem
+//      font-size we can verify.
+//   3. Otherwise (no font-size declared at all, font-size inherited),
+//      use a conservative `>= 1px` absolute fallback. That stays
+//      correct for the typical body-text default of 16px (1px / 16px
+//      ≈ 0.0625em, just over the floor) and for any smaller label
+//      (1px / 14px ≈ 0.071em, 1px / 12px ≈ 0.083em).
 //
 // `tokens` (optional) is a map of CSS custom properties harvested from
 // global theme scopes elsewhere in the artifact. When provided, simple
@@ -529,12 +540,27 @@ function hasAdequateUppercaseTracking(body, tokens) {
   const unit = lsMatch[2].toLowerCase();
   if (unit === 'em') return v >= 0.06;
   const trackingPx = unit === 'rem' ? v * ROOT_FONT_PX : v;
-  const fsMatch = /font-size\s*:\s*(-?\d*\.?\d+)\s*px/i.exec(resolved);
-  if (fsMatch) {
-    const fs = parseFloat(fsMatch[1]);
-    return fs > 0 && trackingPx >= fs * 0.06;
+  const fsPx = resolveFontSizePx(resolved);
+  if (fsPx != null) {
+    return fsPx > 0 && trackingPx >= fsPx * 0.06;
   }
+  if (/font-size\s*:/i.test(resolved)) return false;
   return trackingPx >= 1;
+}
+
+// Resolve a same-rule `font-size` declaration to absolute px. Returns
+// the px value when font-size is declared in `px` or `rem` (rem maps
+// via the root font-size assumption shared with tracking); returns
+// `null` when font-size is absent OR present in an unresolvable unit
+// (`em`, `%`, `calc(...)`, an unresolved `var(--...)`). The caller
+// distinguishes those two `null` cases by re-checking for the
+// `font-size:` literal.
+function resolveFontSizePx(body) {
+  const m = /font-size\s*:\s*(-?\d*\.?\d+)\s*(px|rem)\b/i.exec(body);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  const unit = m[2].toLowerCase();
+  return unit === 'rem' ? v * ROOT_FONT_PX : v;
 }
 
 // Collect CSS custom properties (`--name: value`) declared in global
