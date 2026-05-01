@@ -184,6 +184,91 @@ describe('ai-default-indigo', () => {
     expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeDefined();
   });
 
+  it('still flags indigo on a bare component-attribute selector', () => {
+    // Regression: the bare-attribute branch of the global-theme-scope
+    // test used to accept ANY attribute selector (e.g.
+    // `[data-variant="primary"]`), so a custom-property-only rule on
+    // a component/state attribute was treated as a global token block
+    // and the indigo lint silently disappeared. The exemption now
+    // requires the attribute name to be one of the known global-theme
+    // switches (`data-theme`, `data-color-scheme`, `data-mode`).
+    const html = `
+      <style>
+        [data-variant="primary"] { --button-bg: #6366f1; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeDefined();
+  });
+
+  it('still flags indigo on a bare aria-state attribute selector', () => {
+    const html = `
+      <style>
+        [aria-current="page"] { --nav-accent: #6366f1; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeDefined();
+  });
+
+  it('still exempts indigo on a bare data-color-scheme theme block', () => {
+    // The bare-attribute exemption still covers the canonical
+    // global-theme switches; a token block keyed off
+    // `[data-color-scheme="dark"]` is a theme variant, not a
+    // component-local rule, and must not fire.
+    const html = `
+      <style>
+        [data-color-scheme="dark"] { --accent: #6366f1; --bg: #0b0b10; }
+        .cta { background: var(--accent); color: white; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeUndefined();
+  });
+
+  it('does not flag a :root token block whose body contains CSS comments', () => {
+    // Regression: `stripTokenBlocksFromCss` used to split the body on
+    // `;` and run `isTokenShapedDeclaration` from the start of each
+    // fragment. A common token block such as
+    // `:root { /* brand accent */ --accent: #6366f1; }` produced a
+    // declaration fragment beginning with the comment, failed the
+    // token-shape test, and the rule was left in scope of the
+    // indigo scan — a false P0 on a legitimate token definition.
+    const html = `
+      <style>
+        :root { /* brand accent */ --accent: #6366f1; --bg: #ffffff; }
+        .cta { background: var(--accent); color: white; }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeUndefined();
+  });
+
+  it('does not flag a :root token block with a trailing CSS comment', () => {
+    const html = `
+      <style>
+        :root { --accent: #6366f1; /* brand accent */ }
+      </style>
+      <button style="background: var(--accent)">Get started</button>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeUndefined();
+  });
+
+  it('does not flag a :root token block with a comment between declarations', () => {
+    const html = `
+      <style>
+        :root {
+          --bg: #ffffff;
+          /* brand accent — keep in sync with DESIGN.md */
+          --accent: #6366f1;
+        }
+      </style>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'ai-default-indigo')).toBeUndefined();
+  });
+
 });
 
 describe('all-caps-no-tracking', () => {

@@ -130,8 +130,8 @@ export function lintArtifact(rawHtml) {
   // check didn't already, since they overlap in spirit. Strip
   // token-definition blocks first: a brief whose accent is
   // intentionally indigo declares it as `--accent: #6366f1` inside
-  // a selector list containing `:root` (or another global token
-  // scope like `html` / bare `[data-theme="..."]`) and uses
+  // a selector list containing `:root` (or another known global
+  // theme scope like `html` / bare `[data-theme="..."]`) and uses
   // var(--accent) downstream. That is the design system speaking,
   // not the model defaulting, and must not fire. Component-local
   // variables (e.g. `.cta { --cta-bg: #6366f1; }`) stay in scope so
@@ -460,10 +460,13 @@ function escapeRe(s) {
 // A rule is treated as a token block only when BOTH conditions hold:
 //   1. every selector in the list is a global theme-scope selector
 //      (`:root`, `:root[data-theme="..."]`, `html`, `body`, or a bare
-//      `[data-theme="..."]`). Selector lists that mix in a component
-//      selector — e.g. `:root, .cta { --cta-bg: #6366f1 }` — fail
-//      this test, so indigo laundered through a local var or rule
-//      still trips the lint.
+//      attribute selector for a known global-theme switch —
+//      `data-theme`, `data-color-scheme`, `data-mode`). Selector lists
+//      that mix in a component selector — e.g.
+//      `:root, .cta { --cta-bg: #6366f1 }` — or that target an
+//      arbitrary component/state attribute like `[data-variant="primary"]`
+//      or `[aria-current="page"]` fail this test, so indigo laundered
+//      through a local var or rule still trips the lint.
 //   2. its body is token-shaped: only CSS custom properties
 //      (`--name: value`), with a small allowlist for global-theme
 //      metadata such as `color-scheme` that legitimately accompanies
@@ -479,7 +482,13 @@ function stripTokenBlocks(input) {
 }
 
 function stripTokenBlocksFromCss(css) {
-  return css.replace(/([^{}]*)\{([^}]*)\}/g, (full, selector, body) => {
+  // Strip CSS comments before any structural matching: a block like
+  // `:root { /* brand accent */ --accent: #6366f1; }` would otherwise
+  // produce a declaration fragment that begins with the comment,
+  // fail `isTokenShapedDeclaration`, and leave a legitimate token
+  // definition in scope of the indigo scan.
+  const cleaned = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  return cleaned.replace(/([^{}]*)\{([^}]*)\}/g, (full, selector, body) => {
     const sel = (selector || '').trim();
     if (!selectorListIsGlobalThemeScope(sel)) return full;
     const decls = (body || '')
@@ -509,6 +518,18 @@ function selectorListIsGlobalThemeScope(selector) {
   return parts.every(isGlobalThemeScopeSelector);
 }
 
+// Bare attribute selectors are exempted only when the attribute is one
+// of the known global-theme switches. A broader exemption would also
+// strip arbitrary component/state attribute rules
+// (e.g. `[data-variant="primary"] { --button-bg: #6366f1; }` or
+// `[aria-current="page"] { --nav-accent: #6366f1; }`), which is the
+// exact component-local indigo laundering this lint is meant to catch.
+const GLOBAL_THEME_ATTRIBUTES = new Set([
+  'data-theme',
+  'data-color-scheme',
+  'data-mode',
+]);
+
 function isGlobalThemeScopeSelector(s) {
   // :root, :root[data-theme="dark"]
   if (/^:root(?:\[[^\]]*\])?$/.test(s)) return true;
@@ -516,7 +537,10 @@ function isGlobalThemeScopeSelector(s) {
   if (/^html(?:\[[^\]]*\])?$/.test(s)) return true;
   // body, body[data-theme="dark"]
   if (/^body(?:\[[^\]]*\])?$/.test(s)) return true;
-  // bare attribute selector: [data-theme="dark"], [data-color-scheme="..."]
-  if (/^\[[a-zA-Z-]+(?:[*^$|~]?=[^\]]*)?\]$/.test(s)) return true;
+  // Bare attribute selector restricted to known global-theme switches.
+  const bareAttr = /^\[([a-zA-Z-]+)(?:[*^$|~]?=[^\]]*)?\]$/.exec(s);
+  if (bareAttr && GLOBAL_THEME_ATTRIBUTES.has(bareAttr[1].toLowerCase())) {
+    return true;
+  }
   return false;
 }
