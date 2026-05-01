@@ -219,9 +219,9 @@ jobs:
             throw "expected blockmap not found at $sourceBlockmap"
           }
 
-          $assetSuffix = "${{ needs.metadata.outputs.asset_version_suffix }}"
-          $versionedInstaller = "open-design-${{ needs.metadata.outputs.beta_version }}$assetSuffix-win-x64-setup.exe"
-          $versionedBlockmap = "open-design-${{ needs.metadata.outputs.beta_version }}$assetSuffix-win-x64-setup.exe.blockmap"
+          $windowsAssetSuffix = ".unsigned"
+          $versionedInstaller = "open-design-${{ needs.metadata.outputs.beta_version }}$windowsAssetSuffix-win-x64-setup.exe"
+          $versionedBlockmap = "open-design-${{ needs.metadata.outputs.beta_version }}$windowsAssetSuffix-win-x64-setup.exe.blockmap"
           $checksumFile = "$versionedInstaller.sha256"
           Copy-Item $sourceInstaller (Join-Path $releaseDir $versionedInstaller)
           Copy-Item $sourceBlockmap (Join-Path $releaseDir $versionedBlockmap)
@@ -243,7 +243,7 @@ jobs:
             "path: `"$installerUrl`""
             "sha512: `"$installerSha512`""
             "releaseDate: `"$releaseDate`""
-            "releaseNotes: `"Open Design beta ${{ needs.metadata.outputs.beta_version }}$assetSuffix`""
+            "releaseNotes: `"Open Design beta ${{ needs.metadata.outputs.beta_version }}$windowsAssetSuffix`""
           ) | Set-Content -Path (Join-Path $releaseDir "latest.yml")
 
       - name: Upload windows release bundle
@@ -298,7 +298,8 @@ jobs:
           - channel: beta
           - version: ${{ needs.metadata.outputs.beta_version }}
           - base version: ${{ needs.metadata.outputs.base_version }}
-          - signed: ${{ needs.metadata.outputs.signed }}
+          - mac signed/notarized: ${{ needs.metadata.outputs.signed }}
+          - windows signed: false
           - branch: ${{ needs.metadata.outputs.branch }}
           - commit: ${{ needs.metadata.outputs.commit }}
 
@@ -372,8 +373,9 @@ jobs:
             echo "- Version: ${{ needs.metadata.outputs.beta_version }}"
             echo "- Version tag: ${{ needs.metadata.outputs.version_tag }}"
             echo "- Channel feed tag: ${{ needs.metadata.outputs.beta_tag }}"
-            echo "- Signed: ${{ needs.metadata.outputs.signed }}"
+            echo "- mac signed/notarized: ${{ needs.metadata.outputs.signed }}"
+            echo "- windows signed: false"
             echo "- mac assets: open-design-${{ needs.metadata.outputs.beta_version }}${{ needs.metadata.outputs.asset_version_suffix }}-mac-arm64.dmg, open-design-${{ needs.metadata.outputs.beta_version }}${{ needs.metadata.outputs.asset_version_suffix }}-mac-arm64.zip"
-            echo "- win assets: open-design-${{ needs.metadata.outputs.beta_version }}${{ needs.metadata.outputs.asset_version_suffix }}-win-x64-setup.exe, open-design-${{ needs.metadata.outputs.beta_version }}${{ needs.metadata.outputs.asset_version_suffix }}-win-x64-setup.exe.blockmap"
+            echo "- win assets: open-design-${{ needs.metadata.outputs.beta_version }}.unsigned-win-x64-setup.exe, open-design-${{ needs.metadata.outputs.beta_version }}.unsigned-win-x64-setup.exe.blockmap"
             echo "- Feeds: latest-mac.yml, latest.yml"
           } >> "$GITHUB_STEP_SUMMARY"
