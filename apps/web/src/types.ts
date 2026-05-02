@@ -53,9 +53,8 @@ export function liveArtifactIdFromTabId(tabId: LiveArtifactTabId): string {
 
 export type LiveArtifactViewerTab =
   | 'preview'
-  | 'source'
+  | 'code'
   | 'data'
-  | 'provenance'
   | 'refresh-history';
 
 export interface ProjectFileWorkspaceEntry {

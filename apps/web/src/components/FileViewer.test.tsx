@@ -141,7 +141,7 @@ describe('LiveArtifactRefreshHistoryPanel', () => {
     expect(markup).toContain('No refresh activity yet in this session');
     // Raw JSON is available but tucked inside a collapsed <details>, not exposed as the primary view.
     expect(markup).toContain('<details');
-    expect(markup).toContain('Raw payload');
+    expect(markup).toContain('Advanced debug metadata');
     const detailsIndex = markup.indexOf('<details');
     const rawJsonIndex = markup.search(/<pre class="viewer-source">\s*\{/);
     expect(detailsIndex).toBeGreaterThanOrEqual(0);

@@ -383,6 +383,17 @@ describe('live artifact tool routes', () => {
     expect(csp).toContain('sandbox allow-same-origin');
     expect(preview.body).toContain('<h1>Preview Route Artifact</h1>');
     expect(preview.body).toContain('<p>Agent</p>');
+
+    const templateSource = await textFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}/preview?projectId=${encodeURIComponent(projectId)}&variant=template`);
+    expect(templateSource.status).toBe(200);
+    expect(templateSource.headers.get('content-type')).toContain('text/plain');
+    expect(templateSource.body).toContain('{{data.title}}');
+
+    const renderedSource = await textFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}/preview?projectId=${encodeURIComponent(projectId)}&variant=rendered-source`);
+    expect(renderedSource.status).toBe(200);
+    expect(renderedSource.headers.get('content-type')).toContain('text/plain');
+    expect(renderedSource.body).toContain('<h1>Preview Route Artifact</h1>');
+    expect(renderedSource.body).not.toContain('{{data.title}}');
   });
 
   it('returns API dataJson from data.json when the artifact cache diverges', async () => {

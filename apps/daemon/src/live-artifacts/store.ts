@@ -1261,6 +1261,20 @@ export async function ensureLiveArtifactPreview(options: RegenerateLiveArtifactP
   return { artifact, paths, html };
 }
 
+export type LiveArtifactCodeVariant = 'template' | 'rendered';
+
+export async function readLiveArtifactCode(options: RegenerateLiveArtifactPreviewOptions & { variant: LiveArtifactCodeVariant }): Promise<string> {
+  if (options.variant === 'rendered') {
+    return (await ensureLiveArtifactPreview(options)).html;
+  }
+
+  const artifactId = validateLiveArtifactStorageId(options.artifactId);
+  const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
+  const artifact = await readLiveArtifactWithDataJsonCache(paths);
+  assertArtifactMatchesStorage(artifact, options.projectId, artifactId);
+  return readFile(paths.templateHtmlPath, 'utf8');
+}
+
 export async function updateLiveArtifact(options: UpdateLiveArtifactOptions): Promise<LiveArtifactStoreRecord> {
   const artifactId = validateLiveArtifactStorageId(options.artifactId);
   const result = validateLiveArtifactUpdateInput(options.input);

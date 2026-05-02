@@ -546,7 +546,7 @@ export const zhTW: Dict = {
   'liveArtifact.refresh.successMany': '重新整理完成，資料已更新。',
   'liveArtifact.refresh.successAction': '預覽已使用最新提交的資料重新載入。',
   'liveArtifact.refresh.previousFailure': '上次重新整理失敗：{message}',
-  'liveArtifact.refresh.failureAction': '請檢查「重新整理紀錄」和「來源」分頁，修復來源或權限問題後重試。',
+  'liveArtifact.refresh.failureAction': '請檢查「重新整理紀錄」，修復來源或權限問題後重試。',
   'liveArtifact.refresh.networkFailure': '重新整理請求失敗。請檢查網路連線後重試。',
   'liveArtifact.refresh.genericFailure': '重新整理失敗。',
   'liveArtifact.refresh.statusNever': '不可重新整理',

@@ -5,6 +5,7 @@ import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import {
   fetchLiveArtifact,
+  fetchLiveArtifactCode,
   checkDeploymentLink,
   deployProjectFile,
   fetchDeployConfig,
@@ -256,9 +257,7 @@ export function LiveArtifactViewer({
     }
   }
 
-  const sourcePayload = detail ? liveArtifactSourcePayload(detail) : null;
   const dataPayload = detail?.document?.dataJson ?? null;
-  const provenancePayload = detail ? liveArtifactProvenancePayload(detail) : null;
   const currentRefreshStatus = detail?.refreshStatus ?? liveArtifact.refreshStatus;
   const isRunning = refreshing || currentRefreshStatus === 'running';
 
@@ -401,15 +400,14 @@ export function LiveArtifactViewer({
           </div>
         ) : loading ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
-        ) : mode === 'source' ? (
-          <LiveArtifactSourcePanel
-            liveArtifact={detail}
-            value={sourcePayload}
+        ) : mode === 'code' ? (
+          <LiveArtifactCodePanel
+            projectId={projectId}
+            artifactId={liveArtifact.artifactId}
+            reloadKey={reloadKey}
           />
         ) : mode === 'data' ? (
           <JsonPanel value={dataPayload} emptyLabel="No data.json cache available." />
-        ) : mode === 'provenance' ? (
-          <JsonPanel value={provenancePayload} emptyLabel="No provenance available." />
         ) : (
           <LiveArtifactRefreshHistoryPanel
             liveArtifact={detail}
@@ -469,24 +467,72 @@ function refreshErrorMessage(error: unknown, t: TranslateFn): string {
 
 const LIVE_ARTIFACT_VIEWER_TABS: Array<{ id: LiveArtifactViewerTab; label: string }> = [
   { id: 'preview', label: 'Preview' },
-  { id: 'source', label: 'Source' },
+  { id: 'code', label: 'Code' },
   { id: 'data', label: 'Data' },
-  { id: 'provenance', label: 'Provenance' },
   { id: 'refresh-history', label: 'Refresh history' },
 ];
 
-function LiveArtifactSourcePanel({
-  value,
-}: {
-  liveArtifact: LiveArtifact | null;
-  value: unknown;
-}) {
+type LiveArtifactCodeVariant = 'template' | 'rendered-source';
+
+function LiveArtifactCodePanel({ projectId, artifactId, reloadKey }: { projectId: string; artifactId: string; reloadKey: number }) {
+  const [variant, setVariant] = useState<LiveArtifactCodeVariant>('template');
+  const [code, setCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+    setCode(null);
+    void fetchLiveArtifactCode(projectId, artifactId, variant).then((next) => {
+      if (cancelled) return;
+      setCode(next);
+      setFailed(next == null);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId, projectId, reloadKey, variant]);
+
   return (
-    <div className="live-artifact-source-panel">
-      <div className="live-artifact-source-summary">
-        <span>Refresh runs automatically for available sources.</span>
+    <div className="live-artifact-code-panel">
+      <div className="live-artifact-code-header">
+        <div className="live-artifact-code-copy">
+          <strong>{variant === 'template' ? 'Template HTML' : 'Rendered HTML'}</strong>
+          <span>
+            {variant === 'template'
+              ? 'The editable template used with data.json to generate the preview.'
+              : 'The generated index.html currently loaded by Preview.'}
+          </span>
+        </div>
+        <div className="viewer-tabs live-artifact-code-tabs" aria-label="Code variant">
+          <button
+            type="button"
+            className={`viewer-tab ${variant === 'template' ? 'active' : ''}`}
+            onClick={() => setVariant('template')}
+          >
+            Template
+          </button>
+          <button
+            type="button"
+            className={`viewer-tab ${variant === 'rendered-source' ? 'active' : ''}`}
+            onClick={() => setVariant('rendered-source')}
+          >
+            Rendered
+          </button>
+        </div>
       </div>
-      <JsonPanel value={value} emptyLabel="No source metadata available." />
+      {loading ? (
+        <div className="viewer-empty">Loading code…</div>
+      ) : failed ? (
+        <div className="viewer-empty">Code is not available yet.</div>
+      ) : code && code.trim().length > 0 ? (
+        <pre className="viewer-source">{code}</pre>
+      ) : (
+        <div className="viewer-empty">This code file is empty.</div>
+      )}
     </div>
   );
 }
@@ -496,7 +542,7 @@ function JsonPanel({ value, emptyLabel }: { value: unknown; emptyLabel: string }
   return <pre className="viewer-source">{JSON.stringify(value, null, 2)}</pre>;
 }
 
-function liveArtifactSourcePayload(liveArtifact: LiveArtifact): unknown {
+function liveArtifactMetadataPayload(liveArtifact: LiveArtifact): unknown {
   return {
     artifact: {
       id: liveArtifact.id,
@@ -699,8 +745,17 @@ export function LiveArtifactRefreshHistoryPanel({
     (tile) => tile.refreshStatus !== 'not_refreshable',
   );
   const documentSource = liveArtifact?.document?.sourceJson ?? null;
+  const tilesWithSourceDetails = tiles.filter(
+    (tile) => tile.sourceJson !== undefined || tile.provenanceJson.sources.length > 0,
+  );
   const reversedEvents = [...sessionEvents].reverse();
-  const rawPayload = liveArtifact ? liveArtifactRefreshPayload(liveArtifact) : null;
+  const rawDebugPayload = liveArtifact
+    ? {
+        refresh: liveArtifactRefreshPayload(liveArtifact),
+        metadata: liveArtifactMetadataPayload(liveArtifact),
+        provenance: liveArtifactProvenancePayload(liveArtifact),
+      }
+    : null;
 
   return (
     <div className="live-artifact-refresh-panel">
@@ -875,14 +930,61 @@ export function LiveArtifactRefreshHistoryPanel({
         </section>
       ) : null}
 
-      {rawPayload != null ? (
+      {tilesWithSourceDetails.length > 0 ? (
+        <section className="live-artifact-refresh-section">
+          <header className="live-artifact-refresh-section-header">
+            <h4>Source details</h4>
+            <span className="live-artifact-refresh-hint">
+              Human-readable provenance for refreshable tiles
+            </span>
+          </header>
+          <ul className="live-artifact-refresh-tiles">
+            {tilesWithSourceDetails.map((tile) => (
+              <li key={tile.id} className="live-artifact-refresh-tile source-detail">
+                <div className="live-artifact-refresh-tile-main">
+                  <span className="live-artifact-refresh-tile-title">{tile.title}</span>
+                  <span className="live-artifact-refresh-tile-meta">
+                    Generated by {tile.provenanceJson.generatedBy.replace('_', ' ')}
+                    {tile.provenanceJson.generatedAt ? ` · ${formatAbsoluteDateTime(tile.provenanceJson.generatedAt) ?? tile.provenanceJson.generatedAt}` : ''}
+                  </span>
+                </div>
+                <div className="live-artifact-refresh-tile-side">
+                  <span className="live-artifact-badge refresh-status tone-neutral">
+                    {tile.provenanceJson.sources.length} source{tile.provenanceJson.sources.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                {tile.sourceJson ? (
+                  <div className="live-artifact-refresh-tile-error neutral">
+                    {describeTileSource(tile.sourceJson)}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {rawDebugPayload != null ? (
         <details className="live-artifact-refresh-raw">
-          <summary>Raw payload</summary>
-          <pre className="viewer-source">{JSON.stringify(rawPayload, null, 2)}</pre>
+          <summary>Advanced debug metadata</summary>
+          <p className="live-artifact-refresh-raw-note">
+            May include connector IDs, file names, source metadata, and internal artifact paths.
+          </p>
+          <pre className="viewer-source">{JSON.stringify(rawDebugPayload, null, 2)}</pre>
         </details>
       ) : null}
     </div>
   );
+}
+
+function describeTileSource(source: LiveArtifactTileEntry['sourceJson']): string {
+  if (!source) return 'No source metadata.';
+  if (source.type === 'connector_tool' && source.connector) {
+    return `Connector tool ${source.toolName} (${source.connector.connectorId})`;
+  }
+  if (source.type === 'daemon_tool') return `Daemon tool ${source.toolName}`;
+  if (source.type === 'local_file') return 'Local file source';
+  return source.type;
 }
 
 function LiveArtifactRefreshFact({

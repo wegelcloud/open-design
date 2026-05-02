@@ -440,8 +440,25 @@ export function liveArtifactDetailUrl(projectId: string, artifactId: string): st
   return `/api/live-artifacts/${encodeURIComponent(artifactId)}?projectId=${encodeURIComponent(projectId)}`;
 }
 
-export function liveArtifactPreviewUrl(projectId: string, artifactId: string): string {
-  return `/api/live-artifacts/${encodeURIComponent(artifactId)}/preview?projectId=${encodeURIComponent(projectId)}`;
+export type LiveArtifactPreviewVariant = 'rendered' | 'template' | 'rendered-source';
+
+export function liveArtifactPreviewUrl(projectId: string, artifactId: string, variant: LiveArtifactPreviewVariant = 'rendered'): string {
+  const variantQuery = variant === 'rendered' ? '' : `&variant=${encodeURIComponent(variant)}`;
+  return `/api/live-artifacts/${encodeURIComponent(artifactId)}/preview?projectId=${encodeURIComponent(projectId)}${variantQuery}`;
+}
+
+export async function fetchLiveArtifactCode(
+  projectId: string,
+  artifactId: string,
+  variant: Exclude<LiveArtifactPreviewVariant, 'rendered'>,
+): Promise<string | null> {
+  try {
+    const resp = await fetch(liveArtifactPreviewUrl(projectId, artifactId, variant), { cache: 'no-store' });
+    if (!resp.ok) return null;
+    return await resp.text();
+  } catch {
+    return null;
+  }
 }
 
 export function projectFileUrl(projectId: string, name: string): string {

@@ -558,7 +558,7 @@ export const ru: Dict = {
   'liveArtifact.refresh.successMany': 'Обновление завершено. Данные обновлены.',
   'liveArtifact.refresh.successAction': 'Предпросмотр перезагружен с последними сохраненными данными.',
   'liveArtifact.refresh.previousFailure': 'Предыдущее обновление завершилось ошибкой: {message}',
-  'liveArtifact.refresh.failureAction': 'Проверьте вкладки истории обновлений и источника, исправьте проблему с источником или правами и повторите попытку.',
+  'liveArtifact.refresh.failureAction': 'Проверьте историю обновлений, исправьте проблему с источником или правами и повторите попытку.',
   'liveArtifact.refresh.networkFailure': 'Не удалось отправить запрос на обновление. Проверьте подключение и попробуйте снова.',
   'liveArtifact.refresh.genericFailure': 'Не удалось обновить.',
   'liveArtifact.refresh.statusNever': 'Не обновляется',

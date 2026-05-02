@@ -558,7 +558,7 @@ export const ptBR: Dict = {
   'liveArtifact.refresh.successMany': 'Atualização concluída. Dados atualizados.',
   'liveArtifact.refresh.successAction': 'A prévia foi recarregada com os dados confirmados mais recentes.',
   'liveArtifact.refresh.previousFailure': 'Atualização anterior falhou: {message}',
-  'liveArtifact.refresh.failureAction': 'Revise as abas Histórico de atualização e Fonte, corrija a fonte ou permissão e tente novamente.',
+  'liveArtifact.refresh.failureAction': 'Revise o histórico de atualização, corrija a fonte ou permissão e tente novamente.',
   'liveArtifact.refresh.networkFailure': 'A solicitação de atualização falhou. Verifique sua conexão e tente novamente.',
   'liveArtifact.refresh.genericFailure': 'Atualização falhou.',
   'liveArtifact.refresh.statusNever': 'Não atualizável',

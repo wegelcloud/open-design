@@ -559,7 +559,7 @@ export const en: Dict = {
   'liveArtifact.refresh.successMany': 'Refresh complete. Data updated.',
   'liveArtifact.refresh.successAction': 'The preview has been reloaded with the latest committed data.',
   'liveArtifact.refresh.previousFailure': 'Previous refresh failed: {message}',
-  'liveArtifact.refresh.failureAction': 'Review the Refresh history and Source tabs, fix the source or permission issue, then try again.',
+  'liveArtifact.refresh.failureAction': 'Review Refresh history, fix the source or permission issue, then try again.',
   'liveArtifact.refresh.networkFailure': 'Refresh request failed. Check your connection and try again.',
   'liveArtifact.refresh.genericFailure': 'Refresh failed.',
   'liveArtifact.refresh.statusNever': 'Not refreshable',

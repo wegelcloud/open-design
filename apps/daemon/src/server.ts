@@ -89,6 +89,7 @@ import {
   LiveArtifactRefreshLockError,
   LiveArtifactStoreValidationError,
   listLiveArtifacts,
+  readLiveArtifactCode,
   recoverStaleLiveArtifactRefreshes,
   updateLiveArtifact,
 } from './live-artifacts/store.js';
@@ -463,6 +464,13 @@ function setLiveArtifactPreviewHeaders(res) {
       'sandbox allow-same-origin',
     ].join('; '),
   );
+}
+
+function setLiveArtifactCodeHeaders(res) {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
 }
 
 function bearerTokenFromRequest(req) {
@@ -1374,6 +1382,21 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
       if (!projectId) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'projectId query parameter is required');
+      }
+
+      const variant = typeof req.query.variant === 'string' ? req.query.variant : 'rendered';
+      if (variant === 'template' || variant === 'rendered-source') {
+        const html = await readLiveArtifactCode({
+          projectsRoot: PROJECTS_DIR,
+          projectId,
+          artifactId: req.params.artifactId,
+          variant: variant === 'template' ? 'template' : 'rendered',
+        });
+        setLiveArtifactCodeHeaders(res);
+        return res.status(200).send(html);
+      }
+      if (variant !== 'rendered') {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'variant must be rendered, template, or rendered-source');
       }
 
       const record = await ensureLiveArtifactPreview({

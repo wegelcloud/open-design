@@ -560,7 +560,7 @@ export const fa: Dict = {
   'liveArtifact.refresh.successMany': 'بازخوانی کامل شد. داده‌ها به‌روزرسانی شدند.',
   'liveArtifact.refresh.successAction': 'پیش‌نمایش با جدیدترین داده‌های ثبت‌شده دوباره بارگذاری شد.',
   'liveArtifact.refresh.previousFailure': 'بازخوانی قبلی ناموفق بود: {message}',
-  'liveArtifact.refresh.failureAction': 'زبانه‌های تاریخچه بازخوانی و منبع را بررسی کنید، مشکل منبع یا مجوز را رفع کنید، سپس دوباره تلاش کنید.',
+  'liveArtifact.refresh.failureAction': 'تاریخچه بازخوانی را بررسی کنید، مشکل منبع یا مجوز را رفع کنید، سپس دوباره تلاش کنید.',
   'liveArtifact.refresh.networkFailure': 'درخواست بازخوانی ناموفق بود. اتصال خود را بررسی کنید و دوباره تلاش کنید.',
   'liveArtifact.refresh.genericFailure': 'بازخوانی ناموفق بود.',
   'liveArtifact.refresh.statusNever': 'قابل بازخوانی نیست',

@@ -546,7 +546,7 @@ export const zhCN: Dict = {
   'liveArtifact.refresh.successMany': '刷新完成，数据已更新。',
   'liveArtifact.refresh.successAction': '预览已使用最新提交的数据重新加载。',
   'liveArtifact.refresh.previousFailure': '上次刷新失败：{message}',
-  'liveArtifact.refresh.failureAction': '请检查「刷新历史」和「来源」标签页，修复来源或权限问题后重试。',
+  'liveArtifact.refresh.failureAction': '请检查「刷新历史」，修复来源或权限问题后重试。',
   'liveArtifact.refresh.networkFailure': '刷新请求失败。请检查网络连接后重试。',
   'liveArtifact.refresh.genericFailure': '刷新失败。',
   'liveArtifact.refresh.statusNever': '不可刷新',
