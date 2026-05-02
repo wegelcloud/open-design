@@ -29,6 +29,27 @@ export interface ToolRenderProps {
   isError: boolean;
 }
 
+/**
+ * Tool render callback. Mirrors AG-UI's `({ status, args, result, ... })`
+ * render-prop shape and CopilotKit's `useCopilotAction({ render })`.
+ *
+ * The callback runs inside `ToolCard`'s render — it is *not* mounted as
+ * its own component. Two implications follow from that:
+ *
+ *   1. **Renderers must be hook-free.** Calling React hooks here would
+ *      weld them into `ToolCard`'s hook sequence, so any swap (skill
+ *      hot-reload, fallback when the renderer returns null/false, or a
+ *      replacement renderer with a different hook shape) would violate
+ *      the Rules of Hooks and crash the surrounding assistant message.
+ *   2. **If you need hooks**, return a component element. Wrap your
+ *      hookful UI in a component and have the renderer return that
+ *      element: `(props) => <MyHookfulCard {...props} />`. The element
+ *      is mounted as a child, giving React stable hook ownership across
+ *      re-registers.
+ *
+ * Returning `null` / `undefined` / `false` defers to the next step in
+ * the lookup ladder (built-in family card, then generic fallback).
+ */
 export type ToolRenderer = (props: ToolRenderProps) => ReactNode;
 
 const renderers = new Map<string, ToolRenderer>();

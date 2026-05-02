@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +10,7 @@ import {
   registerToolRenderer,
   toRenderProps,
 } from './tool-renderers';
+import type { ToolRenderProps } from './tool-renderers';
 import type { AgentEvent } from '../types';
 
 type ToolUse = Extract<AgentEvent, { kind: 'tool_use' }>;
@@ -144,6 +146,45 @@ describe('ToolCard dispatch', () => {
     );
     expect(markup).toContain('data-testid="custom-bash"');
     expect(markup).not.toContain('op-bash');
+  });
+
+  it('mounts hookful renderer output as a child component, surviving replace + dispose', () => {
+    // The documented contract: renderers must be hook-free, but they may
+    // return a component *element* whose body uses hooks. That child gets
+    // mounted as its own component, so swapping the renderer (or letting
+    // it return null) does not violate the Rules of Hooks on ToolCard.
+    function HookfulCardA({ args }: ToolRenderProps) {
+      const [count] = useState(() => (args as { start?: number }).start ?? 0);
+      return <span data-testid="hookful-a">A:{count}</span>;
+    }
+    function HookfulCardB({ result }: ToolRenderProps) {
+      const [label] = useState('mounted');
+      return (
+        <span data-testid="hookful-b">
+          B:{label}:{result ?? ''}
+        </span>
+      );
+    }
+
+    const disposeA = registerToolRenderer('render_chart', (props) => <HookfulCardA {...props} />);
+    const first = renderToStaticMarkup(
+      <ToolCard use={use({ start: 7 })} runStreaming={true} />,
+    );
+    expect(first).toContain('data-testid="hookful-a"');
+    expect(first).toContain('A:7');
+
+    // Swap to a renderer with a different hook shape. If the renderer
+    // were called as a plain function inside ToolCard, this would shift
+    // ToolCard's hook sequence; mounting as a child component isolates
+    // each renderer's hooks to its own fiber.
+    disposeA();
+    registerToolRenderer('render_chart', (props) => <HookfulCardB {...props} />);
+    const second = renderToStaticMarkup(
+      <ToolCard use={use({})} result={ok('payload')} runStreaming={false} />,
+    );
+    expect(second).toContain('data-testid="hookful-b"');
+    expect(second).toContain('B:mounted:payload');
+    expect(second).not.toContain('hookful-a');
   });
 
   it('falls back to the built-in card when a registered renderer throws', () => {
