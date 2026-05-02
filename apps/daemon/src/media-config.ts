@@ -32,6 +32,10 @@ const ENV_KEYS = {
     'AZURE_OPENAI_API_KEY',
   ],
   volcengine: ['OD_VOLCENGINE_API_KEY', 'ARK_API_KEY', 'VOLCENGINE_API_KEY'],
+  // xAI canonical env is XAI_API_KEY (per docs.x.ai quickstart). We
+  // honour that ahead of any reserved OD_* override so users who already
+  // export it for the official SDK don't have to re-paste into Settings.
+  grok: ['OD_GROK_API_KEY', 'XAI_API_KEY'],
   bfl: ['OD_BFL_API_KEY', 'BFL_API_KEY'],
   fal: ['OD_FAL_KEY', 'FAL_KEY'],
   replicate: ['OD_REPLICATE_API_TOKEN', 'REPLICATE_API_TOKEN'],
