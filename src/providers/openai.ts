@@ -93,29 +93,35 @@ export async function streamChatCompletions(
         const frame = buf.slice(0, idx).replace(/\r/g, '').trim();
         buf = buf.slice(idx + m[0].length);
         if (!frame) continue;
-        // Each frame is one or more `data: ...` lines plus optional
-        // `event:` / comments. We only care about `data:` payloads.
-        for (const line of frame.split('\n')) {
-          if (!line.startsWith('data:')) continue;
-          const payload = line.slice(5).trim();
-          if (!payload) continue;
-          if (payload === '[DONE]') {
-            // Stop reading — a misbehaving / proxied endpoint may keep
-            // the SSE socket open after [DONE] and we don't want the
-            // client to block on a half-open stream.
-            break streamLoop;
-          }
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(payload);
-          } catch {
-            continue;
-          }
-          const delta = extractDelta(parsed);
-          if (delta) {
-            acc += delta;
-            handlers.onDelta(delta);
-          }
+        const payload = collectFrameData(frame);
+        if (!payload) continue;
+        if (payload === '[DONE]') {
+          // Stop reading — a misbehaving / proxied endpoint may keep
+          // the SSE socket open after [DONE] and we don't want the
+          // client to block on a half-open stream.
+          break streamLoop;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+        // Some OpenAI-compatible gateways (BYOK proxies in particular)
+        // accept the request with HTTP 200, then emit a single
+        // `data: {"error": {...}}` SSE frame in lieu of streamed
+        // deltas. Without this guard the loop would just see no
+        // `choices`, return empty deltas, and quietly resolve onDone —
+        // which surfaces as a blank "successful" answer in the UI.
+        const errMsg = extractStreamError(parsed);
+        if (errMsg) {
+          handlers.onError(new Error(`Provider error — ${errMsg}`));
+          return;
+        }
+        const delta = extractDelta(parsed);
+        if (delta) {
+          acc += delta;
+          handlers.onDelta(delta);
         }
       }
     }
@@ -124,6 +130,47 @@ export async function streamChatCompletions(
     if ((err as Error).name === 'AbortError') return;
     handlers.onError(err instanceof Error ? err : new Error(String(err)));
   }
+}
+
+// Per SSE (https://html.spec.whatwg.org/multipage/server-sent-events.html),
+// a single event payload may be split across multiple `data:` lines that
+// the receiver concatenates with '\n'. A compliant proxy that wraps a
+// JSON body across two `data:` lines would otherwise make each fragment
+// fail JSON.parse and silently drop the streamed content. Comments
+// (lines starting with ':') and `event:`/`id:` fields are ignored.
+export function collectFrameData(frame: string): string {
+  const lines = frame.split('\n');
+  const dataLines: string[] = [];
+  for (const raw of lines) {
+    if (!raw.startsWith('data:')) continue;
+    let value = raw.slice(5);
+    // The SSE spec allows one optional space after the field name.
+    if (value.startsWith(' ')) value = value.slice(1);
+    dataLines.push(value);
+  }
+  if (dataLines.length === 0) return '';
+  return dataLines.join('\n');
+}
+
+// Recognise an OpenAI-compatible streamed error envelope. Both
+// `{"error": {"message": "..."}}` (OpenAI proper, most proxies) and the
+// occasional `{"error": "..."}` shape are handled. Returns the actionable
+// message, or null if the payload is not an error frame.
+export function extractStreamError(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const err = (payload as { error?: unknown }).error;
+  if (err == null) return null;
+  if (typeof err === 'string') return err;
+  if (typeof err === 'object') {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === 'string' && m) return m;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return 'unspecified error';
+    }
+  }
+  return String(err);
 }
 
 function extractDelta(payload: unknown): string {
