@@ -563,24 +563,26 @@ export class ConnectorService {
     }
 
     let auth: ComposioConnectionStart | undefined;
+    let detailDefinition = definition;
     if (definition.authentication === 'composio' && options.credentials === undefined) {
       if (!options.callbackUrl) {
         throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'callbackUrl is required for Composio connectors', 400, { connectorId });
       }
       auth = await composioConnectorProvider.connect(definition, options.callbackUrl, options.signal);
+      detailDefinition = await this.getDefinition(connectorId, options.signal) ?? definition;
       if (auth.kind === 'redirect_required' || auth.kind === 'pending') {
-        return { connector: this.toDetail(definition), auth: publicComposioAuthStart(auth) };
+        return { connector: this.toDetail(detailDefinition), auth: publicComposioAuthStart(auth) };
       }
       if (auth.credentials !== undefined) {
         options = { ...options, ...(auth.accountLabel === undefined ? {} : { accountLabel: auth.accountLabel }), credentials: auth.credentials };
       }
     }
 
-    const status = this.statusService.connect(definition, options.accountLabel, options.credentials);
+    const status = this.statusService.connect(detailDefinition, options.accountLabel, options.credentials);
     if (status.status === 'disabled') {
       throw new ConnectorServiceError('CONNECTOR_DISABLED', 'connector is disabled', 403);
     }
-    return { connector: this.toDetail(definition), ...(auth === undefined ? {} : { auth: publicComposioAuthStart(auth) }) };
+    return { connector: this.toDetail(detailDefinition), ...(auth === undefined ? {} : { auth: publicComposioAuthStart(auth) }) };
   }
 
   async disconnect(connectorId: string): Promise<ConnectorDetail> {

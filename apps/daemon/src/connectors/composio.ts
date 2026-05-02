@@ -11,7 +11,13 @@ const DEFAULT_COMPOSIO_USER_ID = 'open-design-local-user';
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const DISCOVERY_CACHE_TTL_MS = 60_000;
 
-const STATIC_COMPOSIO_CATALOG: ConnectorCatalogDefinition[] = [
+interface ComposioToolkitCatalogEntry {
+  name: string;
+  slug: string;
+  category?: string;
+}
+
+const FEATURED_COMPOSIO_CATALOG: ConnectorCatalogDefinition[] = [
   {
     id: 'github',
     name: 'GitHub',
@@ -110,6 +116,192 @@ const STATIC_COMPOSIO_CATALOG: ConnectorCatalogDefinition[] = [
   },
 ];
 
+const DOCUMENTED_COMPOSIO_TOOLKITS: ComposioToolkitCatalogEntry[] = [
+  { name: 'Airtable', slug: 'AIRTABLE' },
+  { name: 'Apaleo', slug: 'APALEO' },
+  { name: 'Asana', slug: 'ASANA' },
+  { name: 'Attio', slug: 'ATTIO' },
+  { name: 'Basecamp', slug: 'BASECAMP' },
+  { name: 'Bitbucket', slug: 'BITBUCKET' },
+  { name: 'Blackbaud', slug: 'BLACKBAUD' },
+  { name: 'Boldsign', slug: 'BOLDSIGN' },
+  { name: 'Box', slug: 'BOX' },
+  { name: 'Cal', slug: 'CAL' },
+  { name: 'Calendly', slug: 'CALENDLY' },
+  { name: 'Canva', slug: 'CANVA' },
+  { name: 'Capsule CRM', slug: 'CAPSULE_CRM' },
+  { name: 'ClickUp', slug: 'CLICKUP' },
+  { name: 'Confluence', slug: 'CONFLUENCE' },
+  { name: 'Contentful', slug: 'CONTENTFUL' },
+  { name: 'Convex', slug: 'CONVEX' },
+  { name: 'Crowdin', slug: 'CROWDIN' },
+  { name: 'Dart', slug: 'DART' },
+  { name: 'Dialpad', slug: 'DIALPAD' },
+  { name: 'DigitalOcean', slug: 'DIGITAL_OCEAN' },
+  { name: 'Discord', slug: 'DISCORD' },
+  { name: 'Discord Bot', slug: 'DISCORDBOT' },
+  { name: 'Dropbox', slug: 'DROPBOX' },
+  { name: 'Dub', slug: 'DUB' },
+  { name: 'Dynamics 365', slug: 'DYNAMICS365' },
+  { name: 'Eventbrite', slug: 'EVENTBRITE' },
+  { name: 'Excel', slug: 'EXCEL' },
+  { name: 'Exist', slug: 'EXIST' },
+  { name: 'Facebook', slug: 'FACEBOOK' },
+  { name: 'Fathom', slug: 'FATHOM' },
+  { name: 'Figma', slug: 'FIGMA' },
+  { name: 'Freeagent', slug: 'FREEAGENT' },
+  { name: 'FreshBooks', slug: 'FRESHBOOKS' },
+  { name: 'GitHub', slug: 'GITHUB' },
+  { name: 'GitLab', slug: 'GITLAB' },
+  { name: 'Gmail', slug: 'GMAIL' },
+  { name: 'Google Ads', slug: 'GOOGLEADS' },
+  { name: 'Google Analytics', slug: 'GOOGLE_ANALYTICS' },
+  { name: 'Google BigQuery', slug: 'GOOGLEBIGQUERY' },
+  { name: 'Google Calendar', slug: 'GOOGLECALENDAR' },
+  { name: 'Google Classroom', slug: 'GOOGLE_CLASSROOM' },
+  { name: 'Google Docs', slug: 'GOOGLEDOCS' },
+  { name: 'Google Drive', slug: 'GOOGLEDRIVE' },
+  { name: 'Google Maps', slug: 'GOOGLE_MAPS' },
+  { name: 'Google Meet', slug: 'GOOGLEMEET' },
+  { name: 'Google Photos', slug: 'GOOGLEPHOTOS' },
+  { name: 'Google Search Console', slug: 'GOOGLE_SEARCH_CONSOLE' },
+  { name: 'Google Sheets', slug: 'GOOGLESHEETS' },
+  { name: 'Google Slides', slug: 'GOOGLESLIDES' },
+  { name: 'Google Super', slug: 'GOOGLESUPER' },
+  { name: 'Google Tasks', slug: 'GOOGLETASKS' },
+  { name: 'Gorgias', slug: 'GORGIAS' },
+  { name: 'Gumroad', slug: 'GUMROAD' },
+  { name: 'Harvest', slug: 'HARVEST' },
+  { name: 'HubSpot', slug: 'HUBSPOT' },
+  { name: 'Hugging Face', slug: 'HUGGING_FACE' },
+  { name: 'Instagram', slug: 'INSTAGRAM' },
+  { name: 'Intercom', slug: 'INTERCOM' },
+  { name: 'Jira', slug: 'JIRA' },
+  { name: 'Kit', slug: 'KIT' },
+  { name: 'Linear', slug: 'LINEAR' },
+  { name: 'LinkedIn', slug: 'LINKEDIN' },
+  { name: 'Linkhut', slug: 'LINKHUT' },
+  { name: 'Mailchimp', slug: 'MAILCHIMP' },
+  { name: 'Microsoft Teams', slug: 'MICROSOFT_TEAMS' },
+  { name: 'Miro', slug: 'MIRO' },
+  { name: 'Monday', slug: 'MONDAY' },
+  { name: 'Moneybird', slug: 'MONEYBIRD' },
+  { name: 'Mural', slug: 'MURAL' },
+  { name: 'Notion', slug: 'NOTION' },
+  { name: 'Omnisend', slug: 'OMNISEND' },
+  { name: 'OneDrive', slug: 'ONE_DRIVE' },
+  { name: 'Outlook', slug: 'OUTLOOK' },
+  { name: 'PagerDuty', slug: 'PAGERDUTY' },
+  { name: 'Prisma', slug: 'PRISMA' },
+  { name: 'Productboard', slug: 'PRODUCTBOARD' },
+  { name: 'Pushbullet', slug: 'PUSHBULLET' },
+  { name: 'QuickBooks', slug: 'QUICKBOOKS' },
+  { name: 'Reddit', slug: 'REDDIT' },
+  { name: 'Reddit Ads', slug: 'REDDIT_ADS' },
+  { name: 'Roam', slug: 'ROAM' },
+  { name: 'Salesforce', slug: 'SALESFORCE' },
+  { name: 'Sentry', slug: 'SENTRY' },
+  { name: 'Servicem8', slug: 'SERVICEM8' },
+  { name: 'SharePoint', slug: 'SHARE_POINT' },
+  { name: 'Shippo', slug: 'SHIPPO' },
+  { name: 'Slack', slug: 'SLACK' },
+  { name: 'Slackbot', slug: 'SLACKBOT' },
+  { name: 'Splitwise', slug: 'SPLITWISE' },
+  { name: 'Square', slug: 'SQUARE' },
+  { name: 'Stack Exchange', slug: 'STACK_EXCHANGE' },
+  { name: 'Strava', slug: 'STRAVA' },
+  { name: 'Stripe', slug: 'STRIPE' },
+  { name: 'Supabase', slug: 'SUPABASE' },
+  { name: 'Ticketmaster', slug: 'TICKETMASTER' },
+  { name: 'Ticktick', slug: 'TICKTICK' },
+  { name: 'Timely', slug: 'TIMELY' },
+  { name: 'Todoist', slug: 'TODOIST' },
+  { name: 'Toneden', slug: 'TONEDEN' },
+  { name: 'Trello', slug: 'TRELLO' },
+  { name: 'Typeform', slug: 'TYPEFORM' },
+  { name: 'WakaTime', slug: 'WAKATIME' },
+  { name: 'Webex', slug: 'WEBEX' },
+  { name: 'WhatsApp', slug: 'WHATSAPP' },
+  { name: 'Wrike', slug: 'WRIKE' },
+  { name: 'Yandex', slug: 'YANDEX' },
+  { name: 'YNAB', slug: 'YNAB' },
+  { name: 'YouTube', slug: 'YOUTUBE' },
+  { name: 'Zendesk', slug: 'ZENDESK' },
+  { name: 'Zoho', slug: 'ZOHO' },
+  { name: 'Zoho Bigin', slug: 'ZOHO_BIGIN' },
+  { name: 'Zoho Books', slug: 'ZOHO_BOOKS' },
+  { name: 'Zoho Desk', slug: 'ZOHO_DESK' },
+  { name: 'Zoho Inventory', slug: 'ZOHO_INVENTORY' },
+  { name: 'Zoho Invoice', slug: 'ZOHO_INVOICE' },
+  { name: 'Zoho Mail', slug: 'ZOHO_MAIL' },
+  { name: 'Zoom', slug: 'ZOOM' },
+  { name: 'Apify MCP', slug: 'APIFY_MCP' },
+  { name: 'BambooHR', slug: 'BAMBOOHR' },
+  { name: 'Beeminder', slug: 'BEEMINDER' },
+  { name: 'Bitwarden', slug: 'BITWARDEN' },
+  { name: 'Blackboard', slug: 'BLACKBOARD' },
+  { name: 'Borneo', slug: 'BORNEO' },
+  { name: 'Brevo', slug: 'BREVO' },
+  { name: 'Brex', slug: 'BREX' },
+  { name: 'Canvas', slug: 'CANVAS' },
+  { name: 'Clockify', slug: 'CLOCKIFY' },
+  { name: 'Coupa', slug: 'COUPA' },
+  { name: 'D2L Brightspace', slug: 'D2LBRIGHTSPACE' },
+  { name: 'Databricks', slug: 'DATABRICKS' },
+  { name: 'Datadog', slug: 'DATADOG' },
+  { name: 'DocuSign', slug: 'DOCUSIGN' },
+  { name: 'Dropbox Sign', slug: 'DROPBOX_SIGN' },
+  { name: 'Egnyte', slug: 'EGNYTE' },
+  { name: 'Epic Games', slug: 'EPIC_GAMES' },
+  { name: 'Fly', slug: 'FLY' },
+  { name: 'Follow Up Boss', slug: 'FOLLOW_UP_BOSS' },
+  { name: 'Gong', slug: 'GONG' },
+  { name: 'Google Admin', slug: 'GOOGLE_ADMIN' },
+  { name: 'Google Chat', slug: 'GOOGLE_CHAT' },
+  { name: 'Googlecontacts', slug: 'GOOGLECONTACTS' },
+  { name: 'Googleforms', slug: 'GOOGLEFORMS' },
+  { name: 'Granola MCP', slug: 'GRANOLA_MCP' },
+  { name: 'Gusto', slug: 'GUSTO' },
+  { name: 'Help Scout', slug: 'HELP_SCOUT' },
+  { name: 'Highlevel', slug: 'HIGHLEVEL' },
+  { name: 'Insighto.ai', slug: 'INSIGHTO_AI' },
+  { name: 'Klaviyo', slug: 'KLAVIYO' },
+  { name: 'Kommo', slug: 'KOMMO' },
+  { name: 'Lever', slug: 'LEVER' },
+  { name: 'Linkedin Ads', slug: 'LINKEDIN_ADS' },
+  { name: 'Lodgify', slug: 'LODGIFY' },
+  { name: 'Matterport', slug: 'MATTERPORT' },
+  { name: 'Meta Ads', slug: 'METAADS' },
+  { name: 'Monday MCP', slug: 'MONDAY_MCP' },
+  { name: 'Netsuite', slug: 'NETSUITE' },
+  { name: 'Parma', slug: 'PARMA' },
+  { name: 'Pinecone', slug: 'PINECONE' },
+  { name: 'Pipedrive', slug: 'PIPEDRIVE' },
+  { name: 'Ramp', slug: 'RAMP' },
+  { name: 'Razorpay', slug: 'RAZORPAY' },
+  { name: 'Recruitee', slug: 'RECRUITEE' },
+  { name: 'Salesforce Service Cloud', slug: 'SALESFORCE_SERVICE_CLOUD' },
+  { name: 'Scheduleonce', slug: 'SCHEDULEONCE' },
+  { name: 'Sendloop', slug: 'SENDLOOP' },
+  { name: 'ServiceNow', slug: 'SERVICENOW' },
+  { name: 'Shopify', slug: 'SHOPIFY' },
+  { name: 'Snapchat', slug: 'SNAPCHAT' },
+  { name: 'Snowflake', slug: 'SNOWFLAKE' },
+  { name: 'Spotify', slug: 'SPOTIFY' },
+  { name: 'Storyblok', slug: 'STORYBLOK' },
+  { name: 'SurveyMonkey', slug: 'SURVEY_MONKEY' },
+  { name: 'Tally', slug: 'TALLY' },
+  { name: 'Tavily MCP', slug: 'TAVILY_MCP' },
+  { name: 'Tiktok', slug: 'TIKTOK' },
+  { name: 'TinyFish MCP', slug: 'TINYFISH_MCP' },
+  { name: 'Twitter', slug: 'TWITTER' },
+  { name: 'Webflow', slug: 'WEBFLOW' },
+  { name: 'Xero', slug: 'XERO' },
+  { name: 'Zoominfo', slug: 'ZOOMINFO' },
+];
+
+const STATIC_COMPOSIO_CATALOG: ConnectorCatalogDefinition[] = buildStaticComposioCatalog();
+
 interface ComposioConnectedAccountResponse {
   id?: unknown;
   nanoid?: unknown;
@@ -199,8 +391,11 @@ export interface ComposioConnectionCompletion {
 
 export class ComposioConnectorProvider {
   private discoveredAuthConfigIds: Record<string, string> | undefined;
+  private readonly locallyCreatedAuthConfigs = new Map<string, { authConfigId: string; toolkitSlug: string }>();
   private definitionsCache: { definitions: ConnectorCatalogDefinition[]; expiresAtMs: number } | undefined;
   private definitionsPromise: Promise<ConnectorCatalogDefinition[]> | undefined;
+  private definitionsGeneration = 0;
+  private readonly authConfigCreationPromises = new Map<string, Promise<string | undefined>>();
   private readonly pendingConnections = new Map<string, ComposioPendingConnection>();
 
   isConfigured(definition: ConnectorCatalogDefinition): boolean {
@@ -209,6 +404,13 @@ export class ComposioConnectorProvider {
 
   clearDiscoveryCache(): void {
     this.discoveredAuthConfigIds = undefined;
+    this.locallyCreatedAuthConfigs.clear();
+    this.invalidateDefinitionsCache();
+    this.authConfigCreationPromises.clear();
+  }
+
+  private invalidateDefinitionsCache(): void {
+    this.definitionsGeneration += 1;
     this.definitionsCache = undefined;
     this.definitionsPromise = undefined;
   }
@@ -220,13 +422,16 @@ export class ComposioConnectorProvider {
     }
     if (this.definitionsPromise) return this.definitionsPromise;
 
+    const generation = this.definitionsGeneration;
     const promise = this.fetchDefinitions(signal)
       .then((definitions) => {
-        this.definitionsCache = { definitions, expiresAtMs: Date.now() + DISCOVERY_CACHE_TTL_MS };
+        if (this.definitionsGeneration === generation) {
+          this.definitionsCache = { definitions, expiresAtMs: Date.now() + DISCOVERY_CACHE_TTL_MS };
+        }
         return definitions;
       })
       .finally(() => {
-        if (this.definitionsPromise === promise) this.definitionsPromise = undefined;
+        if (this.definitionsPromise === promise && this.definitionsGeneration === generation) this.definitionsPromise = undefined;
       });
     this.definitionsPromise = promise;
     return promise;
@@ -246,6 +451,10 @@ export class ComposioConnectorProvider {
       discoveredAuthConfigIds[connectorId] = authConfigId;
       if (!configuredByConnectorId.has(connectorId)) configuredByConnectorId.set(connectorId, { authConfigId, toolkitSlug });
     }
+    for (const [connectorId, local] of this.locallyCreatedAuthConfigs) {
+      discoveredAuthConfigIds[connectorId] = local.authConfigId;
+      if (!configuredByConnectorId.has(connectorId)) configuredByConnectorId.set(connectorId, local);
+    }
     this.discoveredAuthConfigIds = discoveredAuthConfigIds;
     const toolkits = apiKey ? await this.listToolkitsSafe(signal) : [];
     const toolkitBySlug = new Map(toolkits.map((toolkit) => [normalizeComposioSlug(getString(toolkit.slug) ?? ''), toolkit]));
@@ -254,7 +463,7 @@ export class ComposioConnectorProvider {
       const configuredEntry = configuredByConnectorId.get(staticDefinition.id);
       const toolkitSlug = configuredEntry?.toolkitSlug ?? staticDefinition.providerConnectorId ?? staticDefinition.id;
       const toolkit = toolkitBySlug.get(normalizeComposioSlug(toolkitSlug));
-      definitions.push(await this.definitionFromToolkit(staticDefinition, toolkitSlug, toolkit, signal));
+      definitions.push(await this.definitionFromToolkit(staticDefinition, toolkitSlug, toolkit, Boolean(configuredEntry), signal));
     }
     return definitions;
   }
@@ -266,9 +475,9 @@ export class ComposioConnectorProvider {
   }
 
   async connect(definition: ConnectorCatalogDefinition, callbackUrl: string, signal?: AbortSignal): Promise<ComposioConnectionStart> {
-    const authConfigId = await this.getAuthConfigId(definition, signal);
+    const authConfigId = await this.getOrCreateManagedAuthConfigId(definition, signal);
     if (!authConfigId) {
-      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio auth config is not configured for this connector', 503, {
+      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio auth config could not be created for this connector', 503, {
         connectorId: definition.id,
         setting: 'apiKey',
       });
@@ -293,12 +502,16 @@ export class ComposioConnectorProvider {
     const status = getString(response.status)?.toUpperCase();
     this.pendingConnections.set(state, { connectorId: definition.id, state, ...(providerConnectionId ? { providerConnectionId } : {}), expiresAtMs });
 
+    const validatedConnection = status === 'ACTIVE' && providerConnectionId
+      ? await this.getValidatedConnectedAccount(definition, providerConnectionId, authConfigId, signal)
+      : undefined;
+
     return {
       kind: redirectUrl ? 'redirect_required' : status === 'ACTIVE' ? 'connected' : 'pending',
       ...(redirectUrl ? { redirectUrl } : {}),
       ...(providerConnectionId ? { providerConnectionId } : {}),
       expiresAt,
-      ...(status === 'ACTIVE' && providerConnectionId ? this.connectionToCredentials(definition, providerConnectionId, response) : {}),
+      ...(validatedConnection ? this.connectionToCredentials(definition, providerConnectionId!, validatedConnection) : {}),
     };
   }
 
@@ -319,25 +532,31 @@ export class ComposioConnectorProvider {
     if (!providerConnectionId) {
       throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio callback did not include a connection id', 400, { connectorId });
     }
+    const expectedAuthConfigId = await this.getAuthConfigId(input.definition, input.signal);
+    const response = await this.getValidatedConnectedAccount(input.definition, providerConnectionId, expectedAuthConfigId, input.signal);
+    return this.connectionToCredentials(input.definition, providerConnectionId, response);
+  }
+
+  private async getValidatedConnectedAccount(definition: ConnectorCatalogDefinition, providerConnectionId: string, expectedAuthConfigId: string | undefined, signal?: AbortSignal): Promise<ComposioConnectedAccountResponse> {
+    const connectorId = definition.id;
     const response = await this.requestJson<ComposioConnectedAccountResponse>(`/api/v3/connected_accounts/${encodeURIComponent(providerConnectionId)}`, {
       method: 'GET',
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      ...(signal === undefined ? {} : { signal }),
     });
     const providerUserId = getString(response.user_id) ?? getString(response.userId);
     if (providerUserId && providerUserId !== this.getUserId()) {
       throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio account belongs to a different user', 403, { connectorId });
     }
-    const expectedAuthConfigId = await this.getAuthConfigId(input.definition, input.signal);
     const providerAuthConfigId = getString(response.auth_config?.id);
     if (expectedAuthConfigId && providerAuthConfigId && expectedAuthConfigId !== providerAuthConfigId) {
-      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio account belongs to a different auth configuration', 403, { connectorId });
+      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio account belongs to a different auth configuration', 403, { connectorId, expectedAuthConfigId, providerAuthConfigId });
     }
-    const expectedToolkitSlug = input.definition.providerConnectorId;
+    const expectedToolkitSlug = definition.providerConnectorId;
     const providerToolkitSlug = getString(response.toolkit?.slug);
     if (expectedToolkitSlug && providerToolkitSlug && connectorIdForToolkitSlug(expectedToolkitSlug) !== connectorIdForToolkitSlug(providerToolkitSlug)) {
       throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio account belongs to a different toolkit', 403, { connectorId });
     }
-    return this.connectionToCredentials(input.definition, providerConnectionId, response);
+    return response;
   }
 
   async disconnect(credentials: ConnectorCredentialMaterial | undefined, signal?: AbortSignal): Promise<void> {
@@ -386,6 +605,59 @@ export class ComposioConnectorProvider {
     return this.discoveredAuthConfigIds[definition.id];
   }
 
+  private async getOrCreateManagedAuthConfigId(definition: ConnectorCatalogDefinition, signal?: AbortSignal): Promise<string | undefined> {
+    const existing = await this.getAuthConfigId(definition, signal);
+    if (existing) return existing;
+
+    const inFlight = this.authConfigCreationPromises.get(definition.id);
+    if (inFlight) return inFlight;
+
+    const promise = this.createAndStoreManagedAuthConfigId(definition, signal)
+      .finally(() => {
+        if (this.authConfigCreationPromises.get(definition.id) === promise) this.authConfigCreationPromises.delete(definition.id);
+      });
+    this.authConfigCreationPromises.set(definition.id, promise);
+    return promise;
+  }
+
+  private async createAndStoreManagedAuthConfigId(definition: ConnectorCatalogDefinition, signal?: AbortSignal): Promise<string | undefined> {
+    const created = await this.createManagedAuthConfig(definition, signal);
+    const authConfigId = getComposioAuthConfigId(created);
+    const toolkitSlug = getComposioToolkitSlug(created) ?? definition.providerConnectorId;
+    if (!authConfigId || !toolkitSlug) return undefined;
+
+    const connectorId = connectorIdForToolkitSlug(toolkitSlug);
+    if (connectorId !== definition.id) {
+      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio created an auth config for a different toolkit', 502, {
+        connectorId: definition.id,
+        toolkitSlug,
+      });
+    }
+
+    this.discoveredAuthConfigIds = {
+      ...(this.discoveredAuthConfigIds ?? {}),
+      [definition.id]: authConfigId,
+    };
+    this.locallyCreatedAuthConfigs.set(definition.id, { authConfigId, toolkitSlug });
+    this.invalidateDefinitionsCache();
+    return authConfigId;
+  }
+
+  private async createManagedAuthConfig(definition: ConnectorCatalogDefinition, signal?: AbortSignal): Promise<ComposioAuthConfigResponse> {
+    const toolkitSlug = definition.providerConnectorId;
+    if (!toolkitSlug) {
+      throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'Composio connector is missing a toolkit slug', 500, { connectorId: definition.id });
+    }
+    return this.requestJson<ComposioAuthConfigResponse>('/api/v3.1/auth_configs', {
+      method: 'POST',
+      body: JSON.stringify({
+        toolkit: { slug: toolkitSlug },
+        auth_config: { type: 'use_composio_managed_auth' },
+      }),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
   private async discoverAuthConfigIds(signal?: AbortSignal): Promise<Record<string, string>> {
     if (!this.getApiKey()) return {};
     const items = await this.listAuthConfigsSafe(signal);
@@ -397,6 +669,7 @@ export class ComposioConnectorProvider {
       if (!authConfigId || !toolkitSlug || (status && status !== 'ENABLED')) continue;
       discovered[connectorIdForToolkitSlug(toolkitSlug)] = authConfigId;
     }
+    for (const [connectorId, local] of this.locallyCreatedAuthConfigs) discovered[connectorId] = local.authConfigId;
     return discovered;
   }
 
@@ -449,16 +722,26 @@ export class ComposioConnectorProvider {
     }
   }
 
-  private async definitionFromToolkit(staticDefinition: ConnectorCatalogDefinition, toolkitSlug: string, toolkit: ComposioToolkitResponse | undefined, signal?: AbortSignal): Promise<ConnectorCatalogDefinition> {
+  private async definitionFromToolkit(staticDefinition: ConnectorCatalogDefinition, toolkitSlug: string, toolkit: ComposioToolkitResponse | undefined, hydrateTools: boolean, signal?: AbortSignal): Promise<ConnectorCatalogDefinition> {
     const connectorId = staticDefinition.id;
-    const liveTools = (await this.listToolsSafe(toolkitSlug, signal))
-      .filter((tool) => {
-        const toolToolkitSlug = getString(tool.toolkit?.slug);
-        return !toolToolkitSlug || normalizeComposioSlug(toolToolkitSlug) === normalizeComposioSlug(toolkitSlug);
-      })
-      .map((tool) => this.toolDefinitionFromComposioTool(connectorId, tool));
+    const liveTools = hydrateTools
+      ? (await this.listToolsSafe(toolkitSlug, signal))
+        .filter((tool) => {
+          const toolToolkitSlug = getString(tool.toolkit?.slug);
+          return !toolToolkitSlug || normalizeComposioSlug(toolToolkitSlug) === normalizeComposioSlug(toolkitSlug);
+        })
+        .map((tool) => this.toolDefinitionFromComposioTool(connectorId, tool))
+      : [];
     const liveToolsByName = new Map(liveTools.map((tool) => [tool.name, tool]));
-    const tools = staticDefinition.tools.map((tool) => mergeToolDefinition(tool, liveToolsByName.get(tool.name)));
+    const staticToolNames = new Set(staticDefinition.tools.map((tool) => tool.name));
+    const tools = [
+      ...staticDefinition.tools.map((tool) => mergeToolDefinition(tool, liveToolsByName.get(tool.name))),
+      ...liveTools.filter((tool) => !staticToolNames.has(tool.name)),
+    ];
+    const autoAllowedLiveToolNames = liveTools
+      .filter((tool) => tool.refreshEligible)
+      .map((tool) => tool.name);
+    const allowedToolNames = [...new Set([...staticDefinition.allowedToolNames, ...autoAllowedLiveToolNames])];
     const name = getString(toolkit?.name) ?? staticDefinition.name;
     const category = firstCategoryName(toolkit?.categories) ?? staticDefinition.category;
     const description = getString(toolkit?.description) ?? staticDefinition.description;
@@ -470,8 +753,10 @@ export class ComposioConnectorProvider {
       category,
       ...(description === undefined ? {} : { description }),
       tools,
-      allowedToolNames: staticDefinition.allowedToolNames,
-      ...(staticDefinition.featuredToolNames === undefined ? {} : { featuredToolNames: staticDefinition.featuredToolNames }),
+      allowedToolNames,
+      ...(staticDefinition.featuredToolNames === undefined
+        ? tools.length > 0 ? { featuredToolNames: tools.slice(0, 3).map((tool) => tool.name) } : {}
+        : { featuredToolNames: staticDefinition.featuredToolNames }),
     };
   }
 
@@ -569,6 +854,32 @@ function mergeToolDefinition(staticTool: ConnectorCatalogToolDefinition, liveToo
 }
 
 export const composioConnectorProvider = new ComposioConnectorProvider();
+
+function buildStaticComposioCatalog(): ConnectorCatalogDefinition[] {
+  const definitions = new Map<string, ConnectorCatalogDefinition>();
+  for (const definition of FEATURED_COMPOSIO_CATALOG) definitions.set(definition.id, definition);
+  for (const toolkit of DOCUMENTED_COMPOSIO_TOOLKITS) {
+    const id = connectorIdForToolkitSlug(toolkit.slug);
+    if (definitions.has(id)) continue;
+    definitions.set(id, createComposioCatalogDefinition(toolkit));
+  }
+  return [...definitions.values()];
+}
+
+function createComposioCatalogDefinition(toolkit: ComposioToolkitCatalogEntry): ConnectorCatalogDefinition {
+  return {
+    id: connectorIdForToolkitSlug(toolkit.slug),
+    name: toolkit.name,
+    provider: 'composio',
+    category: toolkit.category ?? 'Composio',
+    description: `Connect to ${toolkit.name} through Composio.`,
+    providerConnectorId: toolkit.slug,
+    authentication: 'composio',
+    tools: [],
+    allowedToolNames: [],
+    minimumApproval: 'auto',
+  };
+}
 
 export function getStaticComposioCatalogDefinitions(): ConnectorCatalogDefinition[] {
   return STATIC_COMPOSIO_CATALOG.map((definition) => ({
