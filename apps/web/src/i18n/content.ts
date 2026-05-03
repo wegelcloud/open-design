@@ -288,7 +288,13 @@ const DE_DESIGN_SYSTEM_CATEGORIES: Record<string, string> = {
   Uncategorized: 'Nicht kategorisiert',
 };
 
-const DE_SKILL_IDS_WITH_EN_FALLBACK = [] as const;
+const DE_SKILL_IDS_WITH_EN_FALLBACK = [
+  'html-ppt-taste-brutalist',
+  'html-ppt-taste-editorial',
+  'web-prototype-taste-brutalist',
+  'web-prototype-taste-editorial',
+  'web-prototype-taste-soft',
+] as const;
 
 const DE_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'agentic',
