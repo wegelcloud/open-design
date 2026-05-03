@@ -332,9 +332,26 @@ const PROMPT_TEMPLATES_DIR = resolveDaemonResourceDir(
   'prompt-templates',
   path.join(PROJECT_ROOT, 'prompt-templates'),
 );
-const RUNTIME_DATA_DIR = process.env.OD_DATA_DIR
-  ? path.resolve(PROJECT_ROOT, process.env.OD_DATA_DIR)
-  : path.join(PROJECT_ROOT, '.od');
+export function resolveDataDir(raw, projectRoot) {
+  if (!raw) return path.join(projectRoot, '.od');
+  const expanded = raw.startsWith('~/')
+    ? path.join(os.homedir(), raw.slice(2))
+    : raw;
+  const resolved = path.isAbsolute(expanded)
+    ? expanded
+    : path.resolve(projectRoot, expanded);
+  try {
+    fs.mkdirSync(resolved, { recursive: true });
+    fs.accessSync(resolved, fs.constants.W_OK);
+  } catch (err) {
+    const e = err;
+    throw new Error(
+      `OD_DATA_DIR "${resolved}" is not writable: ${e.message}`,
+    );
+  }
+  return resolved;
+}
+const RUNTIME_DATA_DIR = resolveDataDir(process.env.OD_DATA_DIR, PROJECT_ROOT);
 const ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'artifacts');
 const PROJECTS_DIR = path.join(RUNTIME_DATA_DIR, 'projects');
 fs.mkdirSync(PROJECTS_DIR, { recursive: true });

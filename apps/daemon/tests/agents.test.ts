@@ -22,6 +22,9 @@ const originalDisablePlugins = process.env.OD_CODEX_DISABLE_PLUGINS;
 const originalPath = process.env.PATH;
 const originalHome = process.env.HOME;
 const originalAgentHome = process.env.OD_AGENT_HOME;
+const originalDaemonUrl = process.env.OD_DAEMON_URL;
+const originalToolToken = process.env.OD_TOOL_TOKEN;
+const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   if (originalDisablePlugins == null) {
@@ -40,6 +43,17 @@ afterEach(() => {
   } else {
     process.env.OD_AGENT_HOME = originalAgentHome;
   }
+  if (originalDaemonUrl == null) {
+    delete process.env.OD_DAEMON_URL;
+  } else {
+    process.env.OD_DAEMON_URL = originalDaemonUrl;
+  }
+  if (originalToolToken == null) {
+    delete process.env.OD_TOOL_TOKEN;
+  } else {
+    process.env.OD_TOOL_TOKEN = originalToolToken;
+  }
+  globalThis.fetch = originalFetch;
 });
 
 test('codex args disable plugins when OD_CODEX_DISABLE_PLUGINS is 1', () => {
@@ -147,6 +161,52 @@ test('MCP-capable agents can discover equivalent live artifact and connector too
 
   const listed = await handleLiveArtifactsMcpRequest({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   assert.deepEqual(listed.result.tools.map((tool) => tool.name), tools.map((tool) => tool.name));
+});
+
+test('live artifact MCP create forwards input under daemon tool input key', async () => {
+  process.env.OD_DAEMON_URL = 'http://127.0.0.1:17456';
+  process.env.OD_TOOL_TOKEN = 'test-tool-token';
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ artifact: { id: 'artifact-1' } }), { status: 200 });
+  };
+
+  const input = { title: 'Demo', preview: { type: 'html', entry: 'index.html' } };
+  const response = await handleLiveArtifactsMcpRequest({
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: { name: 'live_artifacts_create', arguments: { input } },
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://127.0.0.1:17456/api/tools/live-artifacts/create');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { input });
+});
+
+test('live artifact MCP update preserves nested input for daemon tool updates', async () => {
+  process.env.OD_DAEMON_URL = 'http://127.0.0.1:17456';
+  process.env.OD_TOOL_TOKEN = 'test-tool-token';
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ artifact: { id: 'artifact-1', title: 'Updated' } }), { status: 200 });
+  };
+
+  const input = { title: 'Updated', pinned: true };
+  const response = await handleLiveArtifactsMcpRequest({
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: { name: 'live_artifacts_update', arguments: { artifactId: 'artifact-1', input } },
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://127.0.0.1:17456/api/tools/live-artifacts/update');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { artifactId: 'artifact-1', input });
 });
 
 test('cursor-agent args deliver prompts via stdin without passing a literal dash prompt', () => {

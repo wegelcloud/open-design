@@ -148,7 +148,7 @@ async function requestJson(pathname: string, init: RequestInit = {}): Promise<un
 
 async function callTool(name: string, args: JsonObject): Promise<unknown> {
   if (name === 'live_artifacts_create') {
-    return await requestJson('/api/tools/live-artifacts/create', { method: 'POST', body: JSON.stringify(args.input ?? {}) });
+    return await requestJson('/api/tools/live-artifacts/create', { method: 'POST', body: JSON.stringify({ input: args.input ?? {} }) });
   }
   if (name === 'live_artifacts_list') {
     return await requestJson('/api/tools/live-artifacts/list', { method: 'GET' });
@@ -156,7 +156,7 @@ async function callTool(name: string, args: JsonObject): Promise<unknown> {
   if (name === 'live_artifacts_update') {
     return await requestJson('/api/tools/live-artifacts/update', {
       method: 'POST',
-      body: JSON.stringify({ artifactId: args.artifactId, ...(typeof args.input === 'object' && args.input ? (args.input as JsonObject) : {}) }),
+      body: JSON.stringify({ artifactId: args.artifactId, input: typeof args.input === 'object' && args.input ? args.input : {} }),
     });
   }
   if (name === 'live_artifacts_refresh') {
