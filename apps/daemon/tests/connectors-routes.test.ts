@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { request as httpRequest } from 'node:http';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { startServer } from '../src/server.js';
@@ -129,6 +131,34 @@ afterEach(async () => {
 async function jsonFetch(url, init) {
   const response = await fetch(url, init);
   return { status: response.status, body: await response.json() };
+}
+
+async function postWithHostHeader(url, host) {
+  const target = new URL(url);
+  return await new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port,
+        path: target.pathname + target.search,
+        method: 'POST',
+        headers: { host },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode,
+            body: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 function mintConnectorToolToken(projectId = 'connector-route-project', runId = 'connector-route-run', overrides = {}) {
@@ -385,6 +415,16 @@ describe('connector routes', () => {
     expect(html).toContain('Open Design');
     expect(html).toContain('open-design:connector-connected');
     expect(html).not.toContain('<p>Connector connected. You can close this window.</p>');
+  });
+
+  it('accepts bracketed IPv6 loopback host headers for connector callback URLs', async () => {
+    const url = new URL(baseUrl);
+
+    const response = await postWithHostHeader(`${baseUrl}/api/connectors/github/connect`, `[::1]:${url.port}`);
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body).auth).toMatchObject({ kind: 'connected' });
+    expect(lastComposioLinkRequest.callback_url).toContain(`[::1]:${url.port}/api/connectors/oauth/callback`);
   });
 
   it('lists connected Composio tools through run-scoped tool auth', async () => {

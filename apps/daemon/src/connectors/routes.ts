@@ -53,7 +53,8 @@ function connectorCallbackUrl(req: Request): string {
   } catch {
     throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'connector OAuth callback host is invalid', 400, { host });
   }
-  const allowed = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  const normalizedHostname = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+  const allowed = normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1' || normalizedHostname === '::1';
   if (!allowed) {
     throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'connector OAuth callback host must be loopback', 400, { host });
   }
