@@ -561,7 +561,7 @@ describe('live artifact tool routes', () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:17573');
-    expect(response.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+    expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, OPTIONS');
     expect(response.headers.get('access-control-allow-origin')).not.toBe('*');
   });
 
