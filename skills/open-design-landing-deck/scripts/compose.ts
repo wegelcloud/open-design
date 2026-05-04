@@ -836,8 +836,13 @@ const RUNTIME_SCRIPT = `
     nav.appendChild(b);
   });
 
-  function go(n) {
-    if (lock) return;
+  /* Unthrottled state update. The interaction throttle (\`lock\`) only
+     guards wheel/key/touch so a fast input burst doesn't overshoot the
+     transition; host- and observer-driven sync must bypass it, otherwise
+     a host message or restoreInitialSlide that lands inside the 700ms
+     window after go(0) silently no-ops and the deck stays on slide 1
+     while the host counter advances. */
+  function applySlide(n) {
     idx = Math.max(0, Math.min(total - 1, n));
     deck.style.transform = 'translateX(' + (-idx * 100) + 'vw)';
     /* load-bearing: .slide.active is read by Open Design's host bridge
@@ -848,6 +853,11 @@ const RUNTIME_SCRIPT = `
       d.classList.toggle('active', i === idx);
     });
     if (bar) bar.style.width = (((idx + 1) / total) * 100) + '%';
+  }
+
+  function go(n) {
+    if (lock) return;
+    applySlide(n);
     lock = true;
     setTimeout(function () { lock = false; }, 700);
   }
@@ -952,18 +962,18 @@ const RUNTIME_SCRIPT = `
     var data = e && e.data;
     if (!data || data.type !== 'od:slide') return;
     if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-    if (data.action === 'go' && typeof data.index === 'number') go(data.index);
-    else if (data.action === 'next') go(idx + 1);
-    else if (data.action === 'prev') go(idx - 1);
-    else if (data.action === 'first') go(0);
-    else if (data.action === 'last') go(total - 1);
+    if (data.action === 'go' && typeof data.index === 'number') applySlide(data.index);
+    else if (data.action === 'next') applySlide(idx + 1);
+    else if (data.action === 'prev') applySlide(idx - 1);
+    else if (data.action === 'first') applySlide(0);
+    else if (data.action === 'last') applySlide(total - 1);
   });
 
   if (typeof MutationObserver !== 'undefined') {
     var syncFromActiveClass = function () {
       for (var i = 0; i < slides.length; i++) {
         if (slides[i].classList && slides[i].classList.contains('active') && i !== idx) {
-          go(i);
+          applySlide(i);
           return;
         }
       }
@@ -972,7 +982,7 @@ const RUNTIME_SCRIPT = `
     slides.forEach(function (s) { mo.observe(s, { attributes: true, attributeFilter: ['class'] }); });
   }
 
-  go(0);
+  applySlide(0);
 })();
 </script>`;
 
