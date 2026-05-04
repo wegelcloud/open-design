@@ -3235,6 +3235,32 @@ button.connector-action.is-loading {
   user-select: none;
   transition: filter 160ms ease, opacity 160ms ease;
 }
+/* When the gate is shown, anchor it to the visible first screen of the
+   connectors tab instead of centering across the full (potentially long)
+   connector list. We lift the tab-content into a flex column, let the
+   connectors panel and the masked grid wrap stretch to fill the remaining
+   viewport height, and hide overflow so the absolutely-positioned gate
+   card remains fixed in the first-screen center. */
+.entry-tab-content:has(> .tab-panel.connectors-panel > .connector-grid-wrap.is-masked) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tab-panel.connectors-panel:has(> .connector-grid-wrap.is-masked) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.connector-grid-wrap.is-masked {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.connector-grid-wrap.is-masked .connector-grid {
+  /* Prevent the blurred grid from introducing its own scroll height inside
+     the now-clipped wrap — the wrap is our visible viewport for the gate. */
+  max-height: 100%;
+  overflow: hidden;
+}
 .connector-card.is-locked {
   cursor: not-allowed;
 }
