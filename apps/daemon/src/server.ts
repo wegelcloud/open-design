@@ -36,6 +36,7 @@ import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
 import { buildDocumentPreview } from './document-preview.js';
 import { lintArtifact, renderFindingsForAgent } from './lint-artifact.js';
 import { loadCraftSections } from './craft.js';
+import { stageActiveSkill } from './cwd-aliases.js';
 import { generateMedia } from './media.js';
 import {
   AUDIO_DURATIONS_SEC,
@@ -54,6 +55,7 @@ import {
   deleteProjectFile,
   ensureProject,
   listFiles,
+  mimeFor,
   projectDir,
   readProjectFile,
   removeProjectDir,
@@ -1679,7 +1681,10 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
 
       const baked = path.join(skill.dir, 'example.html');
       if (fs.existsSync(baked)) {
-        return res.type('text/html').sendFile(baked);
+        const html = await fs.promises.readFile(baked, 'utf8');
+        return res
+          .type('text/html')
+          .send(rewriteSkillAssetUrls(html, skill.id));
       }
 
       const tpl = path.join(skill.dir, 'assets', 'template.html');
@@ -1689,17 +1694,25 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
           const tplHtml = await fs.promises.readFile(tpl, 'utf8');
           const slidesHtml = await fs.promises.readFile(slides, 'utf8');
           const assembled = assembleExample(tplHtml, slidesHtml, skill.name);
-          return res.type('text/html').send(assembled);
+          return res
+            .type('text/html')
+            .send(rewriteSkillAssetUrls(assembled, skill.id));
         } catch {
           // Fall through to raw template on read failure.
         }
       }
       if (fs.existsSync(tpl)) {
-        return res.type('text/html').sendFile(tpl);
+        const html = await fs.promises.readFile(tpl, 'utf8');
+        return res
+          .type('text/html')
+          .send(rewriteSkillAssetUrls(html, skill.id));
       }
       const idx = path.join(skill.dir, 'assets', 'index.html');
       if (fs.existsSync(idx)) {
-        return res.type('text/html').sendFile(idx);
+        const html = await fs.promises.readFile(idx, 'utf8');
+        return res
+          .type('text/html')
+          .send(rewriteSkillAssetUrls(html, skill.id));
       }
       res
         .status(404)
@@ -1707,6 +1720,41 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         .send(
           'no example.html, assets/template.html, or assets/index.html for this skill',
         );
+    } catch (err) {
+      res.status(500).type('text/plain').send(String(err));
+    }
+  });
+
+  // Static assets shipped beside a skill's example/template HTML. Lets the
+  // example HTML reference `./assets/foo.png`-style paths that resolve
+  // correctly when the response is loaded into a sandboxed `srcdoc` iframe
+  // (where relative URLs would otherwise resolve against `about:srcdoc`).
+  // The example response above rewrites `./assets/<file>` into a request
+  // against this route; we still keep the on-disk paths human-friendly so
+  // contributors can preview `example.html` straight from disk.
+  app.get('/api/skills/:id/assets/*', async (req, res) => {
+    try {
+      const skills = await listSkills(SKILLS_DIR);
+      const skill = skills.find((s) => s.id === req.params.id);
+      if (!skill) {
+        return res.status(404).type('text/plain').send('skill not found');
+      }
+      const relPath = String(req.params[0] || '');
+      const assetsRoot = path.resolve(skill.dir, 'assets');
+      const target = path.resolve(assetsRoot, relPath);
+      if (target !== assetsRoot && !target.startsWith(assetsRoot + path.sep)) {
+        return res.status(400).type('text/plain').send('invalid asset path');
+      }
+      if (!fs.existsSync(target)) {
+        return res.status(404).type('text/plain').send('asset not found');
+      }
+      // The example HTML is rendered inside a sandboxed iframe (Origin: null).
+      // Mirror the project /raw route's allowance so the iframe can fetch the
+      // image bytes; same-origin web callers do not need this header.
+      if (req.headers.origin === 'null') {
+        res.header('Access-Control-Allow-Origin', '*');
+      }
+      res.type(mimeFor(target)).sendFile(target);
     } catch (err) {
       res.status(500).type('text/plain').send(String(err));
     }
@@ -2713,6 +2761,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     let skillName;
     let skillMode;
     let skillCraftRequires = [];
+    let activeSkillDir = null;
     if (effectiveSkillId) {
       const skill = (await listSkills(SKILLS_DIR)).find(
         (s) => s.id === effectiveSkillId,
@@ -2721,6 +2770,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         skillBody = skill.body;
         skillName = skill.name;
         skillMode = skill.mode;
+        activeSkillDir = skill.dir;
         if (Array.isArray(skill.craftRequires))
           skillCraftRequires = skill.craftRequires;
       }
@@ -2752,7 +2802,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         ? (getTemplate(db, metadata.templateId) ?? undefined)
         : undefined;
 
-    return composeSystemPrompt({
+    const prompt = composeSystemPrompt({
       skillBody,
       skillName,
       skillMode,
@@ -2763,6 +2813,11 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       metadata,
       template,
     });
+    // The chat handler also needs to know where the active skill lives
+    // on disk so it can stage a per-project copy of its side files
+    // before spawning the agent. Returning that here avoids a second
+    // `listSkills()` scan in `startChatRun`.
+    return { prompt, activeSkillDir };
   };
 
   const startChatRun = async (chatBody, run) => {
@@ -2892,11 +2947,12 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     };
     const runtimeToolPrompt = createAgentRuntimeToolPrompt(daemonUrl, toolTokenGrant);
     const commentHint = renderCommentAttachmentHint(safeCommentAttachments);
-    const daemonSystemPrompt = await composeDaemonSystemPrompt({
-      projectId,
-      skillId,
-      designSystemId,
-    });
+    const { prompt: daemonSystemPrompt, activeSkillDir } =
+      await composeDaemonSystemPrompt({
+        projectId,
+        skillId,
+        designSystemId,
+      });
     const instructionPrompt = [daemonSystemPrompt, runtimeToolPrompt, systemPrompt]
       .map((part) => (typeof part === 'string' ? part.trim() : ''))
       .filter(Boolean)
@@ -2913,13 +2969,51 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         : '',
     ].join('');
 
-    // Skill seeds (`skills/<id>/assets/template.html`) and design-system
-    // specs (`design-systems/<id>/DESIGN.md`) live outside the project cwd.
-    // The composed system prompt asks the agent to Read them via absolute
-    // paths in the skill-root preamble — without an explicit allowlist,
-    // Claude Code blocks those reads (issue #6: "no permission to read
-    // skills template"). We surface both roots so any agent that honours
-    // `--add-dir` can resolve those side files.
+    // Make skill side files reachable through three layers, in order of
+    // preference. The skill preamble emitted by `withSkillRootPreamble()`
+    // advertises both the cwd-relative path (1) and the absolute path
+    // (2/3) so the agent can pick whichever works.
+    //
+    //   1. CWD-relative copy. Stage the *active* skill into
+    //      `<cwd>/.od-skills/<folder>/` so any agent CLI — not just the
+    //      ones that honour `--add-dir` — can reach those files via a
+    //      path inside its working directory. We copy (not symlink) so
+    //      the staged directory is a true write barrier — agents cannot
+    //      mutate the shipped repo resource through their cwd.
+    //   2. `--add-dir` allowlist. Pass `SKILLS_DIR` and
+    //      `DESIGN_SYSTEMS_DIR` to Claude/Copilot so the absolute fallback
+    //      path in the preamble is reachable when staging fails (e.g. the
+    //      project has no on-disk cwd, or fs.cp errored).
+    //   3. PROJECT_ROOT cwd. When `cwd` is null, the agent runs with
+    //      `cwd: PROJECT_ROOT` — there the absolute path is already an
+    //      in-cwd path, so neither (1) nor (2) is required for it to
+    //      resolve.
+    //
+    // Design systems are *not* staged here. Their bodies are read by the
+    // daemon and folded into the system prompt directly (see
+    // `readDesignSystem`), so an agent never has to open them via the
+    // filesystem.
+    if (cwd && activeSkillDir) {
+      const result = await stageActiveSkill(
+        cwd,
+        path.basename(activeSkillDir),
+        activeSkillDir,
+        (msg) => console.warn(msg),
+      );
+      if (!result.staged) {
+        console.warn(
+          `[od] skill-stage skipped: ${result.reason ?? 'unknown reason'}; falling back to absolute paths`,
+        );
+      }
+    }
+    // Resolve the agent's effective working directory once and use it
+    // everywhere the agent could read it (buildArgs runtimeContext, spawn
+    // cwd, ACP session new). Falling back to PROJECT_ROOT — rather than
+    // letting `spawn` inherit the daemon process cwd — is what makes the
+    // absolute-path fallback in the skill preamble actually in-cwd for
+    // no-project runs (packaged daemons / service launches do not start
+    // their working directory from the workspace root).
+    const effectiveCwd = cwd ?? PROJECT_ROOT;
     const extraAllowedDirs = [SKILLS_DIR, DESIGN_SYSTEMS_DIR].filter((d) =>
       fs.existsSync(d),
     );
@@ -2950,7 +3044,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       safeImages,
       extraAllowedDirs,
       agentOptions,
-      { cwd },
+      { cwd: effectiveCwd },
     );
     const send = (event, data) => design.runs.emit(run, event, data);
     const unregisterChatAgentEventSink = () => {
@@ -3024,7 +3118,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       child = spawn(invocation.command, invocation.args, {
         env,
         stdio: [stdinMode, 'pipe', 'pipe'],
-        cwd: cwd || undefined,
+        cwd: effectiveCwd,
         shell: false,
         // Required when invocation wraps a Windows .cmd/.bat shim through
         // cmd.exe; without this, Node re-escapes the inner command line and
@@ -3077,7 +3171,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       acpSession = attachPiRpcSession({
         child,
         prompt: composed,
-        cwd: cwd || PROJECT_ROOT,
+        cwd: effectiveCwd,
         model: safeModel,
         send,
       });
@@ -3085,7 +3179,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       acpSession = attachAcpSession({
         child,
         prompt: composed,
-        cwd: cwd || PROJECT_ROOT,
+        cwd: effectiveCwd,
         model: safeModel,
         mcpServers,
         send,
@@ -3772,6 +3866,30 @@ function assembleExample(templateHtml, slidesHtml, title) {
       /<title>.*?<\/title>/,
       `<title>${title} | Open Design Example</title>`,
     );
+}
+
+// Skill example HTML often references shipped images via relative paths
+// like `./assets/hero.png`. Those resolve correctly when the file is
+// opened from disk, but the web app loads the example into a sandboxed
+// iframe via `srcdoc`, where the document URL is `about:srcdoc` and
+// relative URLs cannot find the assets. Rewriting them to an absolute
+// `/api/skills/<id>/assets/...` URL lets the same HTML render in both
+// places — the disk preview keeps working, and the in-app preview now
+// fetches assets through the matching route below.
+export function rewriteSkillAssetUrls(html: string, skillId: string): string {
+  if (typeof html !== 'string' || html.length === 0) return html;
+  // Match src/href attributes whose values point at the current skill's
+  // assets (`./assets/...` or `assets/...`) or a sibling skill's assets
+  // (`../other-skill/assets/...`). Quote style is preserved so we do not
+  // disturb the surrounding markup.
+  return html.replace(
+    /(\s(?:src|href)\s*=\s*)(['"])((?:\.\.\/([^/'"#?]+)\/)?(?:\.\/)?assets\/([^'"#?]+))(\2)/gi,
+    (_match, attr, openQuote, _fullPath, siblingSkillId, relPath, closeQuote) => {
+      const resolvedSkillId = siblingSkillId || skillId;
+      const prefix = `/api/skills/${encodeURIComponent(resolvedSkillId)}/assets/`;
+      return `${attr}${openQuote}${prefix}${relPath}${closeQuote}`;
+    },
+  );
 }
 
 export function isLocalSameOrigin(req, port) {
