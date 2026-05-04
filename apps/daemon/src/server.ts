@@ -3048,7 +3048,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     );
     const send = (event, data) => design.runs.emit(run, event, data);
     const unregisterChatAgentEventSink = () => {
-      activeChatAgentEventSinks.delete(runId);
+      activeChatAgentEventSinks.delete(toolTokenGrant?.runId ?? runId);
     };
     if (toolTokenGrant?.runId) {
       activeChatAgentEventSinks.set(toolTokenGrant.runId, (payload) =>
@@ -3072,7 +3072,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     }
     const odMediaEnv = {
       OD_BIN,
-      OD_DAEMON_URL: `http://127.0.0.1:${resolvedPort}`,
+      OD_DAEMON_URL: daemonUrl,
       ...(typeof projectId === 'string' && projectId && cwd
         ? {
             OD_PROJECT_ID: projectId,
@@ -3081,7 +3081,11 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         : {}),
     };
 
-    if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
+    if (run.cancelRequested || design.runs.isTerminal(run.status)) {
+      revokeToolToken('child_exit');
+      unregisterChatAgentEventSink();
+      return;
+    }
 
     run.status = 'running';
     run.updatedAt = Date.now();
@@ -3107,7 +3111,10 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
           ? 'pipe'
           : 'ignore';
       const env = {
-        ...spawnEnvForAgent(def.id, createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant)),
+        ...spawnEnvForAgent(
+          def.id,
+          createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant),
+        ),
         ...odMediaEnv,
       };
       const invocation = createCommandInvocation({
