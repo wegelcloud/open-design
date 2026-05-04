@@ -1,3 +1,5 @@
+import net from 'node:net';
+
 import type { Express, Request, Response } from 'express';
 
 import type { ToolTokenGrant } from '../tool-tokens.js';
@@ -45,6 +47,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (normalized === 'localhost') return true;
+  if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true;
+  if (normalized.startsWith('::ffff:')) return isLoopbackHostname(normalized.slice('::ffff:'.length));
+  return net.isIP(normalized) === 4 && (normalized === '127.0.0.1' || normalized.startsWith('127.'));
+}
+
 function connectorCallbackUrl(req: Request): string {
   const host = req.get('host') ?? 'localhost';
   let hostname = 'localhost';
@@ -53,9 +63,7 @@ function connectorCallbackUrl(req: Request): string {
   } catch {
     throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'connector OAuth callback host is invalid', 400, { host });
   }
-  const normalizedHostname = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
-  const allowed = normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1' || normalizedHostname === '::1';
-  if (!allowed) {
+  if (!isLoopbackHostname(hostname)) {
     throw new ConnectorServiceError('CONNECTOR_EXECUTION_FAILED', 'connector OAuth callback host must be loopback', 400, { host });
   }
   return `${req.protocol}://${host}/api/connectors/oauth/callback`;

@@ -947,12 +947,6 @@ export async function commitLiveArtifactRefreshCandidate(
     lastCommittedRefreshOrdinal: refreshOrdinal,
   };
 
-  await Promise.all([
-    writeFileAtomic(paths.artifactJsonPath, stableJson(persisted.value)),
-    writeFileAtomic(paths.dataJsonPath, stableJson(candidateData.value)),
-    writeFileAtomic(paths.generatedPreviewHtmlPath, previewHtml),
-    writeFileAtomic(paths.provenanceJsonPath, stableJson(provenanceJson)),
-  ]);
   await writeLiveArtifactSuccessfulSnapshot(paths, {
     refreshId: options.refreshId,
     artifact: persisted.value,
@@ -962,6 +956,12 @@ export async function commitLiveArtifactRefreshCandidate(
     provenanceJson,
   });
   await writeLiveArtifactRefreshState(paths, nextState);
+  await Promise.all([
+    writeFileAtomic(paths.artifactJsonPath, stableJson(persisted.value)),
+    writeFileAtomic(paths.dataJsonPath, stableJson(candidateData.value)),
+    writeFileAtomic(paths.generatedPreviewHtmlPath, previewHtml),
+    writeFileAtomic(paths.provenanceJsonPath, stableJson(provenanceJson)),
+  ]);
   return { artifact: persisted.value, paths };
 }
 

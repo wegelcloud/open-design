@@ -468,6 +468,16 @@ describe('connector routes', () => {
     expect(lastComposioLinkRequest.callback_url).toContain(`[::1]:${url.port}/api/connectors/oauth/callback`);
   });
 
+  it('accepts IPv4 loopback alias host headers for connector callback URLs', async () => {
+    const url = new URL(baseUrl);
+
+    const response = await postWithHostHeader(`${baseUrl}/api/connectors/github/connect`, `127.0.0.2:${url.port}`);
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body).auth).toMatchObject({ kind: 'connected' });
+    expect(lastComposioLinkRequest.callback_url).toContain(`127.0.0.2:${url.port}/api/connectors/oauth/callback`);
+  });
+
   it('lists connected Composio tools through run-scoped tool auth', async () => {
     await jsonFetch(`${baseUrl}/api/connectors/github/connect`, { method: 'POST' });
     const token = mintConnectorToolToken();
