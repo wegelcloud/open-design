@@ -62,6 +62,17 @@ const SUBCOMMAND_MAP = {
   mcp: runMcp,
 };
 
+if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
+  try {
+    const { exitCode } = await runLiveArtifactsMcpServer();
+    process.exit(exitCode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${JSON.stringify({ ok: false, error: { message } })}\n`);
+    process.exit(1);
+  }
+}
+
 const first = argv.find((a) => !a.startsWith('-'));
 if (first && SUBCOMMAND_MAP[first]) {
   const idx = argv.indexOf(first);
@@ -82,16 +93,6 @@ if (argv[0] === 'tools' && argv[1] === 'live-artifacts') {
     });
 } else if (argv[0] === 'tools' && argv[1] === 'connectors') {
   runConnectorsToolCli(argv.slice(2))
-    .then(({ exitCode }) => {
-      process.exitCode = exitCode;
-    })
-    .catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      process.stderr.write(`${JSON.stringify({ ok: false, error: { message } })}\n`);
-      process.exitCode = 1;
-    });
-} else if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
-  runLiveArtifactsMcpServer()
     .then(({ exitCode }) => {
       process.exitCode = exitCode;
     })
