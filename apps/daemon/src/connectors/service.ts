@@ -319,10 +319,12 @@ export class ConnectorStatusService {
   }
 
   deleteCredentialsByProvider(provider: string): void {
-    this.credentialStore?.deleteByProvider(provider);
     for (const [connectorId, status] of this.statuses.entries()) {
-      if (status.status === 'connected') this.statuses.delete(connectorId);
+      if (status.status !== 'connected') continue;
+      const credential = this.getCredential(connectorId);
+      if (credential?.credentials.provider === provider) this.statuses.delete(connectorId);
     }
+    this.credentialStore?.deleteByProvider(provider);
   }
 
   getStatus(definition: ConnectorCatalogDefinition): ConnectorConnectionStatus {

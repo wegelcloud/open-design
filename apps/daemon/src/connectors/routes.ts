@@ -1,6 +1,6 @@
 import net from 'node:net';
 
-import type { Express, Request, Response } from 'express';
+import type { Express, Request, RequestHandler, Response } from 'express';
 
 import type { ToolTokenGrant } from '../tool-tokens.js';
 import { validateBoundedJsonObject } from '../live-artifacts/schema.js';
@@ -34,6 +34,7 @@ export interface RegisterConnectorRoutesOptions {
   sendApiError: ConnectorApiErrorSender;
   projectsRoot?: string;
   authorizeToolRequest?: (req: Request, res: Response, operation: string) => ToolTokenGrant | null;
+  requireLocalDaemonRequest?: RequestHandler;
 }
 
 function sendConnectorRouteError(res: Response, err: unknown, sendApiError: ConnectorApiErrorSender): Response {
@@ -312,6 +313,7 @@ function renderConnectorConnectedHtml(connectorId: string): string {
 
 export function registerConnectorRoutes(app: Express, options: RegisterConnectorRoutesOptions): void {
   const service = options.service ?? connectorService;
+  const requireLocalDaemonRequest: RequestHandler = options.requireLocalDaemonRequest ?? ((_req, _res, next) => next());
 
   app.get('/api/connectors', async (_req: Request, res: Response) => {
     try {
@@ -350,7 +352,7 @@ export function registerConnectorRoutes(app: Express, options: RegisterConnector
     }
   });
 
-  app.post('/api/connectors/:connectorId/connect', async (req: Request, res: Response) => {
+  app.post('/api/connectors/:connectorId/connect', requireLocalDaemonRequest, async (req: Request, res: Response) => {
     try {
       const connectorId = req.params.connectorId;
       if (!connectorId) return options.sendApiError(res, 400, 'CONNECTOR_NOT_FOUND', 'connectorId is required');

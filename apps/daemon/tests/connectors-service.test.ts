@@ -11,6 +11,7 @@ import {
   ConnectorServiceError,
   ConnectorStatusService,
   FileConnectorCredentialStore,
+  InMemoryConnectorCredentialStore,
   type ConnectorExecuteRequest,
   type ConnectorExecutionContext,
 } from '../src/connectors/service.js';
@@ -150,6 +151,21 @@ describe('connector status service', () => {
         accountLabel: 'user@example.com',
       },
     });
+  });
+
+  it('only clears connected statuses for credentials owned by the reset provider', () => {
+    const credentialStore = new InMemoryConnectorCredentialStore();
+    const statusService = new ConnectorStatusService({ credentialStore });
+    const composioDefinition = externalConnector({ id: 'composio_docs', provider: 'composio' });
+    const unrelatedDefinition = externalConnector({ id: 'external_docs', provider: 'example' });
+
+    statusService.connect(composioDefinition, 'composio@example.com', { provider: 'composio', providerConnectionId: 'ca_docs' });
+    statusService.connect(unrelatedDefinition, 'docs@example.com', { provider: 'example', token: 'example-token' });
+
+    statusService.deleteCredentialsByProvider('composio');
+
+    expect(statusService.getStatus(composioDefinition)).toEqual({ status: 'available' });
+    expect(statusService.getStatus(unrelatedDefinition)).toEqual({ status: 'connected', accountLabel: 'docs@example.com' });
   });
 });
 

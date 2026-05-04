@@ -1003,7 +1003,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     res.json({ version });
   });
 
-  registerConnectorRoutes(app, { sendApiError, authorizeToolRequest, projectsRoot: PROJECTS_DIR });
+  registerConnectorRoutes(app, { sendApiError, authorizeToolRequest, projectsRoot: PROJECTS_DIR, requireLocalDaemonRequest });
 
   app.get('/api/connectors/composio/config', (_req, res) => {
     try {

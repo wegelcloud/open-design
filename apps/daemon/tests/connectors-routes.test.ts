@@ -280,6 +280,17 @@ describe('connector routes', () => {
     expect(disconnect.body.connector).toMatchObject({ id: 'github', status: 'available' });
   });
 
+  it('rejects cross-origin connector connect requests before starting provider auth', async () => {
+    const connect = await jsonFetch(`${baseUrl}/api/connectors/github/connect`, {
+      method: 'POST',
+      headers: { Origin: 'https://attacker.example' },
+    });
+
+    expect(connect.status).toBe(403);
+    expect(JSON.stringify(connect.body.error)).toContain('Cross-origin');
+    expect(lastComposioLinkRequest).toBeUndefined();
+  });
+
   it('clears Composio connector credentials when rotating to a key with the same tail', async () => {
     const connect = await jsonFetch(`${baseUrl}/api/connectors/github/connect`, { method: 'POST' });
 
