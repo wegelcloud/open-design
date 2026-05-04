@@ -17,7 +17,7 @@ import {
   sanitizeCustomModel,
   spawnEnvForAgent,
 } from './agents.js';
-import { listSkills } from './skills.js';
+import { findSkillById, listSkills } from './skills.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
 import { listDesignSystems, readDesignSystem } from './design-systems.js';
@@ -1197,7 +1197,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   app.get('/api/skills/:id', async (req, res) => {
     try {
       const skills = await listSkills(SKILLS_DIR);
-      const skill = skills.find((s) => s.id === req.params.id);
+      const skill = findSkillById(skills, req.params.id);
       if (!skill) return res.status(404).json({ error: 'skill not found' });
       const { dir: _dir, ...serializable } = skill;
       res.json(serializable);
@@ -1379,7 +1379,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   app.get('/api/skills/:id/example', async (req, res) => {
     try {
       const skills = await listSkills(SKILLS_DIR);
-      const skill = skills.find((s) => s.id === req.params.id);
+      const skill = findSkillById(skills, req.params.id);
       if (!skill) {
         return res.status(404).type('text/plain').send('skill not found');
       }
@@ -1440,7 +1440,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   app.get('/api/skills/:id/assets/*', async (req, res) => {
     try {
       const skills = await listSkills(SKILLS_DIR);
-      const skill = skills.find((s) => s.id === req.params.id);
+      const skill = findSkillById(skills, req.params.id);
       if (!skill) {
         return res.status(404).type('text/plain').send('skill not found');
       }
@@ -2229,8 +2229,9 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     let skillMode;
     let skillCraftRequires = [];
     if (effectiveSkillId) {
-      const skill = (await listSkills(SKILLS_DIR)).find(
-        (s) => s.id === effectiveSkillId,
+      const skill = findSkillById(
+        await listSkills(SKILLS_DIR),
+        effectiveSkillId,
       );
       if (skill) {
         skillBody = skill.body;
