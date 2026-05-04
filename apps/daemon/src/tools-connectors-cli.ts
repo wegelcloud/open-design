@@ -152,7 +152,7 @@ function compactTool(value: unknown): unknown {
     name: tool.name,
     description: tool.description,
     safety: tool.safety,
-    inputSchema: tool.inputSchema,
+    inputSchema: tool.inputSchemaJson ?? tool.inputSchema,
   };
 }
 
