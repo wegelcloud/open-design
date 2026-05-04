@@ -413,6 +413,7 @@ export interface ConnectorExecutionContext {
 export const CONNECTOR_MAX_OUTPUT_BYTES = 256 * 1024;
 export const CONNECTOR_RUN_RATE_LIMIT_CALLS = 10;
 export const CONNECTOR_RUN_RATE_LIMIT_WINDOW_MS = 60_000;
+export const CONNECTOR_RUN_LIMIT_TTL_MS = 15 * 60_000;
 export const CONNECTOR_RUN_TOTAL_CALL_LIMIT = 60;
 
 const CONNECTOR_REDACTED_VALUE = '[redacted]';
@@ -433,6 +434,7 @@ const CONNECTOR_FORBIDDEN_OUTPUT_KEYS = new Set([
 
 interface ConnectorRunLimitState {
   windowStartedAt: number;
+  lastSeenAt: number;
   windowCalls: number;
   totalCalls: number;
 }
@@ -722,10 +724,11 @@ export class ConnectorService {
     if (context.runId === undefined) return;
 
     const now = Date.now();
+    this.pruneRunLimits(now);
     const key = connectorRunLimitKey(context);
     const current = this.runLimits.get(key);
     const state: ConnectorRunLimitState = current === undefined || now - current.windowStartedAt >= CONNECTOR_RUN_RATE_LIMIT_WINDOW_MS
-      ? { windowStartedAt: now, windowCalls: 0, totalCalls: current?.totalCalls ?? 0 }
+      ? { windowStartedAt: now, lastSeenAt: now, windowCalls: 0, totalCalls: current?.totalCalls ?? 0 }
       : current;
 
     if (state.totalCalls >= CONNECTOR_RUN_TOTAL_CALL_LIMIT) {
@@ -744,7 +747,14 @@ export class ConnectorService {
 
     state.windowCalls += 1;
     state.totalCalls += 1;
+    state.lastSeenAt = now;
     this.runLimits.set(key, state);
+  }
+
+  private pruneRunLimits(now = Date.now()): void {
+    for (const [key, state] of this.runLimits.entries()) {
+      if (now - state.lastSeenAt >= CONNECTOR_RUN_LIMIT_TTL_MS) this.runLimits.delete(key);
+    }
   }
 
   private toDetail(definition: ConnectorCatalogDefinition): ConnectorDetail {

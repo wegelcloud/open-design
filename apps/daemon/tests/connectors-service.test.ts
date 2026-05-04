@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 
 import {
   CONNECTOR_RUN_RATE_LIMIT_CALLS,
+  CONNECTOR_RUN_LIMIT_TTL_MS,
   CONNECTOR_RUN_TOTAL_CALL_LIMIT,
   ConnectorService,
   ConnectorServiceError,
@@ -379,5 +380,26 @@ describe('connector execution policy', () => {
     }
     vi.advanceTimersByTime(60_000);
     await expect(service.execute(request, context)).rejects.toMatchObject({ code: 'CONNECTOR_RATE_LIMITED', status: 429 });
+  });
+
+  it('evicts stale per-run connector rate limit entries', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-30T00:00:00.000Z'));
+    const definition = readOnlyDefinition();
+    const statusService = new ConnectorStatusService();
+    statusService.connect(definition, 'docs@example.com');
+    const service = new OutputTestConnectorService(definition, statusService, { toolName: 'docs.search', count: 0 });
+    const request = { connectorId: 'external_docs', toolName: 'docs.search', input: {} };
+    const context = { projectsRoot: '/tmp/open-design-test', projectId: 'project-a', runId: 'run-stale', purpose: 'agent_preview' } as const;
+
+    for (let index = 0; index < CONNECTOR_RUN_TOTAL_CALL_LIMIT; index += 1) {
+      vi.advanceTimersByTime(60_000);
+      await expect(service.execute(request, context)).resolves.toMatchObject({ ok: true });
+    }
+    vi.advanceTimersByTime(60_000);
+    await expect(service.execute(request, context)).rejects.toMatchObject({ code: 'CONNECTOR_RATE_LIMITED', status: 429 });
+
+    vi.advanceTimersByTime(CONNECTOR_RUN_LIMIT_TTL_MS);
+    await expect(service.execute(request, context)).resolves.toMatchObject({ ok: true });
   });
 });
