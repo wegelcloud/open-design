@@ -2628,24 +2628,44 @@ code {
 }
 .tab-panel-toolbar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
+  /* Older browsers ignore row-gap on flex with wrap — explicit row-gap keeps
+     the wrapped row visually separated rather than flush against the pill. */
+  row-gap: 8px;
 }
-.tab-panel-toolbar .toolbar-left,
+.tab-panel-toolbar .toolbar-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+}
 .tab-panel-toolbar .toolbar-right {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
   min-width: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 .tab-panel-toolbar .toolbar-search {
   position: relative;
-  flex: 1 1 240px;
-  width: min(280px, 100%);
-  max-width: 100%;
+  flex: 1 1 180px;
+  min-width: 140px;
+  max-width: 280px;
+}
+/* Narrow columns (entry tab content sometimes lands at ~570px wide) — keep
+   the segmented pill on its own row above the search/view toggle so the
+   search input never collapses into a tiny stub squeezed between two pills. */
+@media (max-width: 720px) {
+  .tab-panel-toolbar { flex-direction: column; align-items: stretch; }
+  .tab-panel-toolbar .toolbar-left { justify-content: flex-start; }
+  .tab-panel-toolbar .toolbar-right { justify-content: space-between; }
+  .tab-panel-toolbar .toolbar-search { max-width: none; }
 }
 .tab-panel-toolbar .toolbar-search input {
   padding-left: 30px;
@@ -5823,8 +5843,15 @@ code {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.6;
-  white-space: pre;
-  overflow: auto;
+  /* Wrap long lines instead of forcing the side pane to scroll horizontally —
+     DESIGN.md prose can have 200+ char paragraphs that otherwise produce a
+     scrollbar inside the modal. `overflow-wrap: anywhere` keeps long
+     hyphenated tokens (URLs, file paths) from blowing out the column. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-y: auto;
+  overflow-x: hidden;
   color: var(--text);
   background: var(--bg-panel);
   flex: 1;
@@ -5887,6 +5914,35 @@ code {
   flex-direction: column;
   gap: 10px;
   margin-bottom: 8px;
+}
+.examples-search {
+  position: relative;
+  width: min(360px, 100%);
+}
+.examples-search input {
+  width: 100%;
+  padding: 7px 12px 7px 32px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+.examples-search input::placeholder { color: var(--text-faint); }
+.examples-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.examples-search .search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
 }
 .examples-filter-row {
   display: flex;
