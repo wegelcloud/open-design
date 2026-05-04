@@ -2721,12 +2721,15 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     if (!['http:', 'https:'].includes(parsed.protocol)) {
       return { error: 'Only http/https allowed' };
     }
+    const hostname = parsed.hostname.toLowerCase();
+    const isLoopback =
+      ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
     if (
-      ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname) ||
-      parsed.hostname.startsWith('169.254.') ||
-      parsed.hostname.startsWith('10.') ||
-      /^192\.168\./.test(parsed.hostname) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(parsed.hostname)
+      !isLoopback &&
+      (hostname.startsWith('169.254.') ||
+        hostname.startsWith('10.') ||
+        /^192\.168\./.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname))
     ) {
       return { error: 'Internal IPs blocked', forbidden: true };
     }
@@ -2755,10 +2758,10 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
 
   const appendVersionedApiPath = (baseUrl, path) => {
     const url = new URL(baseUrl);
-    url.pathname = url.pathname.replace(/\/+$/, '');
-    url.pathname = /\/v\d+$/.test(url.pathname)
-      ? `${url.pathname}${path}`
-      : `${url.pathname}/v1${path}`;
+    const pathname = url.pathname.replace(/\/+$/, '');
+    url.pathname = /\/v\d+$/.test(pathname)
+      ? `${pathname}${path}`
+      : `${pathname}/v1${path}`;
     return url.toString();
   };
 
