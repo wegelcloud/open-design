@@ -6,7 +6,7 @@
  *
  *   1. `scripts/compose.ts` — inlined into the standalone HTML output.
  *   2. `apps/landing-page/app/globals.css` — copied verbatim for the
- *      Next.js deployable counterpart.
+ *      Astro static deployable counterpart.
  *   3. `example.html` — the pre-rendered known-good demo.
  *
  * If you change tokens, layout, motion, or component styles, edit them
