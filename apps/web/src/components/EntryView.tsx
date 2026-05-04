@@ -35,6 +35,7 @@ import {
 import { PetRail } from './pet/PetRail';
 import { PromptTemplatePreviewModal } from './PromptTemplatePreviewModal';
 import { PromptTemplatesTab } from './PromptTemplatesTab';
+import { apiProtocolLabel } from '../utils/apiProtocol';
 
 type TopTab = 'designs' | 'examples' | 'design-systems' | 'connectors' | 'image-templates' | 'video-templates';
 
@@ -423,7 +424,7 @@ export function EntryView({
             <span>
               {config.mode === 'daemon'
                 ? t('settings.localCli')
-                : t('settings.anthropicApi')}
+                : apiProtocolLabel(config.apiProtocol)}
             </span>
             <span style={{ color: 'var(--text-faint)' }}>·</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
