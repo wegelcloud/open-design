@@ -6535,7 +6535,7 @@ button.connector-action.is-loading {
   gap: 10px;
   padding: 5px 8px;
   line-height: 1.45;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
@@ -6566,7 +6566,7 @@ button.connector-action.is-loading {
 .todo-completed .todo-text {
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--text-muted) 60%, transparent);
-  color: var(--text-soft);
+  color: var(--text-muted);
 }
 
 /* Composer extras */
@@ -7148,13 +7148,13 @@ button.connector-action.is-loading {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--text-strong);
 }
 .op-todo .op-meta {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--text-strong);
 }
 
 /* Question form — interactive form a planning agent can post into chat */
