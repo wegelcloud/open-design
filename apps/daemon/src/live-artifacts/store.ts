@@ -112,6 +112,12 @@ export interface UpdateLiveArtifactOptions {
   now?: Date;
 }
 
+export interface DeleteLiveArtifactOptions {
+  projectsRoot: string;
+  projectId: string;
+  artifactId: string;
+}
+
 export interface RegenerateLiveArtifactPreviewOptions {
   projectsRoot: string;
   projectId: string;
@@ -1260,6 +1266,14 @@ export async function updateLiveArtifact(options: UpdateLiveArtifactOptions): Pr
   const writtenArtifact = await writeLiveArtifactFiles(paths, persisted.value, templateHtml, provenanceJson, dataJson);
 
   return { artifact: writtenArtifact, paths };
+}
+
+export async function deleteLiveArtifact(options: DeleteLiveArtifactOptions): Promise<void> {
+  const artifactId = validateLiveArtifactStorageId(options.artifactId);
+  const paths = liveArtifactStorePaths(options.projectsRoot, options.projectId, artifactId);
+  const current = await readPersistedLiveArtifact(paths);
+  assertArtifactMatchesStorage(current, options.projectId, artifactId);
+  await rm(paths.artifactDir, { recursive: true, force: true });
 }
 
 export function summarizeLiveArtifactRecord(record: LiveArtifactStoreRecord): LiveArtifactStoreSummary {

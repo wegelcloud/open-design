@@ -297,7 +297,6 @@ export const ru: Dict = {
   'designs.deleteConfirm': 'Удалить «{name}»?',
   'designs.cardFreeform': 'произвольная форма',
   'designs.badgeLive': 'Live',
-  'designs.badgeRefreshable': 'Обновляемый',
   'designs.liveArtifactBadgesAria': 'Бейджи live-артефактов',
   'designs.liveCount': '{n} live',
   'designs.statusLive': 'Live-артефакт',

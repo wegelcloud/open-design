@@ -298,7 +298,6 @@ export const en: Dict = {
   'designs.deleteConfirm': 'Delete "{name}"?',
   'designs.cardFreeform': 'freeform',
   'designs.badgeLive': 'Live',
-  'designs.badgeRefreshable': 'Refreshable',
   'designs.liveArtifactBadgesAria': 'Live artifact badges',
   'designs.liveCount': '{n} live',
   'designs.statusLive': 'Live artifact',

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useT } from '../i18n';
-import { fetchLiveArtifacts } from '../providers/registry';
+import { deleteLiveArtifact, fetchLiveArtifacts } from '../providers/registry';
 import type {
   DesignSystemSummary,
   LiveArtifactSummary,
@@ -127,6 +127,15 @@ export function DesignsTab({
 
   const skillName = (id: string | null) => skills.find((s) => s.id === id)?.name ?? '';
   const dsName = (id: string | null) => designSystems.find((d) => d.id === id)?.title ?? '';
+  const handleDeleteLiveArtifact = async (projectId: string, artifact: LiveArtifactSummary) => {
+    if (!confirm(`${t('common.delete')} "${artifact.title}"?`)) return;
+    const ok = await deleteLiveArtifact(projectId, artifact.id);
+    if (!ok) return;
+    setLiveArtifactsByProject((current) => ({
+      ...current,
+      [projectId]: (current[projectId] ?? []).filter((candidate) => candidate.id !== artifact.id),
+    }));
+  };
 
   return (
     <div className={`tab-panel${view === 'kanban' ? ' design-kanban-view' : ''}`}>
@@ -194,6 +203,18 @@ export function DesignsTab({
                     }
                   }}
                 >
+                  <button
+                    type="button"
+                    className="design-card-close"
+                    title={t('common.delete')}
+                    aria-label={`${t('common.delete')} ${artifact.title}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteLiveArtifact(p.id, artifact);
+                    }}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
                   <div className="design-card-thumb live-artifact-thumb" aria-hidden>
                     <span className="live-artifact-thumb-glyph">●</span>
                   </div>

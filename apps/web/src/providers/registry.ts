@@ -535,6 +535,18 @@ export async function updateLiveArtifact(
   return artifact;
 }
 
+export async function deleteLiveArtifact(projectId: string, artifactId: string): Promise<boolean> {
+  try {
+    const resp = await fetch(
+      `/api/live-artifacts/${encodeURIComponent(artifactId)}?projectId=${encodeURIComponent(projectId)}`,
+      { method: 'DELETE' },
+    );
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function readApiErrorBody(resp: Response): Promise<{ message: string; code?: string }> {
   try {
     const json = (await resp.json()) as { error?: { code?: string; message?: string }; message?: string };

@@ -297,7 +297,6 @@ export const ptBR: Dict = {
   'designs.deleteConfirm': 'Excluir "{name}"?',
   'designs.cardFreeform': 'livre',
   'designs.badgeLive': 'Live',
-  'designs.badgeRefreshable': 'Atualizável',
   'designs.liveArtifactBadgesAria': 'Marcadores de artefato live',
   'designs.liveCount': '{n} live',
   'designs.statusLive': 'Artefato live',

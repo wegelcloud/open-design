@@ -105,6 +105,7 @@ import {
 } from './db.js';
 import {
   createLiveArtifact,
+  deleteLiveArtifact,
   ensureLiveArtifactPreview,
   getLiveArtifact,
   LiveArtifactRefreshLockError,
@@ -2281,6 +2282,25 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         input: req.body ?? {},
       });
       res.json({ artifact: record.artifact });
+    } catch (err) {
+      sendLiveArtifactRouteError(res, err);
+    }
+  });
+
+  app.delete('/api/live-artifacts/:artifactId', async (req, res) => {
+    try {
+      const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+      if (!projectId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'projectId query parameter is required');
+      }
+
+      await deleteLiveArtifact({
+        projectsRoot: PROJECTS_DIR,
+        projectId,
+        artifactId: req.params.artifactId,
+      });
+      updateProject(db, projectId, {});
+      res.json({ ok: true });
     } catch (err) {
       sendLiveArtifactRouteError(res, err);
     }

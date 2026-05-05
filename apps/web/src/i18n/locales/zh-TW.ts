@@ -292,7 +292,6 @@ export const zhTW: Dict = {
   'designs.deleteConfirm': '確定刪除「{name}」？',
   'designs.cardFreeform': '自由設計',
   'designs.badgeLive': 'Live',
-  'designs.badgeRefreshable': '可重新整理',
   'designs.liveArtifactBadgesAria': '即時產物標記',
   'designs.liveCount': '{n} 個即時',
   'designs.statusLive': '即時產物',

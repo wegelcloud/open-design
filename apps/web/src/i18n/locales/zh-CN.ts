@@ -292,7 +292,6 @@ export const zhCN: Dict = {
   'designs.deleteConfirm': '确定删除「{name}」？',
   'designs.cardFreeform': '自由设计',
   'designs.badgeLive': 'Live',
-  'designs.badgeRefreshable': '可刷新',
   'designs.liveArtifactBadgesAria': '实时产物标记',
   'designs.liveCount': '{n} 个实时',
   'designs.statusLive': '实时产物',

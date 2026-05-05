@@ -310,7 +310,6 @@ export const uk: Dict = {
   'designs.kanbanEmptyColumn': 'Немає дизайнів',
   'designs.deleteAria': 'Видалити проект {name}',
   'designs.badgeLive': 'Live',
-  'designs.badgeRefreshable': 'Можна оновити',
   'designs.liveArtifactBadgesAria': 'Мітки live-артефакту',
   'designs.liveCount': '{n} live-артефактів',
   'designs.statusLive': 'Live',

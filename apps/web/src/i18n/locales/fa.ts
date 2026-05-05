@@ -298,7 +298,6 @@ export const fa: Dict = {
   'designs.deleteConfirm': 'آیا «{name}» حذف شود؟',
   'designs.cardFreeform': 'آزاد',
   'designs.badgeLive': 'زنده',
-  'designs.badgeRefreshable': 'قابل بازخوانی',
   'designs.liveArtifactBadgesAria': 'نشان‌های مصنوعات زنده',
   'designs.liveCount': '{n} زنده',
   'designs.statusLive': 'مصنوع زنده',

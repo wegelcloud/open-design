@@ -344,7 +344,6 @@ export interface Dict {
   'designs.deleteConfirm': string;
   'designs.cardFreeform': string;
   'designs.badgeLive': string;
-  'designs.badgeRefreshable': string;
   'designs.liveArtifactBadgesAria': string;
   'designs.liveCount': string;
   'designs.statusLive': string;
