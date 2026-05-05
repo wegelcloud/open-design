@@ -96,20 +96,45 @@ export function buildDockerArgs(
   // None of these values can contain shell metacharacters, so direct
   // interpolation into the inner command string is safe.
   //
-  // We can't rely on `corepack pnpm` here: although Node 16.10+ ships corepack,
-  // the `electronuserland/builder:base` image strips the corepack binary, so
-  // the inner `bash -lc` fails with `corepack: command not found`. We also
-  // can't `corepack enable` ourselves — the container runs as the host's
-  // non-root uid (--user above) and corepack would try to write shims next
-  // to the system Node binary, which is owned by root in this image.
+  // The `electronuserland/builder:base` image is intentionally minimal: it
+  // ships a Node binary but strips npm, npx, *and* corepack from PATH. So
+  // every "ask the image to invoke pnpm" path fails with `command not found`.
   //
-  // Use `npx --yes pnpm@<version>` instead: `npx` ships with npm (always
-  // present in the image), `--yes` skips the install confirmation, and the
-  // package gets cached under `$HOME/.npm/_npx`, which is writable by the
-  // unprivileged user. The pinned version matches the `packageManager`
-  // field in the root package.json so reproducibility is preserved.
+  // Fix: download the official pnpm `linuxstatic-<arch>` standalone binary
+  // at container start, picking the asset by `uname -m` so the same workflow
+  // works on amd64 (GitHub Actions ubuntu-latest) and arm64 (Apple Silicon
+  // hosts pulling an arm64 builder image). The binary is self-contained
+  // (bundles its own Node runtime), so it doesn't depend on the image's
+  // npm tooling at all. Stage it under `/tmp/pnpm` for this container
+  // invocation, which is writable by the unprivileged container user.
+  // We rely on `curl`, which electron-builder itself uses for downloads and
+  // is consistently present in this image; the shell guard keeps failures
+  // explicit if that image contract changes.
+  //
+  // The pinned version matches the `packageManager` field in the root
+  // package.json so reproducibility is preserved (a guard test in
+  // tools/pack/tests/linux.test.ts asserts the lockstep).
   const PNPM_VERSION = "10.33.2";
-  const pnpmCmd = `npx --yes pnpm@${PNPM_VERSION}`;
+  const pnpmLinuxStaticX64Sha256 = "a47be715939bafa420fbdc5e34f7f9d8292c032402162c89ccb611e944e526d6";
+  const pnpmLinuxStaticArm64Sha256 = "4d402d0ef12cdc4d81ca339904e68638d841f4e27c73e460534d06e6b56048a9";
+  // Pick the right pnpm binary based on the container's CPU. Docker may run
+  // either an amd64 or arm64 `electronuserland/builder:base` (Apple Silicon
+  // hosts pull arm64 by default), so a hardcoded `-x64` asset would fail
+  // with "Exec format error" on ARM. Detect inside the container with
+  // `uname -m` and fall back to a clear error for unsupported arches.
+  const pnpmReleaseUrl = `https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}`;
+  const setupPnpm =
+    `command -v curl >/dev/null || { echo "curl not found in container image" >&2; exit 127; } && ` +
+    `case "$(uname -m)" in ` +
+    `x86_64) PNPM_ASSET=pnpm-linuxstatic-x64; PNPM_SHA256=${pnpmLinuxStaticX64Sha256} ;; ` +
+    `aarch64) PNPM_ASSET=pnpm-linuxstatic-arm64; PNPM_SHA256=${pnpmLinuxStaticArm64Sha256} ;; ` +
+    `*) echo "unsupported container arch: $(uname -m)" >&2; exit 1 ;; ` +
+    `esac && ` +
+    `curl --retry 3 --retry-all-errors --connect-timeout 10 --max-time 60 -fsSL "${pnpmReleaseUrl}/$PNPM_ASSET" -o /tmp/pnpm.tmp && ` +
+    `echo "$PNPM_SHA256  /tmp/pnpm.tmp" | sha256sum -c - && ` +
+    `mv /tmp/pnpm.tmp /tmp/pnpm && ` +
+    `chmod +x /tmp/pnpm`;
+  const pnpmCmd = "/tmp/pnpm";
   const innerArgs = [
     `${pnpmCmd} tools-pack linux build`,
     `--to ${config.to}`,
@@ -119,7 +144,7 @@ export function buildDockerArgs(
   if (config.portable) {
     innerArgs.push("--portable");
   }
-  const innerCommand = `${pnpmCmd} install --frozen-lockfile && ` + innerArgs.join(" ");
+  const innerCommand = `${setupPnpm} && ${pnpmCmd} install --frozen-lockfile && ` + innerArgs.join(" ");
 
   return [
     "run",
