@@ -17,7 +17,6 @@ import {
   getLiveArtifact,
   ensureLiveArtifactPreview,
   liveArtifactStorePaths,
-  liveArtifactTilePath,
   listLiveArtifactRefreshLogEntries,
   listLiveArtifacts,
   LiveArtifactRefreshLockError,
@@ -59,24 +58,6 @@ function validCreateInput() {
       type: 'html' as const,
       entry: 'index.html',
     },
-    tiles: [
-      {
-        id: 'tile-1',
-        kind: 'metric' as const,
-        title: 'Revenue',
-        renderJson: {
-          type: 'metric' as const,
-          label: 'Revenue',
-          value: '$42K',
-        },
-        provenanceJson: {
-          generatedAt: '2026-04-29T12:00:00.000Z',
-          generatedBy: 'agent' as const,
-          sources: [{ label: 'Prompt', type: 'user_input' as const }],
-        },
-        refreshStatus: 'not_refreshable' as const,
-      },
-    ],
     document: {
       format: 'html_template_v1' as const,
       templatePath: 'template.html' as const,
@@ -150,9 +131,6 @@ describe('live artifact store layout', () => {
     expect(paths.provenanceJsonPath).toBe(path.join(paths.artifactDir, 'provenance.json'));
     expect(paths.refreshesJsonlPath).toBe(path.join(paths.artifactDir, 'refreshes.jsonl'));
     expect(paths.snapshotsDir).toBe(path.join(paths.artifactDir, 'snapshots'));
-    expect(liveArtifactTilePath(paths, 'tile-1')).toBe(path.join(paths.artifactDir, 'tiles', 'tile-1.json'));
-
-    await expect(stat(paths.tilesDir)).resolves.toMatchObject({});
     await expect(stat(paths.snapshotsDir)).resolves.toMatchObject({});
     await expect(readFile(paths.refreshesJsonlPath, 'utf8')).resolves.toBe('');
   });
@@ -166,16 +144,14 @@ describe('live artifact store layout', () => {
     );
   });
 
-  it('rejects artifact and tile ids that could escape the storage root', async () => {
+  it('rejects artifact ids that could escape the storage root', async () => {
     const projectsRoot = await makeProjectsRoot();
-    const paths = await ensureLiveArtifactStoreLayout(projectsRoot, 'project-1', 'artifact-1');
+    await ensureLiveArtifactStoreLayout(projectsRoot, 'project-1', 'artifact-1');
 
     expect(() => liveArtifactStorePaths(projectsRoot, 'project-1', '../artifact')).toThrow(/invalid live artifact id/);
     expect(() => liveArtifactStorePaths(projectsRoot, 'project-1', '/artifact')).toThrow(/invalid live artifact id/);
     expect(() => liveArtifactStorePaths(projectsRoot, '../project-1', 'artifact-1')).toThrow(/invalid project id/);
     expect(() => liveArtifactStorePaths(projectsRoot, '/project-1', 'artifact-1')).toThrow(/invalid project id/);
-    expect(() => liveArtifactTilePath(paths, '../tile')).toThrow(/invalid live artifact id/);
-    expect(() => liveArtifactTilePath(paths, '/tile')).toThrow(/invalid live artifact id/);
   });
 
   it('rejects absolute and traversal paths from generic project file payloads', async () => {
@@ -261,7 +237,6 @@ describe('live artifact store layout', () => {
       refreshStatus: 'idle',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-      tiles: input.tiles,
       document: input.document,
     });
     expect(record.artifact.id).toMatch(/^la-launch-metrics-q2-[a-f0-9]{12}$/);
@@ -270,12 +245,8 @@ describe('live artifact store layout', () => {
     expect(await readFile(record.paths.templateHtmlPath, 'utf8')).toBe(templateHtml);
     expect(await readFile(record.paths.dataJsonPath, 'utf8')).toBe(`${JSON.stringify(input.document.dataJson, null, 2)}\n`);
     expect(await readFile(record.paths.provenanceJsonPath, 'utf8')).toBe(`${JSON.stringify(provenanceJson, null, 2)}\n`);
-    expect(await readFile(liveArtifactTilePath(record.paths, 'tile-1'), 'utf8')).toBe(
-      `${JSON.stringify(input.tiles[0], null, 2)}\n`,
-    );
     expect(await readFile(record.paths.refreshesJsonlPath, 'utf8')).toBe('');
     await expect(stat(record.paths.snapshotsDir)).resolves.toMatchObject({});
-    await expect(readdir(record.paths.tilesDir)).resolves.toEqual(['tile-1.json']);
 
     expect(await readFile(record.paths.generatedPreviewHtmlPath, 'utf8')).toContain(
       '<h1>Launch &lt;Metrics&gt;</h1>',
@@ -291,22 +262,6 @@ describe('live artifact store layout', () => {
     const baseInput = validCreateInput();
     const input = {
       ...baseInput,
-      tiles: [
-        {
-          ...baseInput.tiles[0]!,
-          sourceJson: {
-            type: 'connector_tool' as const,
-            toolName: 'gmail.search_messages',
-            input: { query: 'from:alerts' },
-            connector: {
-              connectorId: 'gmail',
-              toolName: 'gmail.search_messages',
-              approvalPolicy: 'manual_refresh_granted_for_read_only' as const,
-            },
-            refreshPermission: 'none' as const,
-          },
-        },
-      ],
       document: {
         ...baseInput.document,
         sourceJson: {
@@ -324,10 +279,8 @@ describe('live artifact store layout', () => {
       input,
     });
 
-    expect(record.artifact.tiles[0]?.sourceJson?.refreshPermission).toBe('none');
     expect(record.artifact.document?.sourceJson?.refreshPermission).toBe('none');
     expect(JSON.parse(await readFile(record.paths.artifactJsonPath, 'utf8'))).toMatchObject({
-      tiles: [{ sourceJson: { refreshPermission: 'none' } }],
       document: { sourceJson: { refreshPermission: 'none' } },
     });
   });
@@ -347,7 +300,6 @@ describe('live artifact store layout', () => {
         ...validCreateInput(),
         title: 'Current Health',
         slug: 'current-health',
-        tiles: [],
         document: undefined,
       },
       now: new Date('2026-04-30T10:12:12.345Z'),
@@ -367,7 +319,6 @@ describe('live artifact store layout', () => {
       hasDocument: true,
     });
     expect(summaries[0]).not.toHaveProperty('document');
-    expect(summaries[0]).not.toHaveProperty('tiles');
     expect(JSON.stringify(summaries)).not.toContain('snapshots');
     expect(JSON.stringify(summaries)).not.toContain('template.html');
     expect(JSON.stringify(summaries)).not.toContain('data.json');
@@ -395,7 +346,6 @@ describe('live artifact store layout', () => {
       document: { ...created.artifact.document!, dataJson: diskDataJson },
     });
     expect(record.paths).toEqual(created.paths);
-    expect(record.artifact.tiles).toHaveLength(1);
     expect(record.artifact.document).toMatchObject({
       format: 'html_template_v1',
       templatePath: 'template.html',
@@ -418,12 +368,11 @@ describe('live artifact store layout', () => {
       artifactId: created.artifact.id,
       refreshId: 'refresh-000001',
       sequence: 0,
-      step: 'tile:tile-1:execute',
+      step: 'document',
       status: 'running',
       startedAt: '2026-04-30T10:00:00.000Z',
       source: {
-        sourceType: 'tile',
-        tileId: 'tile-1',
+        sourceType: 'document',
         toolName: 'github.issues.list',
         connector: {
           connectorId: 'github',
@@ -443,11 +392,11 @@ describe('live artifact store layout', () => {
       artifactId: created.artifact.id,
       refreshId: 'refresh-000001',
       sequence: 1,
-      step: 'tile:tile-1:execute',
+      step: 'document',
       status: 'failed',
       startedAt: '2026-04-30T10:00:00.000Z',
       finishedAt: '2026-04-30T10:00:01.250Z',
-      error: Object.assign(new Error('Provider returned too many rows with a long diagnostic'), { code: 'TOO_MANY_ROWS', path: 'tiles.0' }),
+      error: Object.assign(new Error('Provider returned too many rows with a long diagnostic'), { code: 'TOO_MANY_ROWS', path: 'document' }),
       now: new Date('2026-04-30T10:00:01.260Z'),
     });
 
@@ -459,8 +408,7 @@ describe('live artifact store layout', () => {
       sequence: 0,
       status: 'running',
       source: {
-        sourceType: 'tile',
-        tileId: 'tile-1',
+        sourceType: 'document',
         toolName: 'github.issues.list',
         connector: { connectorId: 'github', accountLabel: 'octo-org', toolName: 'issues.list' },
       },
@@ -469,7 +417,7 @@ describe('live artifact store layout', () => {
     expect(second).toMatchObject({
       status: 'failed',
       durationMs: 1250,
-      error: { code: 'TOO_MANY_ROWS', message: 'Provider returned too many rows with a long diagnostic', path: 'tiles.0' },
+      error: { code: 'TOO_MANY_ROWS', message: 'Provider returned too many rows with a long diagnostic', path: 'document' },
     });
 
     const logText = await readFile(created.paths.refreshesJsonlPath, 'utf8');
@@ -721,7 +669,7 @@ describe('live artifact store layout', () => {
     await releaseLiveArtifactRefreshLock(thirdLock);
   });
 
-  it('commits document refresh candidates without tile refresh state', async () => {
+  it('commits document refresh candidates', async () => {
     const projectsRoot = await makeProjectsRoot();
     const input: any = validCreateInput();
     input.document!.dataJson = { title: 'Revenue', revenue: 42 };
@@ -741,8 +689,6 @@ describe('live artifact store layout', () => {
       input,
       templateHtml: '<h1>{{data.title}}</h1><p>{{data.value}}</p>',
     });
-    const previousTile = await readFile(liveArtifactTilePath(created.paths, 'tile-1'), 'utf8');
-
     const successLock = await acquireLiveArtifactRefreshLock({ projectsRoot, projectId: 'project-1', artifactId: created.artifact.id });
     const candidate = buildLiveArtifactRefreshCandidate({
       artifact: created.artifact,
@@ -762,10 +708,8 @@ describe('live artifact store layout', () => {
 
     expect(committed.artifact.refreshStatus).toBe('succeeded');
     expect(committed.artifact.lastRefreshedAt).toBe('2026-04-30T11:01:00.000Z');
-    expect(committed.artifact.tiles[0]?.renderJson).toMatchObject({ type: 'metric', value: '$42K' });
     await expect(readFile(created.paths.dataJsonPath, 'utf8')).resolves.toContain('"value": 99');
     await expect(readFile(created.paths.generatedPreviewHtmlPath, 'utf8')).resolves.toContain('<p>99</p>');
-    await expect(readFile(liveArtifactTilePath(created.paths, 'tile-1'), 'utf8')).resolves.toBe(previousTile);
     const snapshotDir = path.join(created.paths.snapshotsDir, successLock.metadata.refreshId);
     await expect(readFile(path.join(snapshotDir, 'artifact.json'), 'utf8')).resolves.toContain('"lastRefreshedAt": "2026-04-30T11:01:00.000Z"');
     await expect(readFile(path.join(snapshotDir, 'data.json'), 'utf8')).resolves.toContain('"value": 99');
@@ -876,7 +820,6 @@ describe('live artifact store layout', () => {
         refreshStatus: 'idle',
         createdAt: '2026-05-01T00:00:00.000Z',
         updatedAt: '2026-05-01T00:00:00.000Z',
-        tiles: [],
         document,
       },
       currentDataJson: document.dataJson,
@@ -933,7 +876,6 @@ describe('live artifact store layout', () => {
         refreshStatus: 'idle',
         createdAt: '2026-05-05T00:00:00.000Z',
         updatedAt: '2026-05-05T00:00:00.000Z',
-        tiles: [],
         document,
       },
       currentDataJson: document.dataJson,
@@ -977,7 +919,7 @@ describe('live artifact store layout', () => {
     const registry = new LiveArtifactRefreshRunRegistry();
     const scope = { projectId: 'project-1', artifactId: 'artifact-1', refreshId: 'refresh-000001' };
     const promise = withLiveArtifactRefreshRun(registry, { ...scope, totalTimeoutMs: 1_000 }, async (run) => (
-      withLiveArtifactRefreshSourceTimeout(run, { step: 'tile:tile-1:execute', sourceTimeoutMs: 25 }, async () => new Promise<string>(() => {}))
+      withLiveArtifactRefreshSourceTimeout(run, { step: 'document', sourceTimeoutMs: 25 }, async () => new Promise<string>(() => {}))
     ));
     promise.catch(() => undefined);
 
@@ -989,7 +931,7 @@ describe('live artifact store layout', () => {
       artifactId: 'artifact-1',
       refreshId: 'refresh-000001',
       timeoutMs: 25,
-      step: 'tile:tile-1:execute',
+      step: 'document',
     });
     expect(registry.hasRun(scope)).toBe(false);
   });
@@ -1249,23 +1191,6 @@ describe('live artifact store layout', () => {
       now: new Date('2026-04-30T10:11:12.345Z'),
     });
 
-    const originalTile = created.artifact.tiles[0]!;
-    const updatedTile = {
-      ...originalTile,
-      title: 'Updated Revenue',
-      renderJson: { type: 'metric' as const, label: 'Updated Revenue', value: 42, tone: 'good' as const },
-      sourceJson: {
-        type: 'connector_tool' as const,
-        toolName: 'gmail.search_messages',
-        input: { query: 'from:alerts' },
-        connector: {
-          connectorId: 'gmail',
-          toolName: 'gmail.search_messages',
-          approvalPolicy: 'manual_refresh_granted_for_read_only' as const,
-        },
-        refreshPermission: 'none' as const,
-      },
-    };
     const updatedDocument = {
       ...created.artifact.document!,
       dataJson: { title: 'Updated <Title>', owner: 'Ops' },
@@ -1292,7 +1217,6 @@ describe('live artifact store layout', () => {
         pinned: false,
         status: 'active',
         preview: { type: 'html', entry: 'index.html' },
-        tiles: [updatedTile],
         document: updatedDocument,
       },
       now: new Date('2026-04-30T10:12:12.345Z'),
@@ -1310,11 +1234,9 @@ describe('live artifact store layout', () => {
       refreshStatus: 'idle',
       createdAt: '2026-04-30T10:11:12.345Z',
       updatedAt: '2026-04-30T10:12:12.345Z',
-      tiles: [updatedTile],
       document: updatedDocument,
     });
     expect(await readFile(record.paths.dataJsonPath, 'utf8')).toBe(`${JSON.stringify(updatedDocument.dataJson, null, 2)}\n`);
-    expect(JSON.parse(await readFile(liveArtifactTilePath(record.paths, updatedTile.id), 'utf8'))).toEqual(updatedTile);
     expect(await readFile(record.paths.generatedPreviewHtmlPath, 'utf8')).toContain('Updated &lt;Title&gt;');
   });
 

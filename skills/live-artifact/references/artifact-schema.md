@@ -6,7 +6,7 @@ Live artifacts are stored as daemon-owned project files under `.live-artifacts/<
 
 | File | Owner | Purpose |
 | --- | --- | --- |
-| `artifact.json` | agent-authored input, daemon-validated | Artifact metadata, preview settings, document metadata, tiles, and source descriptors. Must not contain daemon-owned fields. |
+| `artifact.json` | agent-authored input, daemon-validated | Artifact metadata, preview settings, document metadata, and source descriptors. Must not contain daemon-owned fields. |
 | `template.html` | agent-authored | `html_template_v1` template used to render the preview. |
 | `data.json` | agent-authored then refresh-runner-updated | Canonical preview data. API `document.dataJson` is only a derived cache. |
 | `provenance.json` | agent-authored then refresh-runner-updated | Source summary and generation notes. |
@@ -24,7 +24,6 @@ Allowed agent-owned top-level fields:
 - `pinned`
 - `status`
 - `preview`
-- `tiles`
 - `document`
 
 Daemon-owned fields are rejected in agent input:
@@ -95,7 +94,6 @@ Forbidden keys anywhere in persisted JSON include `raw`, `rawResponse`, `payload
         "status": "On track"
       }
     }
-  },
-  "tiles": []
+  }
 }
 ```

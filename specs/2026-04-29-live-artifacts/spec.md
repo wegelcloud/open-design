@@ -368,12 +368,9 @@ Use project-scoped files under the daemon runtime data directory first. `OD_DATA
         ├── data.json
         ├── provenance.json
         ├── refreshes.jsonl
-        ├── tiles/
-        │   └── <tileId>.json
         └── snapshots/
             └── <refreshId>/
                 ├── data.json
-                ├── render.json
                 └── provenance.json
 ```
 
@@ -418,7 +415,6 @@ type LiveArtifact = {
   createdAt: string;
   updatedAt: string;
   lastRefreshedAt?: string;
-  tiles: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 };
 
@@ -429,30 +425,10 @@ type LiveArtifactDocument = {
   dataPath: 'data.json';
   dataJson: BoundedJsonObject;
   dataSchemaJson?: BoundedJsonObject;
-  sourceJson?: LiveArtifactTileSource;
+  sourceJson?: LiveArtifactSource;
 };
 
-type LiveArtifactTile = {
-  id: string;
-  kind: 'metric' | 'table' | 'chart' | 'markdown' | 'link_card' | 'json' | 'html_document';
-  title: string;
-  renderJson: LiveArtifactRenderJson;
-  sourceJson?: LiveArtifactTileSource;
-  provenanceJson: LiveArtifactProvenance;
-  refreshStatus: 'not_refreshable' | 'idle' | 'running' | 'succeeded' | 'failed';
-  lastError?: string;
-};
-
-type LiveArtifactRenderJson =
-  | { type: 'metric'; label: string; value: string | number; unit?: string; delta?: string; tone?: 'neutral' | 'good' | 'warning' | 'bad' }
-  | { type: 'table'; columns: Array<{ key: string; label: string }>; rows: BoundedJsonObject[]; maxRows?: number }
-  | { type: 'chart'; chartType: 'bar' | 'line' | 'area' | 'pie'; xKey: string; yKeys: string[]; rows: BoundedJsonObject[] }
-  | { type: 'markdown'; markdown: string }
-  | { type: 'link_card'; title: string; url: string; description?: string }
-  | { type: 'json'; value: BoundedJsonValue }
-  | { type: 'html_document'; documentPath: 'template.html' | 'index.html'; dataPath: 'data.json' };
-
-type LiveArtifactTileSource = {
+type LiveArtifactSource = {
   type: 'local_file' | 'daemon_tool' | 'connector_tool';
   toolName?: string;
   input: BoundedJsonObject;
@@ -486,12 +462,10 @@ type LiveArtifactProvenance = {
 Port Monet's strict validation posture:
 
 - Apply the shared bounded JSON constraints in `packages/contracts` to every persisted or agent-supplied `BoundedJsonValue` / `BoundedJsonObject`.
-- Allow only `http:` and `https:` URLs in render metadata.
 - Reject keys such as `raw`, `rawResponse`, `payload`, `body`, `headers`, `cookie`, `authorization`, `token`, `secret`, `credential`, `password`.
 - Redact suspicious source inputs before persistence.
 - Reject source inputs that still contain credential-like values after redaction.
-- Disallow executable script in persisted render JSON.
-- HTML preview files must be generated from the document contract; refresh updates `data.json` / render JSON, not arbitrary script.
+- HTML preview files must be generated from the document contract; refresh updates `data.json`, not arbitrary script.
 
 #### 7.3.1 Shared bounded JSON constraints
 
@@ -522,7 +496,7 @@ Rules:
 - `template.html` is authored by the agent during create/update.
 - Refreshable values must come from `data.json`, not be hardcoded only in HTML.
 - `html_template_v1` supports **Mustache-style escaped interpolation plus a minimal `data-od-repeat` structural directive**. It does not support arbitrary JavaScript, expression evaluation, helper functions, filters, partials, or raw HTML injection.
-- Refresh updates `data.json`, `tiles/*.json`, and snapshots. It does not let connector output rewrite arbitrary HTML.
+- Refresh updates `data.json` and snapshots. It does not let connector output rewrite arbitrary HTML.
 - If a presentation redesign is needed, the user should ask the agent to update the artifact; refresh is for data changes.
 - `index.html` may be regenerated after successful refresh, but it is derived output.
 - The preview route must serve the document in a sandboxed iframe context with a restrictive CSP. External scripts are disallowed in MVP unless vendored and allowlisted.
@@ -589,9 +563,9 @@ User clicks Refresh
   ↓
 UI POST /api/live-artifacts/:id/refresh
   ↓
-Daemon loads artifact.json and refreshable tiles
+Daemon loads artifact.json and the refreshable document source
   ↓
-For each tile:
+For the document source:
   - verify refreshPermission
   - verify connector still connected
   - verify tool is still read-only
@@ -599,16 +573,16 @@ For each tile:
   - verify saved input matches current schema
   - execute source
   - map output through declarative outputMapping.dataPaths
-  - update candidate dataJson/renderJson
-  - validate sanitized render model
+  - update candidate dataJson
+  - validate sanitized data
   ↓
 Write refresh step to refreshes.jsonl
   ↓
-If every refreshable tile succeeds, commit data.json, tiles, snapshot, and regenerated preview
-If any tile fails, keep previous data/preview, write failed refresh record, and surface the error
+If the refreshable source succeeds, commit data.json, snapshot, and regenerated preview
+If it fails, keep previous data/preview, write failed refresh record, and surface the error
 ```
 
-MVP refresh is **artifact-level all-or-nothing**. Tile-level partial success can be added later, but v1 should avoid mixed stale/fresh dashboards.
+MVP refresh is **artifact-level all-or-nothing**.
 
 Refresh runner requirements:
 
@@ -761,7 +735,7 @@ type LiveArtifactEvent = {
 
 - Add this spec.
 - Add shared TypeScript DTOs under `packages/contracts`, keeping the package pure TypeScript and free of Next.js, Express, filesystem/process APIs, browser APIs, SQLite, daemon internals, and sidecar control-plane dependencies.
-- Add shared contract DTOs for `LiveArtifact`, `LiveArtifactTile`, `LiveArtifactTileSource`, and connector catalog entries. Runtime validation schemas belong under daemon source, especially `apps/daemon/src/live-artifacts/schema.ts`, and should consume or mirror the shared contract types without adding daemon internals to `packages/contracts`.
+- Add shared contract DTOs for `LiveArtifact`, `LiveArtifactSource`, and connector catalog entries. Runtime validation schemas belong under daemon source, especially `apps/daemon/src/live-artifacts/schema.ts`, and should consume or mirror the shared contract types without adding daemon internals to `packages/contracts`.
 - Add or update contract files such as:
   - `packages/contracts/src/api/live-artifacts.ts`
   - `packages/contracts/src/api/connectors.ts`

@@ -200,7 +200,6 @@ function baseLiveArtifact(overrides: Partial<LiveArtifact> = {}): LiveArtifact {
     refreshStatus: 'idle',
     createdAt: '2026-04-29T12:00:00.000Z',
     updatedAt: '2026-04-29T12:00:00.000Z',
-    tiles: [],
     ...overrides,
   };
 }
@@ -265,49 +264,4 @@ describe('LiveArtifactRefreshHistoryPanel', () => {
     expect(markup).toContain('3.8s');
   });
 
-  it('shows per-tile refresh status and surfaces tile errors', () => {
-    const markup = renderToStaticMarkup(
-      <LiveArtifactRefreshHistoryPanel
-        liveArtifact={baseLiveArtifact({
-          refreshStatus: 'failed',
-          tiles: [
-            {
-              id: 'tile_a',
-              kind: 'metric',
-              title: 'Signups',
-              renderJson: { type: 'metric', label: 'Signups', value: 10 },
-              provenanceJson: {
-                generatedAt: '2026-04-29T12:00:00.000Z',
-                generatedBy: 'refresh_runner',
-                sources: [],
-              },
-              refreshStatus: 'failed',
-              lastError: 'Connector returned HTTP 500',
-            },
-            {
-              id: 'tile_b',
-              kind: 'markdown',
-              title: 'Notes',
-              renderJson: { type: 'markdown', markdown: 'hi' },
-              provenanceJson: {
-                generatedAt: '2026-04-29T12:00:00.000Z',
-                generatedBy: 'agent',
-                sources: [],
-              },
-              refreshStatus: 'not_refreshable',
-            },
-          ],
-        })}
-        fallbackRefreshStatus="failed"
-        isRunning={false}
-        sessionEvents={[]}
-      />,
-    );
-
-    expect(markup).toContain('Refresh failed');
-    expect(markup).toContain('Signups');
-    expect(markup).toContain('Connector returned HTTP 500');
-    expect(markup).toContain('1 of 2 refreshable');
-    expect(markup).toContain('Not refreshable');
-  });
 });

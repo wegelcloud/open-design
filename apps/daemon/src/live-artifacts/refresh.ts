@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { listFiles, projectDir, readProjectFile, validateProjectPath } from '../projects.js';
-import type { BoundedJsonObject, BoundedJsonValue, LiveArtifact, LiveArtifactRefreshSourceMetadata, LiveArtifactTileSource } from './schema.js';
+import type { BoundedJsonObject, BoundedJsonValue, LiveArtifact, LiveArtifactRefreshSourceMetadata, LiveArtifactSource } from './schema.js';
 import { validateBoundedJsonObject } from './schema.js';
 
 const execFileAsync = promisify(execFile);
@@ -48,12 +48,12 @@ export type LocalDaemonRefreshToolName =
 export interface ExecuteLocalDaemonRefreshSourceOptions {
   projectsRoot: string;
   projectId: string;
-  source: LiveArtifactTileSource;
+  source: LiveArtifactSource;
   signal?: AbortSignal;
 }
 
 export interface ApplyLiveArtifactOutputMappingOptions {
-  source: LiveArtifactTileSource;
+  source: LiveArtifactSource;
   output: BoundedJsonObject;
 }
 
@@ -61,16 +61,10 @@ export interface LiveArtifactRefreshDocumentOutput {
   output: BoundedJsonObject;
 }
 
-export interface LiveArtifactRefreshTileOutput {
-  tileId: string;
-  output: BoundedJsonObject;
-}
-
 export interface BuildLiveArtifactRefreshCandidateOptions {
   artifact: LiveArtifact;
   currentDataJson: BoundedJsonObject;
   documentOutput?: LiveArtifactRefreshDocumentOutput;
-  tileOutputs?: LiveArtifactRefreshTileOutput[];
   now?: Date;
 }
 
@@ -352,7 +346,7 @@ function writeMappedValue(root: BoundedJsonObject, path: string, value: BoundedJ
   }
 }
 
-function applyDataPaths(output: BoundedJsonObject, dataPaths: NonNullable<LiveArtifactTileSource['outputMapping']>['dataPaths']): BoundedJsonObject {
+function applyDataPaths(output: BoundedJsonObject, dataPaths: NonNullable<LiveArtifactSource['outputMapping']>['dataPaths']): BoundedJsonObject {
   if (dataPaths === undefined || dataPaths.length === 0) return output;
   const mapped: BoundedJsonObject = {};
   for (const dataPath of dataPaths) {
@@ -505,17 +499,6 @@ export function buildLiveArtifactRefreshCandidate(options: BuildLiveArtifactRefr
     if (source.toolName === 'public_github_repository_metric') {
       applyLegacyGithubRepositoryMetricCompat(dataJson, options.documentOutput.output);
     }
-  }
-
-  for (const tileOutput of options.tileOutputs ?? []) {
-    const tile = options.artifact.tiles.find((candidateTile) => candidateTile.id === tileOutput.tileId);
-    const source = tile?.sourceJson;
-    if (source === undefined) continue;
-    const mapped = applyLiveArtifactOutputMapping({
-      source,
-      output: tileOutput.output,
-    });
-    deepMergeBoundedJsonObject(dataJson, mapped);
   }
 
   return { dataJson: asBoundedRefreshOutput(dataJson) };

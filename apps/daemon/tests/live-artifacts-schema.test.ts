@@ -38,29 +38,6 @@ function validCreateInput() {
       type: 'html',
       entry: 'index.html',
     },
-    tiles: [
-      {
-        id: 'tile_link',
-        kind: 'link_card',
-        title: 'Reference link',
-        renderJson: {
-          type: 'link_card',
-          title: 'Reference',
-          url: 'https://example.com/reference',
-        },
-        provenanceJson: {
-          generatedAt: '2026-04-29T12:00:00.000Z',
-          generatedBy: 'agent',
-          sources: [
-            {
-              label: 'User input',
-              type: 'user_input',
-            },
-          ],
-        },
-        refreshStatus: 'not_refreshable',
-      },
-    ],
     document: {
       format: 'html_template_v1',
       templatePath: 'template.html',
@@ -100,7 +77,6 @@ describe('live artifact schema validation', () => {
   });
 
   it('rejects path traversal and absolute paths in preview, sources, and provenance refs', () => {
-    const baseTile = validCreateInput().tiles[0]!;
     const previewTraversal = validateLiveArtifactCreateInput({
       ...validCreateInput(),
       preview: { type: 'html', entry: '../index.html' },
@@ -153,26 +129,12 @@ describe('live artifact schema validation', () => {
         },
       },
     });
-    const provenanceTraversal = validateLiveArtifactCreateInput({
-      ...validCreateInput(),
-      tiles: [
-        {
-          ...baseTile,
-          provenanceJson: {
-            ...baseTile.provenanceJson,
-            sources: [{ label: 'Secret', type: 'local_file', ref: '../secret.json' }],
-          },
-        },
-      ],
-    });
-
     for (const result of [
       previewTraversal,
       sourceTraversal,
       sourceAbsolutePath,
       sourceWindowsAbsolutePath,
       sourceBackslashAbsolutePath,
-      provenanceTraversal,
     ]) {
       expect(result.ok).toBe(false);
     }
@@ -314,26 +276,7 @@ describe('live artifact schema validation', () => {
     if (!result.ok) expect(result.issues.some((issue) => issue.message.includes('max serialized size'))).toBe(true);
   });
 
-  it('rejects unsupported link-card URL schemes', () => {
-    const result = validateLiveArtifactCreateInput({
-      ...validCreateInput(),
-      tiles: [
-        {
-          ...validCreateInput().tiles[0],
-          renderJson: {
-            type: 'link_card',
-            title: 'Unsafe link',
-            url: 'file:///etc/passwd',
-          },
-        },
-      ],
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.issues.some((issue) => issue.path === 'input.tiles.0.renderJson.url')).toBe(true);
-  });
-
-  it.each(['minimal-static', 'metric-tile', 'table-tile'])('accepts valid fixture artifact %s', (exampleName) => {
+  it.each(['minimal-static'])('accepts valid fixture artifact %s', (exampleName) => {
     const artifact = readJsonFixture(exampleName, 'artifact.json');
     const data = readJsonFixture(exampleName, 'data.json');
 

@@ -10,8 +10,6 @@ export interface BoundedJsonObject {
 export type LiveArtifactStatus = 'active' | 'archived' | 'error';
 export type LiveArtifactRefreshStatus = 'never' | 'idle' | 'running' | 'succeeded' | 'failed';
 export type LiveArtifactPreviewType = 'html' | 'jsx' | 'markdown';
-export type LiveArtifactTileKind = 'metric' | 'table' | 'chart' | 'markdown' | 'link_card' | 'json' | 'html_document';
-export type LiveArtifactTileRefreshStatus = 'not_refreshable' | 'idle' | 'running' | 'succeeded' | 'failed';
 export type LiveArtifactSourceType = 'local_file' | 'daemon_tool' | 'connector_tool';
 export type LiveArtifactConnectorApprovalPolicy = 'read_only_auto' | 'manual_refresh_granted_for_read_only';
 export type LiveArtifactRefreshPermission = 'none' | 'manual_refresh_granted_for_read_only';
@@ -19,7 +17,7 @@ export type LiveArtifactOutputTransform = 'identity' | 'compact_table' | 'metric
 export type LiveArtifactProvenanceGenerator = 'agent' | 'refresh_runner';
 export type LiveArtifactProvenanceSourceType = 'connector' | 'local_file' | 'user_input' | 'derived';
 export type LiveArtifactRefreshStepStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped';
-export type LiveArtifactRefreshSourceType = 'document' | 'tile' | 'artifact';
+export type LiveArtifactRefreshSourceType = 'document' | 'artifact';
 
 export interface LiveArtifactPreview {
   type: LiveArtifactPreviewType;
@@ -33,30 +31,10 @@ export interface LiveArtifactDocument {
   dataPath: 'data.json';
   dataJson: BoundedJsonObject;
   dataSchemaJson?: BoundedJsonObject;
-  sourceJson?: LiveArtifactTileSource;
+  sourceJson?: LiveArtifactSource;
 }
 
-export interface LiveArtifactTile {
-  id: string;
-  kind: LiveArtifactTileKind;
-  title: string;
-  renderJson: LiveArtifactRenderJson;
-  sourceJson?: LiveArtifactTileSource;
-  provenanceJson: LiveArtifactProvenance;
-  refreshStatus: LiveArtifactTileRefreshStatus;
-  lastError?: string;
-}
-
-export type LiveArtifactRenderJson =
-  | { type: 'metric'; label: string; value: string | number; unit?: string; delta?: string; tone?: 'neutral' | 'good' | 'warning' | 'bad' }
-  | { type: 'table'; columns: Array<{ key: string; label: string }>; rows: BoundedJsonObject[]; maxRows?: number }
-  | { type: 'chart'; chartType: 'bar' | 'line' | 'area' | 'pie'; xKey: string; yKeys: string[]; rows: BoundedJsonObject[] }
-  | { type: 'markdown'; markdown: string }
-  | { type: 'link_card'; title: string; url: string; description?: string }
-  | { type: 'json'; value: BoundedJsonValue }
-  | { type: 'html_document'; documentPath: 'template.html' | 'index.html'; dataPath: 'data.json' };
-
-export interface LiveArtifactTileSource {
+export interface LiveArtifactSource {
   type: LiveArtifactSourceType;
   toolName?: string;
   input: BoundedJsonObject;
@@ -101,7 +79,6 @@ export interface LiveArtifact {
   createdAt: string;
   updatedAt: string;
   lastRefreshedAt?: string;
-  tiles: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 }
 
@@ -114,7 +91,6 @@ export interface LiveArtifactRefreshConnectorMetadata {
 
 export interface LiveArtifactRefreshSourceMetadata {
   sourceType: LiveArtifactRefreshSourceType;
-  tileId?: string;
   toolName?: string;
   connector?: LiveArtifactRefreshConnectorMetadata;
 }
@@ -149,7 +125,6 @@ export interface LiveArtifactCreateInput {
   pinned?: boolean;
   status?: LiveArtifact['status'];
   preview: LiveArtifactPreview;
-  tiles?: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 }
 
@@ -159,7 +134,6 @@ export interface LiveArtifactUpdateInput {
   pinned?: boolean;
   status?: LiveArtifact['status'];
   preview?: LiveArtifactPreview;
-  tiles?: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 }
 
@@ -178,7 +152,6 @@ const MAX_SLUG_LENGTH = 128;
 const MAX_PATH_LENGTH = 260;
 const MAX_SHORT_TEXT_LENGTH = 1_024;
 const MAX_LONG_TEXT_LENGTH = 16 * 1024;
-const MAX_TILES = 100;
 const MAX_PROVENANCE_SOURCES = 50;
 const MAX_MAPPING_PATHS = 100;
 const MAX_REFRESH_STEP_LENGTH = 128;
@@ -229,23 +202,7 @@ const LIVE_ARTIFACT_REFRESH_STATUSES = new Set<LiveArtifact['refreshStatus']>([
   'failed',
 ]);
 const PREVIEW_TYPES = new Set<LiveArtifactPreview['type']>(['html', 'jsx', 'markdown']);
-const TILE_KINDS = new Set<LiveArtifactTile['kind']>([
-  'metric',
-  'table',
-  'chart',
-  'markdown',
-  'link_card',
-  'json',
-  'html_document',
-]);
-const TILE_REFRESH_STATUSES = new Set<LiveArtifactTile['refreshStatus']>([
-  'not_refreshable',
-  'idle',
-  'running',
-  'succeeded',
-  'failed',
-]);
-const SOURCE_TYPES = new Set<LiveArtifactTileSource['type']>([
+const SOURCE_TYPES = new Set<LiveArtifactSource['type']>([
   'local_file',
   'daemon_tool',
   'connector_tool',
@@ -254,23 +211,11 @@ const CONNECTOR_APPROVAL_POLICIES = new Set<LiveArtifactConnectorApprovalPolicy>
   'read_only_auto',
   'manual_refresh_granted_for_read_only',
 ]);
-const REFRESH_PERMISSIONS = new Set<LiveArtifactTileSource['refreshPermission']>([
+const REFRESH_PERMISSIONS = new Set<LiveArtifactSource['refreshPermission']>([
   'none',
   'manual_refresh_granted_for_read_only',
 ]);
 const OUTPUT_TRANSFORMS = new Set<LiveArtifactOutputTransform>(['identity', 'compact_table', 'metric_summary']);
-const METRIC_TONES = new Set<NonNullable<Extract<LiveArtifactRenderJson, { type: 'metric' }>['tone']>>([
-  'neutral',
-  'good',
-  'warning',
-  'bad',
-]);
-const CHART_TYPES = new Set<Extract<LiveArtifactRenderJson, { type: 'chart' }>['chartType']>([
-  'bar',
-  'line',
-  'area',
-  'pie',
-]);
 const PROVENANCE_GENERATORS = new Set<LiveArtifactProvenance['generatedBy']>([
   'agent',
   'refresh_runner',
@@ -290,20 +235,12 @@ const REFRESH_STEP_STATUSES = new Set<LiveArtifactRefreshStepStatus>([
 ]);
 const REFRESH_SOURCE_TYPES = new Set<LiveArtifactRefreshSourceType>([
   'document',
-  'tile',
   'artifact',
 ]);
 const SOURCE_KEYS = new Set(['type', 'toolName', 'input', 'connector', 'outputMapping', 'refreshPermission']);
 const CONNECTOR_REFERENCE_KEYS = new Set(['connectorId', 'accountLabel', 'toolName', 'approvalPolicy']);
 const OUTPUT_MAPPING_KEYS = new Set(['dataPaths', 'transform']);
-const REFRESH_SOURCE_METADATA_KEYS = new Set(['sourceType', 'tileId', 'toolName', 'connector']);
-const EXECUTABLE_RENDER_JSON_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
-  { pattern: /<\s*script\b/i, message: 'script elements are not supported in live artifact render JSON' },
-  { pattern: /<\s*iframe\b/i, message: 'iframe elements are not supported in live artifact render JSON' },
-  { pattern: /\bsrcdoc\s*=/i, message: 'srcdoc attributes are not supported in live artifact render JSON' },
-  { pattern: /\son[a-z][a-z0-9_-]*\s*=/i, message: 'event handler attributes are not supported in live artifact render JSON' },
-  { pattern: /javascript\s*:/i, message: 'javascript: URLs are not supported in live artifact render JSON' },
-];
+const REFRESH_SOURCE_METADATA_KEYS = new Set(['sourceType', 'toolName', 'connector']);
 
 function fail<T>(issues: LiveArtifactValidationIssue[]): LiveArtifactValidationResult<T> {
   return {
@@ -321,26 +258,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
-}
-
-function validateNoExecutableRenderJson(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): void {
-  if (typeof value === 'string') {
-    for (const { pattern, message } of EXECUTABLE_RENDER_JSON_PATTERNS) {
-      if (pattern.test(value)) issues.push({ path, message });
-    }
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => validateNoExecutableRenderJson(item, `${path}.${index}`, issues));
-    return;
-  }
-
-  if (isPlainObject(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      validateNoExecutableRenderJson(child, `${path}.${key}`, issues);
-    }
-  }
 }
 
 function asString(value: unknown, path: string, issues: LiveArtifactValidationIssue[], max = MAX_SHORT_TEXT_LENGTH): string | undefined {
@@ -409,17 +326,6 @@ function validateRelativePath(value: string, path: string, issues: LiveArtifactV
   }
   if (normalized.split('/').some((part) => part === '..')) {
     issues.push({ path, message: `${path} cannot contain path traversal` });
-  }
-}
-
-function validateAllowedUrl(value: string, path: string, issues: LiveArtifactValidationIssue[]): void {
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      issues.push({ path, message: `${path} must use http: or https:` });
-    }
-  } catch {
-    issues.push({ path, message: `${path} must be a valid URL` });
   }
 }
 
@@ -571,7 +477,7 @@ function validateMappingPath(value: string, path: string, issues: LiveArtifactVa
   }
 }
 
-function validateSource(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactTileSource | undefined {
+function validateSource(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactSource | undefined {
   if (!isPlainObject(value)) {
     issues.push({ path, message: `${path} must be an object` });
     return undefined;
@@ -583,7 +489,7 @@ function validateSource(value: unknown, path: string, issues: LiveArtifactValida
   if (!inputResult.ok) issues.push(...inputResult.issues);
   else validateSourceInputPaths(inputResult.value, `${path}.input`, issues);
 
-  let connector: LiveArtifactTileSource['connector'];
+  let connector: LiveArtifactSource['connector'];
   if (value.connector !== undefined) {
     if (!isPlainObject(value.connector)) {
       issues.push({ path: `${path}.connector`, message: `${path}.connector must be an object` });
@@ -596,7 +502,7 @@ function validateSource(value: unknown, path: string, issues: LiveArtifactValida
         ? undefined
         : validateEnum(value.connector.approvalPolicy, CONNECTOR_APPROVAL_POLICIES, `${path}.connector.approvalPolicy`, issues);
       if (connectorId !== undefined && connectorToolName !== undefined) {
-        const nextConnector: NonNullable<LiveArtifactTileSource['connector']> = { connectorId, toolName: connectorToolName };
+        const nextConnector: NonNullable<LiveArtifactSource['connector']> = { connectorId, toolName: connectorToolName };
         if (accountLabel !== undefined) nextConnector.accountLabel = accountLabel;
         if (approvalPolicy !== undefined) nextConnector.approvalPolicy = approvalPolicy;
         connector = nextConnector;
@@ -604,13 +510,13 @@ function validateSource(value: unknown, path: string, issues: LiveArtifactValida
     }
   }
 
-  let outputMapping: LiveArtifactTileSource['outputMapping'];
+  let outputMapping: LiveArtifactSource['outputMapping'];
   if (value.outputMapping !== undefined) {
     if (!isPlainObject(value.outputMapping)) {
       issues.push({ path: `${path}.outputMapping`, message: `${path}.outputMapping must be an object` });
     } else {
       validateOnlyAllowedKeys(value.outputMapping, OUTPUT_MAPPING_KEYS, `${path}.outputMapping`, issues);
-      const mapping: NonNullable<LiveArtifactTileSource['outputMapping']> = {};
+      const mapping: NonNullable<LiveArtifactSource['outputMapping']> = {};
       if (value.outputMapping.dataPaths !== undefined) {
         if (!Array.isArray(value.outputMapping.dataPaths) || value.outputMapping.dataPaths.length > MAX_MAPPING_PATHS) {
           issues.push({ path: `${path}.outputMapping.dataPaths`, message: `${path}.outputMapping.dataPaths must be a bounded array` });
@@ -649,7 +555,7 @@ function validateSource(value: unknown, path: string, issues: LiveArtifactValida
     issues.push({ path: `${path}.toolName`, message: `${path}.toolName is required for daemon_tool sources` });
   }
   if (type === undefined || !inputResult.ok || refreshPermission === undefined) return undefined;
-  const source: LiveArtifactTileSource = { type, input: inputResult.value, refreshPermission };
+  const source: LiveArtifactSource = { type, input: inputResult.value, refreshPermission };
   if (toolName !== undefined) source.toolName = toolName;
   if (connector !== undefined) source.connector = connector;
   if (outputMapping !== undefined) source.outputMapping = outputMapping;
@@ -663,7 +569,6 @@ function validateRefreshSourceMetadata(value: unknown, path: string, issues: Liv
   }
   validateOnlyAllowedKeys(value, REFRESH_SOURCE_METADATA_KEYS, path, issues);
   const sourceType = validateEnum(value.sourceType, REFRESH_SOURCE_TYPES, `${path}.sourceType`, issues);
-  const tileId = asOptionalString(value.tileId, `${path}.tileId`, issues, MAX_ID_LENGTH);
   const toolName = asOptionalString(value.toolName, `${path}.toolName`, issues, MAX_ID_LENGTH);
   let connector: LiveArtifactRefreshConnectorMetadata | undefined;
   if (value.connector !== undefined) {
@@ -686,7 +591,6 @@ function validateRefreshSourceMetadata(value: unknown, path: string, issues: Liv
   }
   if (sourceType === undefined) return undefined;
   const source: LiveArtifactRefreshSourceMetadata = { sourceType };
-  if (tileId !== undefined) source.tileId = tileId;
   if (toolName !== undefined) source.toolName = toolName;
   if (connector !== undefined) source.connector = connector;
   return source;
@@ -743,92 +647,6 @@ function validateProvenance(value: unknown, path: string, issues: LiveArtifactVa
   return provenance;
 }
 
-function validateRows(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): BoundedJsonObject[] | undefined {
-  if (!Array.isArray(value) || value.length > LIVE_ARTIFACT_BOUNDED_JSON_CONSTRAINTS.maxArrayLength) {
-    issues.push({ path, message: `${path} must be a bounded array` });
-    return undefined;
-  }
-  const rows: BoundedJsonObject[] = [];
-  value.forEach((row, index) => {
-    const result = validateBoundedJsonObject(row, `${path}.${index}`);
-    if (result.ok) rows.push(result.value);
-    else issues.push(...result.issues);
-  });
-  return rows;
-}
-
-function validateRenderJson(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactRenderJson | undefined {
-  if (!isPlainObject(value)) {
-    issues.push({ path, message: `${path} must be an object` });
-    return undefined;
-  }
-  validateNoExecutableRenderJson(value, path, issues);
-  switch (value.type) {
-    case 'metric': {
-      const label = asString(value.label, `${path}.label`, issues);
-      const metricValue = typeof value.value === 'string' || typeof value.value === 'number' ? value.value : undefined;
-      if (metricValue === undefined || (typeof metricValue === 'number' && !Number.isFinite(metricValue))) {
-        issues.push({ path: `${path}.value`, message: `${path}.value must be a string or finite number` });
-      }
-      const unit = asOptionalString(value.unit, `${path}.unit`, issues);
-      const delta = asOptionalString(value.delta, `${path}.delta`, issues);
-      const tone = value.tone === undefined ? undefined : validateEnum(value.tone, METRIC_TONES, `${path}.tone`, issues);
-      if (label === undefined || metricValue === undefined) return undefined;
-      return { type: 'metric', label, value: metricValue, ...(unit !== undefined ? { unit } : {}), ...(delta !== undefined ? { delta } : {}), ...(tone !== undefined ? { tone } : {}) };
-    }
-    case 'table': {
-      const columns = validateTableColumns(value.columns, `${path}.columns`, issues);
-      const rows = validateRows(value.rows, `${path}.rows`, issues);
-      const maxRows = validateOptionalInteger(value.maxRows, `${path}.maxRows`, issues, 1, LIVE_ARTIFACT_BOUNDED_JSON_CONSTRAINTS.maxArrayLength);
-      if (columns === undefined || rows === undefined) return undefined;
-      return { type: 'table', columns, rows, ...(maxRows !== undefined ? { maxRows } : {}) };
-    }
-    case 'chart': {
-      const chartType = validateEnum(value.chartType, CHART_TYPES, `${path}.chartType`, issues);
-      const xKey = asString(value.xKey, `${path}.xKey`, issues, MAX_ID_LENGTH);
-      const yKeys = validateStringArray(value.yKeys, `${path}.yKeys`, issues, MAX_MAPPING_PATHS, MAX_ID_LENGTH);
-      const rows = validateRows(value.rows, `${path}.rows`, issues);
-      if (chartType === undefined || xKey === undefined || yKeys === undefined || rows === undefined) return undefined;
-      return { type: 'chart', chartType, xKey, yKeys, rows };
-    }
-    case 'markdown': {
-      const markdown = asString(value.markdown, `${path}.markdown`, issues, MAX_LONG_TEXT_LENGTH);
-      return markdown === undefined ? undefined : { type: 'markdown', markdown };
-    }
-    case 'link_card': {
-      const title = asString(value.title, `${path}.title`, issues, MAX_TITLE_LENGTH);
-      const url = asString(value.url, `${path}.url`, issues, MAX_LONG_TEXT_LENGTH);
-      if (url !== undefined) validateAllowedUrl(url, `${path}.url`, issues);
-      const description = asOptionalString(value.description, `${path}.description`, issues, MAX_LONG_TEXT_LENGTH);
-      if (title === undefined || url === undefined) return undefined;
-      return { type: 'link_card', title, url, ...(description !== undefined ? { description } : {}) };
-    }
-    case 'json': {
-      const result = validateBoundedJsonValue(value.value, `${path}.value`);
-      if (!result.ok) {
-        issues.push(...result.issues);
-        return undefined;
-      }
-      return { type: 'json', value: result.value };
-    }
-    case 'html_document': {
-      if (value.documentPath !== 'template.html' && value.documentPath !== 'index.html') {
-        issues.push({ path: `${path}.documentPath`, message: `${path}.documentPath is not allowed` });
-      }
-      if (value.dataPath !== 'data.json') {
-        issues.push({ path: `${path}.dataPath`, message: `${path}.dataPath must be data.json` });
-      }
-      if ((value.documentPath === 'template.html' || value.documentPath === 'index.html') && value.dataPath === 'data.json') {
-        return { type: 'html_document', documentPath: value.documentPath, dataPath: 'data.json' };
-      }
-      return undefined;
-    }
-    default:
-      issues.push({ path: `${path}.type`, message: `${path}.type is not allowed` });
-      return undefined;
-  }
-}
-
 function validateOptionalInteger(value: unknown, path: string, issues: LiveArtifactValidationIssue[], min: number, max: number): number | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
@@ -836,74 +654,6 @@ function validateOptionalInteger(value: unknown, path: string, issues: LiveArtif
     return undefined;
   }
   return value;
-}
-
-function validateStringArray(value: unknown, path: string, issues: LiveArtifactValidationIssue[], maxItems: number, maxLength: number): string[] | undefined {
-  if (!Array.isArray(value) || value.length > maxItems) {
-    issues.push({ path, message: `${path} must be a bounded array` });
-    return undefined;
-  }
-  const items: string[] = [];
-  value.forEach((item, index) => {
-    const text = asString(item, `${path}.${index}`, issues, maxLength);
-    if (text !== undefined) items.push(text);
-  });
-  return items;
-}
-
-function validateTableColumns(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): Array<{ key: string; label: string }> | undefined {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MAPPING_PATHS) {
-    issues.push({ path, message: `${path} must be a non-empty bounded array` });
-    return undefined;
-  }
-  const columns: Array<{ key: string; label: string }> = [];
-  value.forEach((column, index) => {
-    const columnPath = `${path}.${index}`;
-    if (!isPlainObject(column)) {
-      issues.push({ path: columnPath, message: `${columnPath} must be an object` });
-      return;
-    }
-    const key = asString(column.key, `${columnPath}.key`, issues, MAX_ID_LENGTH);
-    const label = asString(column.label, `${columnPath}.label`, issues, MAX_SHORT_TEXT_LENGTH);
-    if (key !== undefined && label !== undefined) columns.push({ key, label });
-  });
-  return columns;
-}
-
-function validateTile(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactTile | undefined {
-  if (!isPlainObject(value)) {
-    issues.push({ path, message: `${path} must be an object` });
-    return undefined;
-  }
-  const id = asString(value.id, `${path}.id`, issues, MAX_ID_LENGTH);
-  const kind = validateEnum(value.kind, TILE_KINDS, `${path}.kind`, issues);
-  const title = asString(value.title, `${path}.title`, issues, MAX_TITLE_LENGTH);
-  const renderJson = validateRenderJson(value.renderJson, `${path}.renderJson`, issues);
-  const sourceJson = value.sourceJson === undefined ? undefined : validateSource(value.sourceJson, `${path}.sourceJson`, issues);
-  const provenanceJson = validateProvenance(value.provenanceJson, `${path}.provenanceJson`, issues);
-  const refreshStatus = validateEnum(value.refreshStatus, TILE_REFRESH_STATUSES, `${path}.refreshStatus`, issues);
-  const lastError = asOptionalString(value.lastError, `${path}.lastError`, issues, MAX_LONG_TEXT_LENGTH);
-  if (id === undefined || kind === undefined || title === undefined || renderJson === undefined || provenanceJson === undefined || refreshStatus === undefined) {
-    return undefined;
-  }
-  const tile: LiveArtifactTile = { id, kind, title, renderJson, provenanceJson, refreshStatus };
-  if (sourceJson !== undefined) tile.sourceJson = sourceJson;
-  if (lastError !== undefined) tile.lastError = lastError;
-  return tile;
-}
-
-function validateTiles(value: unknown, path: string, issues: LiveArtifactValidationIssue[], required: boolean): LiveArtifactTile[] | undefined {
-  if (value === undefined && !required) return undefined;
-  if (!Array.isArray(value) || value.length > MAX_TILES) {
-    issues.push({ path, message: `${path} must be a bounded array` });
-    return undefined;
-  }
-  const tiles: LiveArtifactTile[] = [];
-  value.forEach((tile, index) => {
-    const validated = validateTile(tile, `${path}.${index}`, issues);
-    if (validated !== undefined) tiles.push(validated);
-  });
-  return tiles;
 }
 
 function validateDocument(value: unknown, path: string, issues: LiveArtifactValidationIssue[]): LiveArtifactDocument | undefined {
@@ -957,10 +707,9 @@ export function validatePersistedLiveArtifact(value: unknown, path = 'liveArtifa
   const createdAt = validateIsoDate(value.createdAt, `${path}.createdAt`, issues);
   const updatedAt = validateIsoDate(value.updatedAt, `${path}.updatedAt`, issues);
   const lastRefreshedAt = value.lastRefreshedAt === undefined ? undefined : validateIsoDate(value.lastRefreshedAt, `${path}.lastRefreshedAt`, issues);
-  const tiles = validateTiles(value.tiles, `${path}.tiles`, issues, true);
   const document = value.document === undefined ? undefined : validateDocument(value.document, `${path}.document`, issues);
 
-  if (issues.length > 0 || id === undefined || projectId === undefined || title === undefined || slug === undefined || status === undefined || pinned === undefined || preview === undefined || refreshStatus === undefined || createdAt === undefined || updatedAt === undefined || tiles === undefined) {
+  if (issues.length > 0 || id === undefined || projectId === undefined || title === undefined || slug === undefined || status === undefined || pinned === undefined || preview === undefined || refreshStatus === undefined || createdAt === undefined || updatedAt === undefined) {
     return fail(issues);
   }
   const liveArtifact: LiveArtifact = {
@@ -975,7 +724,6 @@ export function validatePersistedLiveArtifact(value: unknown, path = 'liveArtifa
     refreshStatus,
     createdAt,
     updatedAt,
-    tiles,
   };
   if (sessionId !== undefined) liveArtifact.sessionId = sessionId;
   if (createdByRunId !== undefined) liveArtifact.createdByRunId = createdByRunId;
@@ -1041,7 +789,6 @@ export function validateLiveArtifactCreateInput(value: unknown, path = 'input'):
   const pinned = asOptionalBoolean(value.pinned, `${path}.pinned`, issues);
   const status = value.status === undefined ? undefined : validateEnum(value.status, LIVE_ARTIFACT_STATUSES, `${path}.status`, issues);
   const preview = validatePreview(value.preview, `${path}.preview`, issues);
-  const tiles = validateTiles(value.tiles, `${path}.tiles`, issues, false);
   const document = value.document === undefined ? undefined : validateDocument(value.document, `${path}.document`, issues);
   if (issues.length > 0 || title === undefined || preview === undefined) return fail(issues);
   const input: LiveArtifactCreateInput = { title, preview };
@@ -1049,7 +796,6 @@ export function validateLiveArtifactCreateInput(value: unknown, path = 'input'):
   if (sessionId !== undefined) input.sessionId = sessionId;
   if (pinned !== undefined) input.pinned = pinned;
   if (status !== undefined) input.status = status;
-  if (tiles !== undefined) input.tiles = tiles;
   if (document !== undefined) input.document = document;
   return ok(input);
 }
@@ -1063,7 +809,6 @@ export function validateLiveArtifactUpdateInput(value: unknown, path = 'input'):
   const pinned = asOptionalBoolean(value.pinned, `${path}.pinned`, issues);
   const status = value.status === undefined ? undefined : validateEnum(value.status, LIVE_ARTIFACT_STATUSES, `${path}.status`, issues);
   const preview = value.preview === undefined ? undefined : validatePreview(value.preview, `${path}.preview`, issues);
-  const tiles = validateTiles(value.tiles, `${path}.tiles`, issues, false);
   const document = value.document === undefined ? undefined : validateDocument(value.document, `${path}.document`, issues);
   if (issues.length > 0) return fail(issues);
   const input: LiveArtifactUpdateInput = {};
@@ -1072,7 +817,6 @@ export function validateLiveArtifactUpdateInput(value: unknown, path = 'input'):
   if (pinned !== undefined) input.pinned = pinned;
   if (status !== undefined) input.status = status;
   if (preview !== undefined) input.preview = preview;
-  if (tiles !== undefined) input.tiles = tiles;
   if (document !== undefined) input.document = document;
   return ok(input);
 }

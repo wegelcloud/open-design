@@ -83,26 +83,6 @@ export const exampleLiveArtifact: LiveArtifact = {
   refreshStatus: 'idle',
   createdAt: '2026-04-29T12:00:00.000Z',
   updatedAt: '2026-04-29T12:00:00.000Z',
-  tiles: [
-    {
-      id: 'tile_total_signups',
-      kind: 'metric',
-      title: 'Total signups',
-      renderJson: {
-        type: 'metric',
-        label: 'Signups',
-        value: 1280,
-        delta: '+12%',
-        tone: 'good',
-      },
-      provenanceJson: {
-        generatedAt: '2026-04-29T12:00:00.000Z',
-        generatedBy: 'agent',
-        sources: [{ label: 'User-provided launch notes', type: 'user_input' }],
-      },
-      refreshStatus: 'not_refreshable',
-    },
-  ],
   document: {
     format: 'html_template_v1',
     templatePath: 'template.html',
@@ -121,7 +101,6 @@ export const exampleLiveArtifactCreateInput: LiveArtifactCreateInput = {
   pinned: false,
   status: 'active',
   preview: { type: 'html', entry: 'index.html' },
-  tiles: exampleLiveArtifact.tiles,
   document: {
     format: 'html_template_v1',
     templatePath: 'template.html',

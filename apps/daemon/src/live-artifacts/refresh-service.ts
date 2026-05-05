@@ -15,7 +15,7 @@ import {
   withLiveArtifactRefreshSourceTimeout,
 } from './refresh.js';
 import { connectorService } from '../connectors/service.js';
-import type { BoundedJsonObject, LiveArtifactRefreshErrorRecord, LiveArtifactRefreshSourceMetadata, LiveArtifactTileSource } from './schema.js';
+import type { BoundedJsonObject, LiveArtifactRefreshErrorRecord, LiveArtifactRefreshSourceMetadata, LiveArtifactSource } from './schema.js';
 
 export interface RefreshLiveArtifactOptions {
   projectsRoot: string;
@@ -57,21 +57,14 @@ function toRefreshErrorRecord(error: unknown): LiveArtifactRefreshErrorRecord {
   return { message: String(error) };
 }
 
-function documentSourceMetadata(source: LiveArtifactTileSource): LiveArtifactRefreshSourceMetadata {
+function documentSourceMetadata(source: LiveArtifactSource): LiveArtifactRefreshSourceMetadata {
   const metadata: LiveArtifactRefreshSourceMetadata = { sourceType: 'document' };
   if (source.toolName !== undefined) metadata.toolName = source.toolName;
   if (source.connector !== undefined) metadata.connector = source.connector;
   return metadata;
 }
 
-function tileSourceMetadata(tileId: string, source: LiveArtifactTileSource): LiveArtifactRefreshSourceMetadata {
-  const metadata: LiveArtifactRefreshSourceMetadata = { sourceType: 'tile', tileId };
-  if (source.toolName !== undefined) metadata.toolName = source.toolName;
-  if (source.connector !== undefined) metadata.connector = source.connector;
-  return metadata;
-}
-
-function isSupportedSource(source: LiveArtifactTileSource | undefined): source is LiveArtifactTileSource {
+function isSupportedSource(source: LiveArtifactSource | undefined): source is LiveArtifactSource {
   if (source === undefined) return false;
   return source.type === 'daemon_tool' || source.type === 'connector_tool';
 }
@@ -79,7 +72,7 @@ function isSupportedSource(source: LiveArtifactTileSource | undefined): source i
 async function executeRefreshSource(options: {
   projectsRoot: string;
   projectId: string;
-  source: LiveArtifactTileSource;
+  source: LiveArtifactSource;
   signal: AbortSignal;
 }): Promise<BoundedJsonObject> {
   const { projectsRoot, projectId, source, signal } = options;
@@ -145,12 +138,9 @@ export async function refreshLiveArtifact(options: RefreshLiveArtifactOptions): 
       const currentDataJson = artifact.document?.dataJson ?? {};
       const documentSource = artifact.document?.sourceJson;
       const hasDocumentSource = isSupportedSource(documentSource);
-      const tileSources = artifact.tiles
-        .map((tile) => ({ tileId: tile.id, source: tile.sourceJson }))
-        .filter((tileSource): tileSource is { tileId: string; source: LiveArtifactTileSource } => isSupportedSource(tileSource.source));
       const timeouts = normalizeLiveArtifactRefreshTimeouts();
 
-      if (!hasDocumentSource && tileSources.length === 0) {
+      if (!hasDocumentSource) {
         throw new LiveArtifactRefreshUnavailableError();
       }
 
@@ -165,7 +155,6 @@ export async function refreshLiveArtifact(options: RefreshLiveArtifactOptions): 
         },
         async (run) => {
           let documentOutput: { output: BoundedJsonObject } | undefined;
-          const tileOutputs: Array<{ tileId: string; output: BoundedJsonObject }> = [];
           if (hasDocumentSource) {
             const step = 'document';
             const sourceMetadata = documentSourceMetadata(documentSource);
@@ -192,43 +181,16 @@ export async function refreshLiveArtifact(options: RefreshLiveArtifactOptions): 
             }
           }
 
-          for (const tileSource of tileSources) {
-            const step = `tile:${tileSource.tileId}:execute`;
-            const sourceMetadata = tileSourceMetadata(tileSource.tileId, tileSource.source);
-            const tileStartedAt = nowDate();
-            await appendLog({ step, status: 'running', startedAt: tileStartedAt, source: sourceMetadata });
-            try {
-              const output = await withLiveArtifactRefreshSourceTimeout(
-                run,
-                { step, source: sourceMetadata, sourceTimeoutMs: timeouts.sourceTimeoutMs },
-                async (signal) => executeRefreshSource({
-                  projectsRoot: options.projectsRoot,
-                  projectId: options.projectId,
-                  source: tileSource.source,
-                  signal,
-                }),
-              );
-              const tileFinishedAt = nowDate();
-              await appendLog({ step, status: 'succeeded', startedAt: tileStartedAt, finishedAt: tileFinishedAt, source: sourceMetadata });
-              tileOutputs.push({ tileId: tileSource.tileId, output });
-            } catch (error) {
-              const tileFinishedAt = nowDate();
-              await appendLog({ step, status: 'failed', startedAt: tileStartedAt, finishedAt: tileFinishedAt, source: sourceMetadata, error });
-              throw error;
-            }
-          }
-
           return buildLiveArtifactRefreshCandidate({
             artifact,
             currentDataJson,
             ...(documentOutput === undefined ? {} : { documentOutput }),
-            ...(tileOutputs.length === 0 ? {} : { tileOutputs }),
             now: nowDate(),
           });
         },
       );
 
-      const refreshedSourceCount = (hasDocumentSource ? 1 : 0) + tileSources.length;
+      const refreshedSourceCount = hasDocumentSource ? 1 : 0;
 
       const committed = await commitLiveArtifactRefreshCandidate({
         projectsRoot: options.projectsRoot,

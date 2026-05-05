@@ -9,7 +9,7 @@ import { renderHtmlTemplateV1 } from './render.js';
 import type { BoundedJsonObject, LiveArtifact, LiveArtifactCreateInput, LiveArtifactProvenance, LiveArtifactRefreshErrorRecord, LiveArtifactRefreshLogEntry, LiveArtifactRefreshSourceMetadata, LiveArtifactRefreshStepStatus, LiveArtifactUpdateInput, LiveArtifactValidationIssue } from './schema.js';
 import { validateBoundedJsonObject, validateLiveArtifactCreateInput, validateLiveArtifactRefreshLogEntry, validateLiveArtifactUpdateInput, validatePersistedLiveArtifact } from './schema.js';
 
-export type LiveArtifactSummary = Omit<LiveArtifact, 'document' | 'tiles'> & {
+export type LiveArtifactSummary = Omit<LiveArtifact, 'document'> & {
   hasDocument: boolean;
 };
 
@@ -22,7 +22,6 @@ export const LIVE_ARTIFACT_PROVENANCE_FILE = 'provenance.json' as const;
 export const LIVE_ARTIFACT_REFRESHES_FILE = 'refreshes.jsonl' as const;
 export const LIVE_ARTIFACT_REFRESH_LOCK_FILE = 'refresh.lock.json' as const;
 export const LIVE_ARTIFACT_REFRESH_STATE_FILE = 'refresh-state.json' as const;
-export const LIVE_ARTIFACT_TILES_DIR = 'tiles' as const;
 export const LIVE_ARTIFACT_SNAPSHOTS_DIR = 'snapshots' as const;
 
 const SAFE_LIVE_ARTIFACT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -58,7 +57,6 @@ export interface LiveArtifactStorePaths {
   generatedPreviewHtmlPath: string;
   dataJsonPath: string;
   provenanceJsonPath: string;
-  tilesDir: string;
   refreshesJsonlPath: string;
   refreshLockPath: string;
   refreshStatePath: string;
@@ -319,20 +317,11 @@ export function liveArtifactStorePaths(
     generatedPreviewHtmlPath: resolveInside(artifactDir, LIVE_ARTIFACT_PREVIEW_FILE, 'live artifact path escapes artifact dir'),
     dataJsonPath: resolveInside(artifactDir, LIVE_ARTIFACT_DATA_FILE, 'live artifact path escapes artifact dir'),
     provenanceJsonPath: resolveInside(artifactDir, LIVE_ARTIFACT_PROVENANCE_FILE, 'live artifact path escapes artifact dir'),
-    tilesDir: resolveInside(artifactDir, LIVE_ARTIFACT_TILES_DIR, 'live artifact path escapes artifact dir'),
     refreshesJsonlPath: resolveInside(artifactDir, LIVE_ARTIFACT_REFRESHES_FILE, 'live artifact path escapes artifact dir'),
     refreshLockPath: resolveInside(artifactDir, LIVE_ARTIFACT_REFRESH_LOCK_FILE, 'live artifact path escapes artifact dir'),
     refreshStatePath: resolveInside(artifactDir, LIVE_ARTIFACT_REFRESH_STATE_FILE, 'live artifact path escapes artifact dir'),
     snapshotsDir: resolveInside(artifactDir, LIVE_ARTIFACT_SNAPSHOTS_DIR, 'live artifact path escapes artifact dir'),
   };
-}
-
-export function liveArtifactTilePath(paths: LiveArtifactStorePaths, tileId: string): string {
-  const safeTileId = validateLiveArtifactStorageId(tileId);
-  const tilesDir = path.resolve(paths.tilesDir);
-  const tilePath = resolveInside(tilesDir, `${safeTileId}.json`, 'live artifact tile path escapes tiles dir');
-  if (!isPathInside(path.resolve(paths.projectDir), tilePath)) throw new Error('live artifact path escapes project dir');
-  return tilePath;
 }
 
 export async function ensureLiveArtifactStoreLayout(
@@ -342,7 +331,6 @@ export async function ensureLiveArtifactStoreLayout(
 ): Promise<LiveArtifactStorePaths> {
   await ensureProject(projectsRoot, projectId);
   const paths = liveArtifactStorePaths(projectsRoot, projectId, artifactId);
-  await mkdir(paths.tilesDir, { recursive: true });
   await mkdir(paths.snapshotsDir, { recursive: true });
   await writeFile(paths.refreshesJsonlPath, '', { flag: 'a' });
   return paths;
@@ -388,7 +376,7 @@ function defaultProvenance(nowIso: string): LiveArtifactProvenance {
 }
 
 function toSummary(artifact: LiveArtifact): LiveArtifactSummary {
-  const { document: _document, tiles: _tiles, ...summary } = artifact;
+  const { document: _document, ...summary } = artifact;
   return {
     ...summary,
     hasDocument: _document !== undefined,
@@ -640,7 +628,6 @@ async function writeLiveArtifactFiles(
     ? renderPreviewHtml(templateHtml, dataJson)
     : templateHtml;
 
-  await mkdir(paths.tilesDir, { recursive: true });
   await mkdir(paths.snapshotsDir, { recursive: true });
   await Promise.all([
     writeFile(paths.artifactJsonPath, stableJson(artifactForWrite), 'utf8'),
@@ -649,7 +636,6 @@ async function writeLiveArtifactFiles(
     writeFile(paths.dataJsonPath, stableJson(dataJson), 'utf8'),
     writeFile(paths.provenanceJsonPath, stableJson(provenanceJson), 'utf8'),
     writeFile(paths.refreshesJsonlPath, '', { flag: 'a' }),
-    ...artifactForWrite.tiles.map((tile) => writeFile(liveArtifactTilePath(paths, tile.id), stableJson(tile), 'utf8')),
   ]);
   return artifactForWrite;
 }
@@ -702,7 +688,6 @@ export async function createLiveArtifact(options: CreateLiveArtifactOptions): Pr
     refreshStatus: 'idle',
     createdAt: nowIso,
     updatedAt: nowIso,
-    tiles: input.tiles ?? [],
   };
   if (input.sessionId !== undefined) artifactBase.sessionId = input.sessionId;
   if (options.createdByRunId !== undefined) artifactBase.createdByRunId = options.createdByRunId;
@@ -1248,7 +1233,6 @@ export async function updateLiveArtifact(options: UpdateLiveArtifactOptions): Pr
     pinned: input.pinned ?? current.pinned,
     status: input.status ?? current.status,
     preview: input.preview ?? current.preview,
-    tiles: input.tiles ?? current.tiles,
     updatedAt: nowIso,
   };
   if (input.document !== undefined) updated.document = input.document;
@@ -1262,7 +1246,6 @@ export async function updateLiveArtifact(options: UpdateLiveArtifactOptions): Pr
     ? await readPersistedDataJson(paths)
     : persisted.value.document?.dataJson;
 
-  await rm(paths.tilesDir, { recursive: true, force: true });
   const writtenArtifact = await writeLiveArtifactFiles(paths, persisted.value, templateHtml, provenanceJson, dataJson);
 
   return { artifact: writtenArtifact, paths };

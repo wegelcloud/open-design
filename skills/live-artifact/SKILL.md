@@ -75,7 +75,7 @@ Before creating files, decide whether the user actually wants a live artifact or
 2. **Author the source files**
    - Write `template.html` as the human-designed HTML template.
    - Write `data.json` as the canonical preview data used by `{{data.path}}` bindings.
-   - Write `artifact.json` with the live artifact metadata, preview declaration, document declaration, tiles, and safe source descriptors.
+   - Write `artifact.json` with the live artifact metadata, preview declaration, document declaration, and safe source descriptors.
    - Write `provenance.json` with concise source notes, timestamps, non-sensitive connector references, and transformation notes.
    - Do not author `index.html` as source. The daemon derives `index.html` from `template.html` and `data.json`.
 
@@ -85,7 +85,7 @@ Before creating files, decide whether the user actually wants a live artifact or
    - Stay within the bounded JSON rules in `references/artifact-schema.md`.
 
 4. **Apply safety rules before registration**
-   - Never store credentials, OAuth tokens, API keys, cookies, auth headers, raw provider responses, HTTP envelopes, full payloads, or secret-like fields in `artifact.json`, `data.json`, `provenance.json`, tiles, or source metadata.
+   - Never store credentials, OAuth tokens, API keys, cookies, auth headers, raw provider responses, HTTP envelopes, full payloads, or secret-like fields in `artifact.json`, `data.json`, `provenance.json`, or source metadata.
    - Avoid forbidden key names such as `raw`, `rawResponse`, `payload`, `body`, `headers`, `cookie`, `authorization`, `token`, `secret`, `credential`, and `password` anywhere in persisted JSON.
    - Use escaped `html_template_v1` interpolation only. Raw/unescaped HTML interpolation is not allowed.
 

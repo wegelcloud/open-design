@@ -15,22 +15,6 @@ export type LiveArtifactRefreshStatus = 'never' | 'idle' | 'running' | 'succeede
 
 export type LiveArtifactPreviewType = 'html' | 'jsx' | 'markdown';
 
-export type LiveArtifactTileKind =
-  | 'metric'
-  | 'table'
-  | 'chart'
-  | 'markdown'
-  | 'link_card'
-  | 'json'
-  | 'html_document';
-
-export type LiveArtifactTileRefreshStatus =
-  | 'not_refreshable'
-  | 'idle'
-  | 'running'
-  | 'succeeded'
-  | 'failed';
-
 export type LiveArtifactSourceType = 'local_file' | 'daemon_tool' | 'connector_tool';
 
 export type LiveArtifactConnectorApprovalPolicy =
@@ -58,77 +42,10 @@ export interface LiveArtifactDocument {
   /** Derived cache hydrated from dataPath in API responses; data.json is canonical. */
   dataJson: BoundedJsonObject;
   dataSchemaJson?: BoundedJsonObject;
-  sourceJson?: LiveArtifactTileSource;
+  sourceJson?: LiveArtifactSource;
 }
 
-export interface LiveArtifactTile {
-  id: string;
-  kind: LiveArtifactTileKind;
-  title: string;
-  renderJson: LiveArtifactRenderJson;
-  sourceJson?: LiveArtifactTileSource;
-  provenanceJson: LiveArtifactProvenance;
-  refreshStatus: LiveArtifactTileRefreshStatus;
-  lastError?: string;
-}
-
-export type LiveArtifactRenderJson =
-  | LiveArtifactMetricRenderJson
-  | LiveArtifactTableRenderJson
-  | LiveArtifactChartRenderJson
-  | LiveArtifactMarkdownRenderJson
-  | LiveArtifactLinkCardRenderJson
-  | LiveArtifactJsonRenderJson
-  | LiveArtifactHtmlDocumentRenderJson;
-
-export interface LiveArtifactMetricRenderJson {
-  type: 'metric';
-  label: string;
-  value: string | number;
-  unit?: string;
-  delta?: string;
-  tone?: 'neutral' | 'good' | 'warning' | 'bad';
-}
-
-export interface LiveArtifactTableRenderJson {
-  type: 'table';
-  columns: Array<{ key: string; label: string }>;
-  rows: BoundedJsonObject[];
-  maxRows?: number;
-}
-
-export interface LiveArtifactChartRenderJson {
-  type: 'chart';
-  chartType: 'bar' | 'line' | 'area' | 'pie';
-  xKey: string;
-  yKeys: string[];
-  rows: BoundedJsonObject[];
-}
-
-export interface LiveArtifactMarkdownRenderJson {
-  type: 'markdown';
-  markdown: string;
-}
-
-export interface LiveArtifactLinkCardRenderJson {
-  type: 'link_card';
-  title: string;
-  url: string;
-  description?: string;
-}
-
-export interface LiveArtifactJsonRenderJson {
-  type: 'json';
-  value: BoundedJsonValue;
-}
-
-export interface LiveArtifactHtmlDocumentRenderJson {
-  type: 'html_document';
-  documentPath: 'template.html' | 'index.html';
-  dataPath: 'data.json';
-}
-
-export interface LiveArtifactTileSource {
+export interface LiveArtifactSource {
   type: LiveArtifactSourceType;
   toolName?: string;
   input: BoundedJsonObject;
@@ -173,7 +90,6 @@ export interface LiveArtifact {
   createdAt: string;
   updatedAt: string;
   lastRefreshedAt?: string;
-  tiles: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 }
 
@@ -198,7 +114,6 @@ export type LiveArtifactCreateInput = LiveArtifactRejectDaemonOwnedInputFields &
   pinned?: boolean;
   status?: LiveArtifactStatus;
   preview: LiveArtifactPreview;
-  tiles?: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 };
 
@@ -208,11 +123,10 @@ export type LiveArtifactUpdateInput = LiveArtifactRejectDaemonOwnedInputFields &
   pinned?: boolean;
   status?: LiveArtifactStatus;
   preview?: LiveArtifactPreview;
-  tiles?: LiveArtifactTile[];
   document?: LiveArtifactDocument;
 };
 
-export type LiveArtifactSummary = Omit<LiveArtifact, 'document' | 'tiles'> & {
+export type LiveArtifactSummary = Omit<LiveArtifact, 'document'> & {
   hasDocument: boolean;
 };
 

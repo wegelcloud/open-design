@@ -19,9 +19,7 @@
   - [ ] `BoundedJsonValue` / `BoundedJsonObject`.
   - [ ] `LiveArtifact`.
   - [ ] `LiveArtifactDocument`.
-  - [ ] `LiveArtifactTile`.
-  - [ ] `LiveArtifactRenderJson` discriminated union.
-  - [ ] `LiveArtifactTileSource`.
+  - [ ] `LiveArtifactSource`.
   - [ ] `LiveArtifactProvenance`.
   - [ ] `ConnectorDetail`.
   - [ ] `ConnectorToolSafety`.
@@ -38,15 +36,12 @@
   - [ ] Put validation field details in the existing error `details` field.
 - [ ] Add fixture artifacts under `specs/2026-04-29-live-artifacts/examples/`.
   - [ ] Minimal static `html_template_v1` artifact.
-  - [ ] Artifact with one metric tile.
-  - [ ] Artifact with one table tile.
   - [ ] Invalid fixture containing forbidden raw provider fields.
   - [ ] Invalid fixture containing credential-like fields.
 - [ ] Add schema validation tests.
   - [ ] Reject `raw`, `rawResponse`, `payload`, `body`, `headers`, `cookie`, `authorization`, `token`, `secret`, `credential`, `password` keys.
   - [ ] Reject path traversal.
   - [ ] Reject oversized JSON.
-  - [ ] Reject unsupported URLs.
   - [ ] Accept valid fixture artifacts.
 
 ## Phase 1A — Static live artifact registration
@@ -60,7 +55,6 @@
   - [ ] `<RUNTIME_DATA_DIR>/projects/<projectId>/.live-artifacts/<artifactId>/template.html`.
   - [ ] `<RUNTIME_DATA_DIR>/projects/<projectId>/.live-artifacts/<artifactId>/data.json`.
   - [ ] `<RUNTIME_DATA_DIR>/projects/<projectId>/.live-artifacts/<artifactId>/provenance.json`.
-  - [ ] `<RUNTIME_DATA_DIR>/projects/<projectId>/.live-artifacts/<artifactId>/tiles/*.json`.
   - [ ] `<RUNTIME_DATA_DIR>/projects/<projectId>/.live-artifacts/<artifactId>/refreshes.jsonl`.
   - [ ] `<RUNTIME_DATA_DIR>/projects/<projectId>/.live-artifacts/<artifactId>/snapshots/`.
   - [ ] Support `OD_DATA_DIR` override through existing daemon runtime data-dir conventions.
@@ -146,7 +140,6 @@
 - [ ] Show live artifacts as virtual nodes in the artifact tree.
   - [ ] One node per live artifact.
   - [ ] Hide `snapshots/` by default.
-  - [ ] Hide `tiles/` implementation files by default.
   - [ ] Render under a virtual group in `FileWorkspace.tsx`.
 - [ ] Add badges.
   - [ ] `Live`.
@@ -242,10 +235,9 @@
   - [ ] `metric_summary` transform.
 - [ ] Implement all-or-nothing refresh commit.
   - [ ] Build candidate `data.json`.
-  - [ ] Build candidate tile render JSON.
   - [ ] Validate all candidates.
-  - [ ] Commit only if all refreshable tiles succeed.
-  - [ ] Keep previous data/preview if any tile fails.
+  - [ ] Commit only if all refreshable sources succeed.
+  - [ ] Keep previous data/preview if any source fails.
 - [ ] Implement snapshot behavior.
   - [ ] Successful snapshots under `snapshots/<refreshId>/`.
   - [ ] Failed attempts summarized in `refreshes.jsonl`.

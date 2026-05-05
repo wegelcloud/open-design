@@ -1,10 +1,10 @@
 # Refresh Contract Reference
 
-Refresh updates live artifact data without redesigning the presentation. The refresh runner updates `data.json`, tile render JSON, provenance, and audit history; it does not allow arbitrary template rewrites.
+Refresh updates live artifact data without redesigning the presentation. The refresh runner updates `data.json`, provenance, and audit history; it does not allow arbitrary template rewrites.
 
 ## Refreshable source metadata
 
-Refreshable tiles or documents use `sourceJson`:
+Refreshable documents use `sourceJson`:
 
 ```json
 {
@@ -63,9 +63,9 @@ Refresh is all-or-nothing:
 
 1. Acquire one active refresh lock per artifact.
 2. Execute each refreshable source with timeouts and current safety checks.
-3. Build candidate `data.json`, tile render JSON, provenance, and preview.
+3. Build candidate `data.json`, provenance, and preview.
 4. Validate all candidates with the same schemas used for create/update.
-5. Commit only if every refreshable tile succeeds.
+5. Commit only if every refreshable source succeeds.
 6. Preserve the previous valid preview if any step fails.
 
 Refresh IDs must be monotonic so stale runs cannot overwrite newer committed data.
@@ -73,6 +73,6 @@ Refresh IDs must be monotonic so stale runs cannot overwrite newer committed dat
 ## Audit storage
 
 - Append compact records to `refreshes.jsonl`.
-- Successful refresh snapshots live under `snapshots/<refreshId>/` and may include `data.json`, render JSON, and provenance.
+- Successful refresh snapshots live under `snapshots/<refreshId>/` and may include `data.json` and provenance.
 - Failed refreshes are summarized in `refreshes.jsonl` without leaking raw provider output or credentials.
 - On daemon startup, stale running refreshes should be marked failed or timed out while preserving the last valid preview.

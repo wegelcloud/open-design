@@ -13,7 +13,6 @@
   "refreshStatus": "never",
   "createdAt": "2026-04-29T12:00:00.000Z",
   "updatedAt": "2026-04-29T12:00:00.000Z",
-  "tiles": [],
   "document": {
     "format": "html_template_v1",
     "templatePath": "template.html",

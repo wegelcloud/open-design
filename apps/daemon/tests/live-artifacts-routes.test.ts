@@ -170,7 +170,6 @@ describe('live artifact tool routes', () => {
       hasDocument: true,
     });
     expect(list.body.artifacts[0].document).toBeUndefined();
-    expect(list.body.artifacts[0].tiles).toBeUndefined();
   });
 
   it('refreshes live artifacts through tool and UI routes', async () => {
@@ -216,7 +215,6 @@ describe('live artifact tool routes', () => {
       }),
     });
     expect(create.status).toBe(200);
-    expect(create.body.artifact.tiles).toEqual([]);
     expect(create.body.artifact.document.sourceJson.refreshPermission).toBe('manual_refresh_granted_for_read_only');
 
     const toolRefresh = await jsonFetch(`${baseUrl}/api/tools/live-artifacts/refresh`, {
@@ -410,69 +408,6 @@ describe('live artifact tool routes', () => {
     });
   });
 
-  it('refreshes approved tile sources when no document source exists', async () => {
-    const projectId = uniqueProjectId();
-    const token = mintToolToken(projectId, 'run-route-test-refresh-tile-source');
-    const executeConnector = vi.spyOn(connectorService, 'execute').mockResolvedValueOnce({
-      ok: true,
-      connectorId: 'monet',
-      toolName: 'monet.metrics',
-      safety: { sideEffect: 'read', approval: 'auto' },
-      output: { owner: 'Finance Ops', revenue: 123 },
-    });
-
-    const baseInput = validCreateInput('Tile Source Artifact');
-    const create = await jsonFetch(`${baseUrl}/api/tools/live-artifacts/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        input: {
-          ...baseInput,
-          tiles: [
-            {
-              id: 'tile-1',
-              kind: 'metric',
-              title: 'Revenue',
-              renderJson: { type: 'metric', label: 'Revenue', value: '$0' },
-              provenanceJson: {
-                generatedAt: '2026-05-01T00:00:00.000Z',
-                generatedBy: 'agent',
-                sources: [{ label: 'Monet metrics', type: 'connector' }],
-              },
-              refreshStatus: 'idle',
-              sourceJson: {
-                type: 'connector_tool',
-                toolName: 'monet.metrics',
-                input: { report: 'tile' },
-                connector: {
-                  connectorId: 'monet',
-                  toolName: 'monet.metrics',
-                  approvalPolicy: 'read_only_auto',
-                },
-                outputMapping: {
-                  dataPaths: [{ from: 'owner', to: 'owner' }, { from: 'revenue', to: 'revenue' }],
-                  transform: 'identity',
-                },
-                refreshPermission: 'manual_refresh_granted_for_read_only',
-              },
-            },
-          ],
-        },
-      }),
-    });
-    expect(create.status).toBe(200);
-    expect(create.body.artifact.document.sourceJson).toBeUndefined();
-
-    const refresh = await jsonFetch(`${baseUrl}/api/live-artifacts/${create.body.artifact.id}/refresh?projectId=${encodeURIComponent(projectId)}`, {
-      method: 'POST',
-    });
-
-    expect(refresh.status).toBe(200);
-    expect(refresh.body.refresh).toMatchObject({ status: 'succeeded', refreshedSourceCount: 1 });
-    expect(refresh.body.artifact.document.dataJson).toMatchObject({ owner: 'Finance Ops', revenue: 123 });
-    expect(executeConnector).toHaveBeenCalledTimes(1);
-  });
-
   it('marks artifacts failed and returns connector refresh error codes', async () => {
     const projectId = uniqueProjectId();
     const token = mintToolToken(projectId, 'run-route-test-refresh-failure');
@@ -628,41 +563,6 @@ describe('live artifact tool routes', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:17573');
     expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, OPTIONS');
     expect(response.headers.get('access-control-allow-origin')).not.toBe('*');
-  });
-
-  it('rejects executable script in persisted render JSON', async () => {
-    const projectId = uniqueProjectId();
-    const token = mintToolToken(projectId, 'run-route-test-render-json-script');
-    const create = await jsonFetch(`${baseUrl}/api/tools/live-artifacts/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        input: {
-          ...validCreateInput('Unsafe Render JSON'),
-          tiles: [
-            {
-              id: 'unsafe-tile',
-              kind: 'markdown',
-              title: 'Unsafe tile',
-              renderJson: { type: 'markdown', markdown: '<script>alert(1)</script>' },
-              provenanceJson: {
-                generatedAt: '2026-04-30T00:00:00.000Z',
-                generatedBy: 'agent',
-                sources: [{ label: 'Route test', type: 'user_input' }],
-              },
-              refreshStatus: 'not_refreshable',
-            },
-          ],
-        },
-      }),
-    });
-
-    expect(create.status).toBe(400);
-    expect(create.body.error).toMatchObject({
-      code: 'LIVE_ARTIFACT_INVALID',
-      details: { kind: 'validation' },
-    });
-    expect(JSON.stringify(create.body.error.details.issues)).toContain('script elements are not supported');
   });
 
   it('rejects executable script in template previews', async () => {
