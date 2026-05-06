@@ -2082,6 +2082,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         voice: req.body?.voice,
         audioKind: req.body?.audioKind,
         compositionDir: req.body?.compositionDir,
+        compositionId: req.body?.compositionId,
         image: req.body?.image,
         onProgress: (line) => appendTaskProgress(task, line),
       })

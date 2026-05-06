@@ -222,6 +222,7 @@ export async function generateMedia(args) {
     voice,
     audioKind,
     compositionDir,
+    compositionId,
     image,
   } = args;
 
@@ -305,9 +306,15 @@ export async function generateMedia(args) {
     voice: voice || '',
     audioKind: resolvedAudioKind,
     // Project-relative path to the directory the agent scaffolded with
-    // hyperframes.json / meta.json / index.html. Only consumed by the
-    // hyperframes renderer; null/empty for every other provider.
+    // hyperframes.json / meta.json / index.html (or, for Remotion, the
+    // src/index.ts entry + Root.tsx + composition components). Only the
+    // hyperframes / remotion renderers consume this; null/empty otherwise.
     compositionDir: typeof compositionDir === 'string' ? compositionDir : null,
+    // Composition id for Remotion's `<Composition id="…">` registration.
+    // Required only by remotion-html / remotion-html-in-canvas; ignored
+    // elsewhere. Hyperframes renders the whole index.html, so it does
+    // not use this field.
+    compositionId: typeof compositionId === 'string' ? compositionId : null,
     // Resolved reference image for i2v / image-edit flows. `null` when
     // the agent didn't pass --image. See resolveProjectImage below.
     imageRef,
@@ -377,6 +384,17 @@ export async function generateMedia(args) {
       // the lighter HF subcommands (lint, transcribe, tts) that don't
       // need to spawn Chrome.
       const result = await renderHyperFramesViaCli(ctx, dir, args.onProgress);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'remotion' && surface === 'video') {
+      // Remotion is the React-component sibling of HyperFrames: agent
+      // scaffolds a project under .remotion-cache/<id>/ with src/index.ts
+      // and src/Root.tsx (registerRoot + <Composition />), then dispatches
+      // here. Same Chrome-in-sandbox concern as HF — the renderer spawns
+      // puppeteer to capture frames — so the daemon process owns the
+      // `npx remotion render` invocation.
+      const result = await renderRemotionViaCli(ctx, dir, args.onProgress);
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
@@ -1569,6 +1587,220 @@ function runHyperFramesRender(compAbs, tmpOutput, onProgress) {
       const tail = stderrTail.trim().split('\n').slice(-12).join('\n');
       const err = new Error(
         `hyperframes render exited ${reason}` + (tail ? `\n${tail}` : ''),
+      );
+      err.stderr = tail;
+      reject(err);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Provider: Remotion — local React-component → MP4 renderer
+// (remotion-dev/remotion).
+//
+// Same shape as the HyperFrames carve-out: the agent scaffolds a Remotion
+// project under .remotion-cache/<id>/ (src/index.ts + src/Root.tsx +
+// composition components, package.json with remotion deps), then dispatches
+// here with `--composition-dir <relative>` and `--composition-id <id>`.
+//
+// The render runs in the daemon process, not the agent shell. Reason: the
+// renderer spawns Chrome via puppeteer to capture frames; many agent CLIs
+// wrap their shell tool in macOS sandbox-exec, under which Chrome hangs
+// partway through capture. The daemon process is unsandboxed.
+//
+// We invoke `npx remotion render <entryPath> <compId> <output>` rather than
+// the programmatic API — keeping the same shell-out shape as HyperFrames
+// means a single failure path, a single timeout, and identical progress
+// streaming. The npx download is cached after the first install.
+//
+// For remotion-html-in-canvas we additionally pass --allow-html-in-canvas
+// so the experimental Chromium drawElementImage capture path is used. That
+// path requires a Chromium with the API enabled (Canary in early 2026; the
+// renderer prints a clear warning if it can't activate it). Treat that
+// model as opt-in for compositions that legitimately need CSS that the
+// default DOM composer can't capture (mix-blend-mode + filter stacks,
+// position:sticky, etc.).
+// ---------------------------------------------------------------------------
+
+const REMOTION_RENDER_TIMEOUT_MS = 8 * 60 * 1000;
+
+async function renderRemotionViaCli(ctx, projectDir, onProgress) {
+  const compRel = ctx.compositionDir;
+  if (typeof compRel !== 'string' || !compRel.trim()) {
+    throw new Error(
+      'remotion-html requires --composition-dir <project-relative-path> ' +
+        'pointing at the directory the agent scaffolded with src/index.ts / ' +
+        'src/Root.tsx and a package.json that depends on remotion. The agent ' +
+        'should write the project into $OD_PROJECT_DIR/.remotion-cache/<id>/ ' +
+        'and pass that path here.',
+    );
+  }
+  const compId = typeof ctx.compositionId === 'string' ? ctx.compositionId.trim() : '';
+  if (!compId) {
+    throw new Error(
+      'remotion-html requires --composition-id <id>. This must match the id ' +
+        'the agent passed to <Composition id="…" /> inside src/Root.tsx so ' +
+        'remotion render knows which composition to capture.',
+    );
+  }
+  const projectRootResolved = path.resolve(projectDir);
+  const compAbs = path.resolve(projectRootResolved, compRel);
+  if (
+    compAbs !== projectRootResolved &&
+    !compAbs.startsWith(projectRootResolved + path.sep)
+  ) {
+    throw new Error(
+      `compositionDir "${compRel}" resolves outside the project directory. ` +
+        'Pass a path relative to the project (e.g. ".remotion-cache/abc").',
+    );
+  }
+  let compStat;
+  try {
+    compStat = await stat(compAbs);
+  } catch {
+    throw new Error(
+      `compositionDir not found: ${compRel} (resolved to ${compAbs})`,
+    );
+  }
+  if (!compStat.isDirectory()) {
+    throw new Error(`compositionDir is not a directory: ${compRel}`);
+  }
+  // Resolve the entry. Remotion convention is src/index.ts (or .tsx);
+  // accept either so the agent doesn't have to remember the exact ext.
+  const entryCandidates = ['src/index.ts', 'src/index.tsx', 'src/index.js'];
+  let entryRel = null;
+  for (const candidate of entryCandidates) {
+    const probe = await stat(path.join(compAbs, candidate)).catch(() => null);
+    if (probe && probe.isFile()) {
+      entryRel = candidate;
+      break;
+    }
+  }
+  if (!entryRel) {
+    throw new Error(
+      `compositionDir is missing src/index.ts (or .tsx/.js): ${compRel}. The ` +
+        'agent must scaffold a registerRoot entry before dispatch — see ' +
+        'skills/remotion/SKILL.md.',
+    );
+  }
+
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'open-design-remotion-'));
+  const tmpOutput = path.join(tmpRoot, 'render.mp4');
+  const allowHtmlInCanvas = ctx.model === 'remotion-html-in-canvas';
+  try {
+    await runRemotionRender({
+      compAbs,
+      entryRel,
+      compId,
+      tmpOutput,
+      allowHtmlInCanvas,
+      onProgress,
+    });
+    const bytes = await readFile(tmpOutput);
+    const variant = allowHtmlInCanvas ? 'html-in-canvas' : 'standard';
+    return {
+      bytes,
+      providerNote: `remotion/${variant} · ${ctx.aspect} · ${bytes.length} bytes`,
+      suggestedExt: '.mp4',
+    };
+  } catch (err) {
+    const stderr =
+      err && typeof err.stderr === 'string' ? err.stderr.trim() : '';
+    const message = stderr || (err && err.message ? err.message : String(err));
+    throw new Error(`remotion render failed: ${truncate(message, 480)}`);
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+function runRemotionRender({
+  compAbs,
+  entryRel,
+  compId,
+  tmpOutput,
+  allowHtmlInCanvas,
+  onProgress,
+}) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-y',
+      'remotion',
+      'render',
+      entryRel,
+      compId,
+      tmpOutput,
+      // h264 is the default but we pin it so behaviour is stable across
+      // remotion versions that may shift defaults.
+      '--codec',
+      'h264',
+      // Single concurrency keeps memory bounded — each worker spawns a
+      // Chrome tab at ~256MB, which adds up on machines with 8GB.
+      '--concurrency',
+      '1',
+      // Surface unhandled errors immediately rather than burying them in
+      // the bundled output (Remotion otherwise swallows React errors).
+      '--log',
+      'verbose',
+    ];
+    if (allowHtmlInCanvas) {
+      args.push('--allow-html-in-canvas');
+    }
+    const child = spawn('npx', args, {
+      cwd: compAbs,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stripAnsi = (s) =>
+      s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b\[\?[0-9]+[hl]/g, '');
+
+    const emit = (chunk) => {
+      if (typeof onProgress !== 'function') return;
+      const text = stripAnsi(chunk.toString('utf8'));
+      const lines = text.split(/[\r\n]+/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          onProgress(trimmed);
+        } catch {
+          // never let a misbehaving emitter kill the render
+        }
+      }
+    };
+
+    let stderrTail = '';
+    child.stdout.on('data', emit);
+    child.stderr.on('data', (chunk) => {
+      stderrTail += chunk.toString('utf8');
+      if (stderrTail.length > 8000) stderrTail = stderrTail.slice(-8000);
+      emit(chunk);
+    });
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // ignore
+      }
+      reject(
+        new Error(
+          `remotion render timed out after ${Math.round(REMOTION_RENDER_TIMEOUT_MS / 1000)}s`,
+        ),
+      );
+    }, REMOTION_RENDER_TIMEOUT_MS);
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) return resolve();
+      const reason = signal ? `signal ${signal}` : `exit ${code}`;
+      const tail = stderrTail.trim().split('\n').slice(-12).join('\n');
+      const err = new Error(
+        `remotion render exited ${reason}` + (tail ? `\n${tail}` : ''),
       );
       err.stderr = tail;
       reject(err);

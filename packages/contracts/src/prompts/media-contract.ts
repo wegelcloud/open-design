@@ -55,4 +55,13 @@ Special case: \`hyperframes-html\` video projects may author composition HTML
 in \`.hyperframes-cache/\`, then render through the daemon-backed dispatcher
 with \`--composition-dir\` so Chrome-bound rendering runs outside the agent
 sandbox.
+
+Special case: \`remotion-html\` and \`remotion-html-in-canvas\` are the
+React-component sibling. Author a Remotion project under
+\`.remotion-cache/\` (\`src/index.ts\` + \`src/Root.tsx\` + composition
+components), then dispatch with \`--composition-dir\` AND
+\`--composition-id\`. The \`-in-canvas\` variant flips Chromium's
+experimental drawElementImage capture path on; pick it only when the
+composition uses CSS the default DOM composer can't capture (mix-blend +
+filter stacks, position:sticky inside a clipped scroller, etc.).
 `;

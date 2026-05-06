@@ -1,0 +1,18 @@
+{
+  "id": "remotion-code-reveal-feature",
+  "surface": "video",
+  "title": "Remotion · Code Reveal & Feature Explainer (15s)",
+  "summary": "A 15-second technical-feature reveal — types code snippet line-by-line in a editor-styled card, then rotates into a result panel showing the rendered output. Perfect for changelog clips, dev-tool launches, or library feature drops on Twitter / LinkedIn.",
+  "category": "Developer",
+  "tags": ["remotion", "code", "developer", "changelog", "dev-tool"],
+  "model": "remotion-html",
+  "aspect": "16:9",
+  "prompt": "Build a 15-second Remotion code-reveal explainer (1920×1080, 30fps = 450 frames) named `CodeReveal`.\n\nProject under `.remotion-cache/<id>/`:\n- `package.json`, `src/index.ts`, `src/Root.tsx` (single composition)\n- `src/CodeReveal.tsx`\n- `src/atoms/EditorCard.tsx`, `ResultCard.tsx`, `Caret.tsx`\n\nVisual identity: pure black canvas #000; editor card uses #0d1117 (GitHub dark) with #c9d1d9 default text and per-token accents (keyword #ff7b72, string #a5d6ff, fn #d2a8ff, comment #8b949e). Single accent #6cf3c0 for highlights. Display face JetBrains Mono 36px, AAFoco Inter Display 96px on the closing tagline.\n\n**Beat 1 — Hook (0–60f, 2s)**: full-bleed black, single headline kinetic-types in (\"`The smallest API change that fixed our build.`\") using `slice(0, Math.floor(interpolate(frame,[0,40],[0,headline.length])))`. Hold 0.7s.\n\n**Beat 2 — Editor (60–270f, 7s)**: `EditorCard` slides in from below via `spring()`, then types out a 6-line snippet character-by-character. Use `useCurrentFrame()` rebased through `<Sequence from={60}>`. Snippet (default — let the agent swap it for the user's real example):\n\n```ts\nimport { defineConfig } from 'remotion';\n\nexport default defineConfig({\n  video: { codec: 'h264', fps: 30 },\n  preview: { browser: 'chromium' },\n});\n```\n\nRender each character at the right syntax-highlight colour by tokenising the snippet up-front (a small `tokens` array of `{ text, kind }` is fine; no real Prism needed). Append a blinking caret `<Caret>` after the last visible char (opacity = `frame % 30 < 15 ? 1 : 0`).\n\n**Beat 3 — Result (270–390f, 4s)**: `EditorCard` rotates -8° and shrinks to 60% in the top-left; `ResultCard` slides in from the right showing a tidy console snippet (\"`✓ build complete in 1.4s`\") plus a small bar chart with two bars (`before: 12.6s`, `after: 1.4s`) where bar widths tween from 0 to their proportional value. Each label uses tabular-nums.\n\n**Beat 4 — Outro (390–450f, 2s)**: black canvas, single Inter Display 96px tagline (\"`one-line config. shipped.`\") fades in via `spring()`, brand wordmark (5 spans, 60ms stagger) assembles below, hold to end.\n\nNon-negotiables: monospace mono everywhere code lives; kerning relaxed (`letter-spacing: 0.02em`) on the tagline; no audio; `--composition-id CodeReveal`. Output: `code-reveal.mp4`.",
+  "previewImageUrl": "https://www.remotion.dev/img/social-preview.png",
+  "source": {
+    "repo": "remotion-dev/remotion",
+    "license": "MIT",
+    "author": "Remotion",
+    "url": "https://www.remotion.dev/templates"
+  }
+}

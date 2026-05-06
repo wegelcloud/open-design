@@ -104,8 +104,9 @@ Save the \`file.name\` and reference it in your reply ("I generated
 ### Allowed execution paths
 
 For media projects, \`node "$OD_BIN" media generate …\` is the **only**
-approved execution path **except for the \`hyperframes-html\` video
-model** — see the carve-out below. Do not replace the dispatcher with
+approved execution path **except for the \`hyperframes-html\` and
+\`remotion-html\` / \`remotion-html-in-canvas\` video models** — see the
+carve-outs below. Do not replace the dispatcher with
 ad-hoc \`curl\` requests, direct imports of daemon modules, home-grown
 wrappers, or "equivalent" scripts. Do not probe the daemon with
 \`curl\`, \`lsof\`, \`netstat\`, or speculative environment debugging
@@ -169,6 +170,50 @@ You MAY still run lighter HF subcommands from your own shell:
 these spawn Chrome so the agent-side sandbox doesn't trip them.
 Reserve the daemon dispatch for anything Chrome-bound (\`render\`,
 \`inspect\`, \`preview\`).
+
+#### Carve-out: \`remotion-html\` / \`remotion-html-in-canvas\` are agent-authored, daemon-rendered
+
+The composition project is your job (a tiny React app under
+\`.remotion-cache/<id>/\` — \`src/index.ts\` calling \`registerRoot\`,
+\`src/Root.tsx\` with one or more \`<Composition id="…" />\`, plus the
+component files), but the actual \`npx remotion render\` step runs in
+the daemon process. Same sandbox-bypass story as HyperFrames: Remotion
+captures frames through puppeteer-controlled Chrome.
+
+Read \`skills/remotion/SKILL.md\` first. It covers when to pick
+\`remotion-html\` (most cases) vs \`remotion-html-in-canvas\` (only when
+the composition needs CSS that Chromium's default DOM composer can't
+capture — mix-blend + filter stacks, position:sticky inside a clipped
+scroller, etc.), and the canonical scaffold the skill ships.
+
+\`\`\`bash
+COMP_REL=".remotion-cache/$(date +%s)-$(openssl rand -hex 2)"
+COMP="$OD_PROJECT_DIR/$COMP_REL"
+mkdir -p "$COMP/src"
+
+# Author src/index.ts (registerRoot), src/Root.tsx
+# (<Composition id="MyComp" component={MyComp} durationInFrames=… fps=30
+#   width=… height=… />), src/MyComp.tsx, and a package.json that depends
+# on remotion + react. The skill ships ready-to-edit examples.
+
+node "$OD_BIN" media generate \\
+  --project "$OD_PROJECT_ID" \\
+  --surface video \\
+  --model remotion-html \\
+  --output "<descriptive-name>.mp4" \\
+  --composition-dir "$COMP_REL" \\
+  --composition-id "MyComp"
+\`\`\`
+
+Pass \`--model remotion-html-in-canvas\` to flip the experimental
+\`--allow-html-in-canvas\` flag on. Use it only for compositions that
+legitimately need it; the standard model is faster and works on every
+modern Chromium build (the html-in-canvas path needs Chrome Canary in
+early 2026, with a clear renderer warning if the API isn't available).
+
+The dispatcher streams Remotion's per-frame progress to your stderr.
+Final stdout line is \`{"file":{...}}\`; quote \`file.name\` in your
+reply.
 
 If the command fails, surface the command's actual stderr / exit status
 to the user. Do not invent a root cause ("daemon is down", "port is

@@ -38,6 +38,7 @@ const MEDIA_GENERATE_STRING_FLAGS = new Set([
   'voice',
   'audio-kind',
   'composition-dir',
+  'composition-id',
   'image',
   'daemon-url',
 ]);
@@ -177,6 +178,7 @@ async function runMediaGenerate(rawArgs) {
     voice: flags.voice,
     audioKind: flags['audio-kind'],
     compositionDir: flags['composition-dir'],
+    compositionId: flags['composition-id'],
     image: flags.image,
   };
   if (flags.length != null) body.length = Number(flags.length);
@@ -412,10 +414,16 @@ Common options:
   --duration <seconds>      Audio duration.
   --voice <voice-id>        Speech / TTS voice.
   --audio-kind music|speech|sfx
-  --composition-dir <path>  hyperframes-html only — project-relative path
-                            to the dir containing hyperframes.json /
-                            meta.json / index.html. The daemon runs
-                            \`npx hyperframes render\` against it.
+  --composition-dir <path>  hyperframes-html / remotion-html(-in-canvas) —
+                            project-relative path to the scaffolded
+                            composition dir. HF expects
+                            hyperframes.json / meta.json / index.html;
+                            Remotion expects src/index.ts (or .tsx) with
+                            a registerRoot call plus src/Root.tsx that
+                            registers <Composition id="…" />.
+  --composition-id <id>     Remotion only — id passed to <Composition>.
+                            The daemon runs \`npx remotion render
+                            <entry> <composition-id> <out>\`.
   --image <path>            Project-relative path to a reference image
                             (image-to-video for Seedance i2v models, or
                             future image-edit endpoints). Daemon reads

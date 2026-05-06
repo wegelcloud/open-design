@@ -1,0 +1,18 @@
+{
+  "id": "remotion-html-in-canvas-showcase",
+  "surface": "video",
+  "title": "Remotion · HTML-in-Canvas Showcase (12s)",
+  "summary": "A 12-second Remotion composition that exists to demonstrate the experimental Chromium HTML-in-Canvas (drawElementImage) capture path. Layers mix-blend-mode + backdrop-filter + position:sticky inside a clipped scroller — the canonical case where the default DOM composer differs visibly from the in-canvas path.",
+  "category": "Demo",
+  "tags": ["remotion", "html-in-canvas", "experimental", "compositing", "chromium"],
+  "model": "remotion-html-in-canvas",
+  "aspect": "16:9",
+  "prompt": "Build a 12-second Remotion composition (1920×1080, 30fps, 360 frames total) called `HtmlInCanvasShowcase` that uses the html-in-canvas-only CSS stack so the choice of `remotion-html-in-canvas` is visibly justified.\n\nProject layout under `.remotion-cache/<id>/`:\n- `package.json` — react 18, remotion 4 + @remotion/cli\n- `src/index.ts` — `registerRoot(RemotionRoot)`\n- `src/Root.tsx` — single `<Composition id=\"HtmlInCanvasShowcase\" component={HtmlInCanvasShowcase} durationInFrames={360} fps={30} width={1920} height={1080} />`\n- `src/HtmlInCanvasShowcase.tsx` — see below\n\nVisual identity: deep ink #0a0e16 canvas, single neon accent #6cf3c0, off-white text #f5f7fa. Display face Inter 96px tabular-nums; mono `JetBrains Mono` 18px on overlay labels.\n\nThe composition has three layered surfaces, each entering with a `spring()` over 0.6s and held until the end:\n\n1. **Sticky-in-clip layer** — a clipped scroll container (overflow:hidden, height:60vh, perspective:1200px). Inside, four `<section>`s stack vertically; each has `position:sticky` with `top:0` and a different gradient. Drive the inner scroll position with `useCurrentFrame()` so the stack scrolls 0→100% over the 12s. The sticky layout works in regular DOM but its compositing inside the clipped 3D container is what html-in-canvas captures more faithfully.\n\n2. **Mix-blend filter stack** — three concentric circular `<div>`s, each `mix-blend-mode: difference`, with stacked `filter: blur(20px) hue-rotate(<frame*2>deg) saturate(1.4)`. They orbit slowly via `transform: rotate()` driven by `interpolate(frame, [0, 360], [0, 360])`.\n\n3. **Backdrop-blur HUD** — a small bottom-left card with `backdrop-filter: blur(24px) saturate(120%)` showing a live frame counter (`{frame}/{durationInFrames}`) and a tiny tabular-nums readout of seconds elapsed. Crossing this card over the rotating mix-blend layer is exactly the situation where the default composer goes visually flat and html-in-canvas captures the layered translucency correctly.\n\nDispatch through the daemon:\n```bash\nnode \"$OD_BIN\" media generate --project \"$OD_PROJECT_ID\" --surface video --model remotion-html-in-canvas --output html-in-canvas-showcase.mp4 --composition-dir \"$COMP_REL\" --composition-id HtmlInCanvasShowcase\n```\n\nNon-negotiables: durationInFrames=360, fps=30, 1920×1080. No `<Audio>` track. The composition must work with a fresh `npx remotion render` invocation — no extra build steps. If the renderer warns that html-in-canvas isn't supported on the host Chrome, surface that warning to the user verbatim — the composition still renders, just with software rasterization, and the comparison is the whole point.",
+  "previewImageUrl": "https://www.remotion.dev/img/social-preview.png",
+  "source": {
+    "repo": "remotion-dev/remotion",
+    "license": "MIT",
+    "author": "Remotion",
+    "url": "https://www.remotion.dev/docs/client-side-rendering/html-in-canvas"
+  }
+}

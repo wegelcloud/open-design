@@ -1454,7 +1454,7 @@ function MediaProjectOptions(props:
 function supportedModels(surface: 'image' | 'video' | 'audio', models: MediaModel[]): MediaModel[] {
   const supportedProviders: Record<'image' | 'video' | 'audio', Set<string>> = {
     image: new Set(['openai', 'volcengine', 'grok']),
-    video: new Set(['volcengine', 'hyperframes', 'grok']),
+    video: new Set(['volcengine', 'hyperframes', 'remotion', 'grok']),
     audio: new Set(['minimax', 'fishaudio']),
   };
   return models.filter((model) => {

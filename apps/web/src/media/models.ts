@@ -32,6 +32,7 @@ export type MediaProviderId =
   | 'volcengine'
   | 'grok'
   | 'hyperframes'
+  | 'remotion'
   | 'bfl'
   | 'fal'
   | 'replicate'
@@ -102,6 +103,15 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     credentialsRequired: false,
     settingsVisible: false,
     docsUrl: 'https://hyperframes.heygen.com',
+  },
+  {
+    id: 'remotion',
+    label: 'Remotion',
+    hint: 'Local React -> MP4 renderer (compositions, html-in-canvas)',
+    integrated: true,
+    credentialsRequired: false,
+    settingsVisible: false,
+    docsUrl: 'https://www.remotion.dev/docs',
   },
   {
     id: 'bfl',
@@ -372,6 +382,16 @@ export const VIDEO_MODELS: MediaModel[] = [
   // MiniMax video.
   { id: 'minimax-video-01', label: 'video-01', hint: 'MiniMax · Hailuo', provider: 'minimax', caps: ['t2v', 'i2v'] },
   { id: 'hyperframes-html', label: 'hyperframes-html', hint: 'HyperFrames · local HTML renderer', provider: 'hyperframes', caps: ['t2v'] },
+
+  // Remotion — local React-component renderer. Two surface options so the
+  // picker exposes the standard path AND the experimental html-in-canvas
+  // capture path side-by-side without burying the option inside metadata.
+  // The daemon branches on the model id to set --allow-html-in-canvas
+  // when invoking `npx remotion render`. Same sandbox-bypass story as
+  // hyperframes-html: Chrome lives inside puppeteer, so the daemon (not
+  // the agent shell) drives rendering.
+  { id: 'remotion-html', label: 'remotion-html', hint: 'Remotion · React composition renderer', provider: 'remotion', caps: ['t2v'] },
+  { id: 'remotion-html-in-canvas', label: 'remotion-html-in-canvas', hint: 'Remotion · experimental Chromium drawElementImage capture', provider: 'remotion', caps: ['t2v', 'html-in-canvas'] },
 ];
 
 export const AUDIO_MODELS_BY_KIND: Record<AudioKind, MediaModel[]> = {

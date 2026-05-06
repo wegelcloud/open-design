@@ -13,6 +13,7 @@ export const MEDIA_PROVIDERS = [
   { id: 'volcengine', label: 'Volcengine Ark (Doubao)', hint: 'Seedance 2.0 / Seedream', integrated: true, defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
   { id: 'grok', label: 'xAI Grok Imagine', hint: 'grok-imagine — image + video with native audio', integrated: true, defaultBaseUrl: 'https://api.x.ai/v1' },
   { id: 'hyperframes', label: 'HyperFrames', hint: 'Local HTML -> MP4 renderer', integrated: true, credentialsRequired: false, settingsVisible: false },
+  { id: 'remotion', label: 'Remotion', hint: 'Local React -> MP4 renderer (compositions, html-in-canvas)', integrated: true, credentialsRequired: false, settingsVisible: false },
   { id: 'bfl', label: 'Black Forest Labs', hint: 'FLUX 1.1 Pro / FLUX Pro / Dev', integrated: false, defaultBaseUrl: 'https://api.bfl.ai' },
   { id: 'fal', label: 'Fal.ai', hint: 'Sora / Seedance / Veo / FLUX', integrated: false, defaultBaseUrl: 'https://fal.run' },
   { id: 'replicate', label: 'Replicate', hint: 'FLUX / SDXL / Ideogram', integrated: false, defaultBaseUrl: 'https://api.replicate.com/v1' },
@@ -78,6 +79,8 @@ export const VIDEO_MODELS = [
 
   { id: 'minimax-video-01', label: 'video-01', hint: 'MiniMax · Hailuo', provider: 'minimax', caps: ['t2v', 'i2v'] },
   { id: 'hyperframes-html', label: 'hyperframes-html', hint: 'HyperFrames · local HTML renderer', provider: 'hyperframes', caps: ['t2v'] },
+  { id: 'remotion-html', label: 'remotion-html', hint: 'Remotion · React composition renderer', provider: 'remotion', caps: ['t2v'] },
+  { id: 'remotion-html-in-canvas', label: 'remotion-html-in-canvas', hint: 'Remotion · experimental Chromium drawElementImage capture', provider: 'remotion', caps: ['t2v', 'html-in-canvas'] },
 ];
 
 export const AUDIO_MODELS_BY_KIND = {

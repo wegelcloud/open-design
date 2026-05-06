@@ -1,0 +1,18 @@
+{
+  "id": "remotion-marketing-growth-funnel",
+  "surface": "video",
+  "title": "Remotion · Marketing Growth Funnel (20s)",
+  "summary": "A 20-second growth-marketing explainer rendering an animated 4-stage funnel (visitors → signups → activated → paying) with live tweening counters, a CAC/LTV inset, and a bottom-third CTA bar. Stages reveal sequentially via `<Series>` with `spring()` entrances; numbers tween via `interpolate()` and tabular-nums.",
+  "category": "Marketing",
+  "tags": ["remotion", "growth", "funnel", "kpi", "data-viz"],
+  "model": "remotion-html",
+  "aspect": "16:9",
+  "prompt": "Build a 20-second Remotion growth-funnel explainer (1920×1080, 30fps = 600 frames) named `GrowthFunnel`.\n\nProject under `.remotion-cache/<id>/`:\n- `package.json` (react 18, remotion 4, @remotion/cli)\n- `src/index.ts` (`registerRoot`)\n- `src/Root.tsx` — `<Composition id=\"GrowthFunnel\" component={GrowthFunnel} durationInFrames={600} fps={30} width={1920} height={1080} defaultProps={{ brand: 'YourSaaS', accent: '#7da4ff' }} />`\n- `src/GrowthFunnel.tsx` — orchestrates `<Series>` stages\n- `src/stages/Hook.tsx`, `Funnel.tsx`, `UnitEcon.tsx`, `Outro.tsx`\n\nVisual identity: dark indigo canvas #0b1220, accent #7da4ff (passed as prop), off-white text #f5f7fa, dim chrome #6b7589 for non-headline labels. Inter Display 96px headlines, JetBrains Mono 20px on numbers, all data uses tabular-nums.\n\n**Stage 1 — Hook (frames 0–90, 3s)**: A single full-bleed line (\"`Where do users actually drop off?`\") types in left-to-right via `interpolate(frame, [0, 60], [0, headline.length], { extrapolateRight: 'clamp' })` and `headline.slice(0, charsShown)`. A blinking caret follows. Hold for 1s.\n\n**Stage 2 — Funnel (frames 90–390, 10s)**: Render the 4 funnel stages as horizontal bars in a centered column, each stage trapezoidally narrower than the prior. Stage labels (left): \"Visitors\", \"Sign-ups\", \"Activated\", \"Paying\". Stage values (right, tabular-nums): 84,200 → 12,640 → 4,180 → 1,210. Drop-off percentages render below each connector in muted text.\n\nReveal each stage via `<Sequence from={…} durationInFrames={75}>`. Inside each: bar `width` tweens from 0 to its full proportion via `spring()`; the value tweens from 0 to its target via `Math.round(interpolate(localFrame, [0, 50], [0, target]))`. After the stage settles, the drop-off label fades in with a small downward `translateY` over 12 frames.\n\n**Stage 3 — Unit economics inset (frames 390–510, 4s)**: Side-slide a smaller card from the right with `interpolate(localFrame, [0, 24], [400, 0])` on translateX. The card carries 3 rows: CAC $48 → LTV $612 → Payback 2.1 months. Each row's value tweens with `Math.round()` + tabular-nums. A small inline arrow visualises the LTV/CAC ratio as a tiny accent-coloured horizontal bar.\n\n**Stage 4 — Outro (frames 510–600, 3s)**: brand wordmark assembles piece-by-piece (5 spans, 80ms `spring()` stagger), then a single CTA pill \"`book a 30-min growth review · {brand}.com`\" slides up from below over 18 frames and holds.\n\nNon-negotiables: every digit uses tabular-nums; the funnel must remain legible at 50% scale (Twitter / LinkedIn auto-play); no exit animations; no audio track. `--composition-id GrowthFunnel`. Output: `growth-funnel.mp4`.",
+  "previewImageUrl": "https://www.remotion.dev/img/social-preview.png",
+  "source": {
+    "repo": "remotion-dev/remotion",
+    "license": "MIT",
+    "author": "Remotion",
+    "url": "https://www.remotion.dev/showcase"
+  }
+}

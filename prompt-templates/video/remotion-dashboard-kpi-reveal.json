@@ -1,0 +1,18 @@
+{
+  "id": "remotion-dashboard-kpi-reveal",
+  "surface": "video",
+  "title": "Remotion · Dashboard / KPI Reveal (18s)",
+  "summary": "An 18-second product-marketing clip that animates a SaaS analytics dashboard: 4 KPI tiles tween counters, a bar chart fills row-by-row, a sparkline draws left-to-right, and a small bottom-row table renders cells with staggered entrances. Built for product-launch threads, Q&A 'what's new' clips, and changelog announcements.",
+  "category": "Marketing",
+  "tags": ["remotion", "dashboard", "kpi", "data-viz", "product-promo"],
+  "model": "remotion-html",
+  "aspect": "16:9",
+  "prompt": "Build an 18-second Remotion dashboard reveal (1920×1080, 30fps = 540 frames) named `DashboardReveal`.\n\nProject under `.remotion-cache/<id>/`:\n- `package.json`, `src/index.ts`, `src/Root.tsx`\n- `src/DashboardReveal.tsx`\n- `src/atoms/KpiTile.tsx`, `BarChart.tsx`, `Sparkline.tsx`, `LedgerRow.tsx`\n\nVisual identity: cool slate canvas #0e1116, panel surface #161a23, accent mint #6cf3c0 for positive deltas, soft red #ff7b72 for negatives, off-white text #f5f7fa, dim #6b7589 for axis labels. Inter Display 56px on KPI numbers, JetBrains Mono 16px on labels and ledger, all numbers use tabular-nums.\n\nLayout: 12-column grid, 80px outer gutter. Top row: 4 KPI tiles spanning 3 cols each. Middle row: 1 bar chart spanning 8 cols, 1 sparkline tile spanning 4 cols. Bottom row: ledger table spanning all 12 cols (4 rows visible).\n\n**Beat 1 — KPI tiles (0–150f, 5s)**: each tile reveals at a 200ms `spring()` stagger. Inside each tile: a 12px label, the numeric value tweens from 0 to its target via `Math.round(interpolate(localFrame, [0, 60], [0, target]))`, and a delta pill (\"+12.4%\" or \"-3.1%\") fades in at localFrame 60. Targets (defaults): MRR `$184,260`, ARPU `$78.40`, churn `2.1%`, NPS `54`.\n\n**Beat 2 — Bar chart (150–300f, 5s)**: 7 daily bars (Mon–Sun). Each bar's `height` springs from 0 to its proportional value with a 60ms stagger. Bar colour = accent for top-3 days, panel-2 #2a3144 for the rest. Y-axis stays static; x-axis labels fade in over the first 30 frames.\n\n**Beat 3 — Sparkline (250–360f, ~3.5s overlap)**: a path with 30 points renders left-to-right by tweening `strokeDashoffset` from total path length to 0 over 60 frames. A tiny circle marker tracks the rightmost visible point. Below, 'Last 30 days' label + tabular-nums end-value.\n\n**Beat 4 — Ledger (360–510f, 5s)**: 4 rows, each a `<Sequence>` with a 30f stagger. Each row has columns `time | event | delta | total`. Rows enter from the right via `interpolate(localFrame, [0, 18], [40, 0])` on translateX with opacity 0→1.\n\n**Beat 5 — Outro (510–540f, 1s)**: a thin accent bar sweeps left→right across the bottom, brand wordmark fades in top-right.\n\nNon-negotiables: every number uses tabular-nums + `Math.round()`; bar/sparkline math derives from `interpolate()` only (no setInterval / requestAnimationFrame); no audio; `--composition-id DashboardReveal`. Output: `dashboard-reveal.mp4`.",
+  "previewImageUrl": "https://www.remotion.dev/img/social-preview.png",
+  "source": {
+    "repo": "remotion-dev/remotion",
+    "license": "MIT",
+    "author": "Remotion",
+    "url": "https://www.remotion.dev/showcase"
+  }
+}

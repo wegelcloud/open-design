@@ -269,6 +269,22 @@ function renderMetadataBlock(
         'Special case: `hyperframes-html` is a local HTML-to-MP4 renderer, not a photoreal text-to-video model. Treat it like a motion design renderer, ask at most one clarifying question, then dispatch immediately.',
       );
     }
+    if (
+      metadata.videoModel === 'remotion-html' ||
+      metadata.videoModel === 'remotion-html-in-canvas'
+    ) {
+      lines.push(
+        'Special case: `remotion-html` is a local React-component → MP4 renderer, not a photoreal text-to-video model. Read `skills/remotion/SKILL.md`, scaffold a tiny Remotion project under `.remotion-cache/<id>/` (src/index.ts calling `registerRoot`, src/Root.tsx registering one `<Composition id="…">`, plus the component files), then dispatch with `--composition-dir` AND `--composition-id`. Ask at most one clarifying question first.',
+      );
+      lines.push(
+        'Discovery for Remotion projects: emit a single `<question-form>` on turn 1 with these radio/select questions, unless the user\'s prompt or `referenceTemplate` already pins each value: (1) **pattern** — kinetic typography sizzle / product lifecycle saga / dashboard or KPI reveal / code & feature reveal / marketing growth funnel / freeform; (2) **brand accent** (text input, hex or palette name); (3) **headline / subject** (text input); (4) **duration** (radio: 8s / 12s / 20s / 30s / 45s); (5) optional **subject data** (textarea) for charts or numeric targets. Skip the form ONLY when the project metadata already includes a `referenceTemplate` whose `prompt` covers all five.',
+      );
+    }
+    if (metadata.videoModel === 'remotion-html-in-canvas') {
+      lines.push(
+        'The `-in-canvas` variant flips Chromium\'s experimental `drawElementImage` capture path on. Pick it only when the composition needs CSS the default DOM composer can\'t capture (mix-blend + filter stacks, position:sticky inside clipped scrollers). For typical title cards / kinetic typography / data reveals stick with plain `remotion-html`.',
+      );
+    }
   }
   if (metadata.kind === 'audio') {
     lines.push(
