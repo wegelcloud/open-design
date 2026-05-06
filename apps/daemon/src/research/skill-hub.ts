@@ -14,6 +14,13 @@
 //     files (matches `apps/daemon/src/craft.ts` resolution layout).
 //   - Frontmatter validation matches the minimum schema in
 //     `docs/skills-protocol.md` (name + description, optional `od:` block).
+//   - For `design-systems` and `craft`, a manifest may use the historical
+//     plain-Markdown shape (heading + `> Category:` / blockquote summary)
+//     instead of YAML frontmatter; in that case the manifest id is derived
+//     from the directory / file basename and the description is derived
+//     from the heading and first blockquote block. The 140+ design systems
+//     and craft modules Open Design already ships use this shape, so
+//     rejecting it would break the starter's stated purpose.
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -131,13 +138,12 @@ async function readDirEntry(
     if (!meta.download_url) return null;
     const raw = await fetchRawCapped(meta.download_url, r.token);
     if (!raw) return null;
-    const fm = parseFrontmatter(raw);
-    if (!validateFrontmatter(namespace, fm, dir.name)) return null;
-    const description = typeof fm['description'] === 'string' ? fm['description'].trim() : undefined;
+    const resolved = resolveManifest(namespace, raw, dir.name);
+    if (!resolved) return null;
     return {
       namespace,
       name: dir.name,
-      ...(description ? { description } : {}),
+      ...(resolved.description ? { description: resolved.description } : {}),
       raw,
       source: { repo: r.repo, branch: r.branch, path: `${dir.path}/${fileName}` },
     };
@@ -156,13 +162,12 @@ async function readFileEntry(
   const raw = await fetchRawCapped(file.download_url, r.token);
   if (!raw) return null;
   const slug = file.name.replace(/\.md$/, '');
-  const fm = parseFrontmatter(raw);
-  if (!validateFrontmatter(namespace, fm, slug)) return null;
-  const description = typeof fm['description'] === 'string' ? fm['description'].trim() : undefined;
+  const resolved = resolveManifest(namespace, raw, slug);
+  if (!resolved) return null;
   return {
     namespace,
     name: slug,
-    ...(description ? { description } : {}),
+    ...(resolved.description ? { description: resolved.description } : {}),
     raw,
     source: { repo: r.repo, branch: r.branch, path: file.path },
   };
@@ -313,6 +318,11 @@ function stripQuotes(s: string): string {
  *   - craft           → description required, file basename must be a
  *                       lowercase slug, and the frontmatter `name` (if
  *                       present) must match the file basename.
+ *
+ * Note: this function only succeeds when the manifest carries YAML
+ * frontmatter. For `design-systems` and `craft`, callers should prefer
+ * `resolveManifest` so manifests in the historical plain-Markdown shape
+ * (heading + `> Category:` blockquote) are also accepted.
  */
 export function validateFrontmatter(
   namespace: HubNamespace,
@@ -342,6 +352,94 @@ export function validateFrontmatter(
     }
   }
   return true;
+}
+
+const MAX_DESCRIPTION_CHARS = 280;
+
+/**
+ * Derive a description from the historical plain-Markdown shape used by
+ * Open Design's existing `design-systems/*\/DESIGN.md` and `craft/*.md`
+ * files: a top-level `# <Heading>` followed by an optional blockquote
+ * block. Returns whatever was found, capped at `MAX_DESCRIPTION_CHARS`.
+ *
+ * Examples this needs to accept:
+ *   - `# Design System Inspired by Apple` + `> Category: Media & Consumer`
+ *   - `# Atelier Zero` + `> Category: Editorial · Studio` (multi-line)
+ *   - `# Accessibility baseline craft rules` (no blockquote)
+ */
+export function deriveHeadingDescription(raw: string): {
+  heading?: string;
+  description?: string;
+} {
+  const text = raw.replace(/^﻿/, '');
+  const stripped = text.replace(FRONTMATTER_PATTERN, (_match, _yaml, body: string) => body);
+  const lines = stripped.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length && (lines[i] ?? '').trim() === '') i++;
+  const headingLine = lines[i];
+  if (!headingLine || !headingLine.trimStart().startsWith('# ')) return {};
+  const heading = headingLine.trimStart().slice(2).trim();
+  if (!heading) return {};
+  i++;
+  while (i < lines.length && (lines[i] ?? '').trim() === '') i++;
+  const blockquote: string[] = [];
+  while (i < lines.length) {
+    const line = lines[i] ?? '';
+    if (!line.trimStart().startsWith('>')) break;
+    const inner = line.replace(/^\s*>\s?/, '').trim();
+    if (inner) blockquote.push(inner);
+    i++;
+  }
+  const summary = blockquote.join(' ').trim();
+  const combined = summary ? `${heading} — ${summary}` : heading;
+  const description = combined.length > MAX_DESCRIPTION_CHARS
+    ? `${combined.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`
+    : combined;
+  return { heading, description };
+}
+
+/**
+ * Resolve a hub manifest to `{description}` for storage in `HubEntry`.
+ *
+ *   - `skills` requires YAML frontmatter (the 65+ skills Open Design ships
+ *     all use the documented `name` / `description` frontmatter shape).
+ *   - `design-systems` and `craft` accept either YAML frontmatter or the
+ *     historical plain-Markdown shape (heading + optional blockquote).
+ *     The 140+ design systems and the craft modules currently in the repo
+ *     use the latter, so a hub that mirrors them would otherwise return
+ *     no entries.
+ *
+ * Always re-validates the manifest id against the namespace's slug rules
+ * to keep the path-traversal guards intact.
+ */
+export function resolveManifest(
+  namespace: HubNamespace,
+  raw: string,
+  manifestId: string,
+): { description: string } | null {
+  const fm = parseFrontmatter(raw);
+  if (validateFrontmatter(namespace, fm, manifestId)) {
+    const description = (fm['description'] as string).trim();
+    return { description };
+  }
+  if (namespace === 'skills') return null;
+  const idPattern = namespace === 'design-systems' ? NAME_PATTERN : SLUG_PATTERN;
+  if (!idPattern.test(manifestId)) return null;
+  const fmName = fm['name'];
+  if (fmName !== undefined && (typeof fmName !== 'string' || fmName !== manifestId)) {
+    return null;
+  }
+  const od = fm['od'];
+  if (od !== undefined) {
+    if (typeof od !== 'object' || od === null) return null;
+    const mode = (od as Record<string, unknown>)['mode'];
+    if (mode !== undefined && (typeof mode !== 'string' || !ALLOWED_OD_MODES.has(mode))) {
+      return null;
+    }
+  }
+  const fallback = deriveHeadingDescription(raw);
+  if (!fallback.description) return null;
+  return { description: fallback.description };
 }
 
 /**
@@ -386,9 +484,8 @@ export async function installHubEntry(
   entry: HubEntry,
   opts: InstallOptions,
 ): Promise<{ path: string }> {
-  const fm = parseFrontmatter(entry.raw);
-  if (!validateFrontmatter(entry.namespace, fm, entry.name)) {
-    throw new Error(`Hub entry frontmatter failed validation: ${entry.namespace}/${entry.name}`);
+  if (!resolveManifest(entry.namespace, entry.raw, entry.name)) {
+    throw new Error(`Hub entry manifest failed validation: ${entry.namespace}/${entry.name}`);
   }
   let target: string;
   if (entry.namespace === 'craft') {
