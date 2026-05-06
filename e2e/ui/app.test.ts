@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { automatedCases } from '../cases';
-import type { UICase } from '../cases/types';
+import type { Dialog, Page, Request, Response } from '@playwright/test';
+import { automatedUiScenarios } from '@/playwright/resources';
+import type { UiScenario } from '@/playwright/resources';
 
 const STORAGE_KEY = 'open-design:config';
 
@@ -23,7 +24,7 @@ test.beforeEach(async ({ page }) => {
   }, STORAGE_KEY);
 });
 
-for (const entry of automatedCases()) {
+for (const entry of automatedUiScenarios()) {
   test(`${entry.id}: ${entry.title}`, async ({ page }) => {
     await page.route('**/api/agents', async (route) => {
       await route.fulfill({
@@ -300,14 +301,14 @@ for (const entry of automatedCases()) {
 }
 
 async function createProject(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await createProjectNameOnly(page, entry);
   await page.getByTestId('create-project').click();
 }
 
-async function expectWorkspaceReady(page: Parameters<typeof test>[0]['page']) {
+async function expectWorkspaceReady(page: Page) {
   await expect(page).toHaveURL(/\/projects\//);
   await expect(page.getByTestId('chat-composer')).toBeVisible();
   await expect(page.getByTestId('file-workspace')).toBeVisible();
@@ -315,7 +316,7 @@ async function expectWorkspaceReady(page: Parameters<typeof test>[0]['page']) {
 }
 
 async function sendPrompt(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   prompt: string,
 ) {
   const input = page.getByTestId('chat-composer-input');
@@ -327,7 +328,7 @@ async function sendPrompt(
       await expect(input).toHaveValue(prompt, { timeout: 1500 });
       await expect(sendButton).toBeEnabled({ timeout: 1500 });
       const chatResponse = page.waitForResponse(
-        (resp) => resp.url().includes('/api/runs') && resp.request().method() === 'POST',
+        (resp: Response) => resp.url().includes('/api/runs') && resp.request().method() === 'POST',
         { timeout: 2000 },
       );
       await sendButton.evaluate((button: HTMLButtonElement) => button.click());
@@ -342,7 +343,7 @@ async function sendPrompt(
         await expect(input).toHaveValue(prompt, { timeout: 1500 });
         await expect(sendButton).toBeEnabled({ timeout: 1500 });
         const chatResponse = page.waitForResponse(
-          (resp) => resp.url().includes('/api/runs') && resp.request().method() === 'POST',
+          (resp: Response) => resp.url().includes('/api/runs') && resp.request().method() === 'POST',
           { timeout: 2000 },
         );
         await sendButton.evaluate((button: HTMLButtonElement) => button.click());
@@ -356,8 +357,8 @@ async function sendPrompt(
 }
 
 async function runDesignSystemSelectionFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await createProjectNameOnly(page, entry);
   await page.getByTestId('design-system-trigger').click();
@@ -373,8 +374,8 @@ async function runDesignSystemSelectionFlow(
 }
 
 async function runExampleUsePromptFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await page.getByTestId('entry-tab-examples').click();
   await expect(page.getByTestId('example-card-warm-utility-example')).toBeVisible();
@@ -388,8 +389,8 @@ async function runExampleUsePromptFlow(
 }
 
 async function runQuestionFormSelectionLimitFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await sendPrompt(page, entry.prompt);
 
@@ -425,8 +426,8 @@ async function runQuestionFormSelectionLimitFlow(
 }
 
 async function runQuestionFormSubmitPersistenceFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await sendPrompt(page, entry.prompt);
 
@@ -463,8 +464,8 @@ async function runQuestionFormSubmitPersistenceFlow(
 }
 
 async function runGenerationDoesNotCreateExtraFileFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await sendPrompt(page, entry.prompt);
   await expectArtifactVisible(page, entry);
@@ -482,8 +483,8 @@ async function runGenerationDoesNotCreateExtraFileFlow(
 }
 
 async function runCommentAttachmentFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await sendPrompt(page, entry.prompt);
   await expectArtifactVisible(page, entry);
@@ -532,7 +533,7 @@ async function runCommentAttachmentFlow(
   await expect(page.getByTestId('staged-comment-attachments')).toContainText('hero-title');
 
   const runRequest = page.waitForRequest(
-    (request) => request.url().includes('/api/runs') && request.method() === 'POST',
+    (request: Request) => request.url().includes('/api/runs') && request.method() === 'POST',
   );
   await page.getByTestId('chat-send').click();
   const request = await runRequest;
@@ -553,8 +554,8 @@ async function runCommentAttachmentFlow(
 }
 
 async function createProjectNameOnly(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await expect(page.getByTestId('new-project-panel')).toBeVisible();
   if (entry.create.tab) {
@@ -564,7 +565,7 @@ async function createProjectNameOnly(
 }
 
 async function getCurrentProjectContext(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
 ): Promise<{ projectId: string; conversationId: string }> {
   const current = new URL(page.url());
   const [, projects, projectId, maybeConversations, conversationId] = current.pathname.split('/');
@@ -586,7 +587,7 @@ async function getCurrentProjectContext(
 }
 
 async function listProjectFilesFromApi(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   projectId: string,
 ): Promise<Array<{ name: string; kind: string }>> {
   const response = await page.request.get(`/api/projects/${projectId}/files`);
@@ -596,8 +597,8 @@ async function listProjectFilesFromApi(
 }
 
 async function expectArtifactVisible(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   const artifact = entry.mockArtifact!;
   await expect(page.getByText(artifact.fileName, { exact: true })).toBeVisible();
@@ -607,8 +608,8 @@ async function expectArtifactVisible(
 }
 
 async function runConversationPersistenceFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await sendPrompt(page, entry.prompt);
   await expect(page.getByText(entry.prompt, { exact: true })).toBeVisible();
@@ -640,8 +641,8 @@ async function runConversationPersistenceFlow(
 }
 
 async function runFileMentionFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   const current = new URL(page.url());
   const [, projects, projectId] = current.pathname.split('/');
@@ -672,8 +673,8 @@ async function runFileMentionFlow(
 }
 
 async function runDeepLinkPreviewFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   await sendPrompt(page, entry.prompt);
   await expectArtifactVisible(page, entry);
@@ -697,11 +698,11 @@ async function runDeepLinkPreviewFlow(
 }
 
 async function runFileUploadSendFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
   const uploadResponse = page.waitForResponse(
-    (resp) => resp.url().includes('/upload') && resp.request().method() === 'POST',
+    (resp: Response) => resp.url().includes('/upload') && resp.request().method() === 'POST',
     { timeout: 5000 },
   );
   await page.getByTestId('chat-file-input').setInputFiles({
@@ -723,7 +724,7 @@ async function runFileUploadSendFlow(
 }
 
 async function runDesignFilesUploadFlow(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
 ) {
   await page.getByTestId('design-files-upload-input').setInputFiles({
     name: 'moodboard.png',
@@ -750,9 +751,9 @@ async function runDesignFilesUploadFlow(
 }
 
 async function runDesignFilesDeleteFlow(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
 ) {
-  page.on('dialog', async (dialog) => {
+  page.on('dialog', async (dialog: Dialog) => {
     await dialog.accept();
   });
 
@@ -803,7 +804,7 @@ async function runDesignFilesDeleteFlow(
 }
 
 async function runDesignFilesTabPersistenceFlow(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
 ) {
   const pngBytes = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5W6McAAAAASUVORK5CYII=',
@@ -842,10 +843,10 @@ async function runDesignFilesTabPersistenceFlow(
 }
 
 async function runConversationDeleteRecoveryFlow(
-  page: Parameters<typeof test>[0]['page'],
-  entry: UICase,
+  page: Page,
+  entry: UiScenario,
 ) {
-  page.on('dialog', async (dialog) => {
+  page.on('dialog', async (dialog: Dialog) => {
     await dialog.accept();
   });
 
