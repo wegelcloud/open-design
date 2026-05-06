@@ -50,7 +50,7 @@ namespace paths, and the packaged sidecar launcher passes daemon managed paths v
 own default fallback for non-packaged launches, but packaged runtime must not rely on fallback inference from Electron
 `userData`, app bundle names, or ports.
 
-The current release slice is mac beta publication. Runtime updater integration and Windows packaging remain later phases.
+Runtime updater integration remains a later phase.
 
 Electron-builder resources live under `tools/pack/resources/mac/`. The current logo is staged there as the mac icon/DMG
 placeholder so future design-provided assets can replace the resource files without changing packaging code.
@@ -58,6 +58,42 @@ placeholder so future design-provided assets can replace the resource files with
 Local developer artifacts bake the tools-pack namespace runtime root so `tools-pack mac start/stop/logs/cleanup` can manage
 them from the repo. Release artifacts use `--portable` so the installed app resolves namespace data/log/runtime/user-data
 from the user's Electron `userData` root instead of the build machine's `.tmp` path.
+
+## Windows
+
+Local lifecycle commands:
+
+- `tools-pack win build --to dir` for fast unpacked smoke builds.
+- `tools-pack win build --to nsis` for installer builds.
+- `tools-pack win build --to all` for both outputs.
+- `tools-pack win install`
+- `tools-pack win start`
+- `tools-pack win inspect --expr "document.title"`
+- `tools-pack win logs`
+- `tools-pack win stop`
+- `tools-pack win cleanup`
+- `tools-pack win list`
+- `tools-pack win reset`
+
+Build artifacts are namespace-scoped under `.tmp/tools-pack/out/win/namespaces/<namespace>/`.
+Packaged runtime state is namespace-scoped under `.tmp/tools-pack/runtime/win/namespaces/<namespace>/`.
+`--to dir` may point `built-app.json` at an immutable cached `win-unpacked` executable while keeping
+namespace-local config and runtime paths outside that cache entry.
+
+### FAQ: Why should Windows NSIS smoke namespaces stay short?
+
+Windows installer smoke tests should use short namespaces such as `rg`, `smoke`, or `nsis-a` when validating
+`tools-pack win install/start/inspect/cleanup`. NSIS extracts deeply nested Next.js standalone files under the
+namespace-scoped install directory; long namespaces can push installed paths past the traditional Windows 260-character
+limit even when the builder `win-unpacked` output is correct.
+
+Observed example: namespace `regression-merge-nsis` installed successfully but the installed app failed to start because
+`next/dist/server/route-matcher-providers/helpers/cached-route-matcher-provider.js` was present in the builder output and
+missing from the installed directory. The installed path was 264 characters. Re-running the same NSIS smoke with namespace
+`rg` passed `install`, `start`, `inspect`, `logs`, `stop`, and `cleanup`.
+
+Use a long namespace only when intentionally testing installer path-length behavior. For ordinary capability regression,
+keep the namespace short so the smoke validates packaging/runtime behavior rather than Windows path-length tolerance.
 
 ## Linux
 
