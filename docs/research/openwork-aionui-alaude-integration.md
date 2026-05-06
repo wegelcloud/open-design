@@ -238,14 +238,20 @@ UI(P1 才做):
 - 调试场景:Agent 可以打开 user 部署的 Vercel URL 直接读 console / 网络面板,而不是让用户手动复制错误日志。
 
 **为什么 Open Design 需要**:
-- 当前所有 agent 都是 sandboxed("只能读 .od/projects/<id>/ 下的文件 + 调 LLM"),数据获取面向"本地文件 + 媒体 API",缺一条"开放 web"通道。
+- 当前 adapter 的权限面**并不是统一 sandboxed**:`agents.ts` 中多个 adapter 走 `--dangerously-skip-permissions` / `bypassPermissions` / 直接 shell exec 路径,先把"用户已经授权这个 agent 跑"等同于"它可以做任何事"。在这个前提下广撒 browser MCP,等于把"打开任意 URL / 抓页面 / 写表单 / 点按钮"加到一组本来就跑得很宽的 agent 上,trust boundary 已经不是 per-tool consent 能兜住的(PR #617 review, P1)。
+- 数据获取面向"本地文件 + 媒体 API",缺一条"开放 web"通道,但这条通道必须由 daemon 在传输层强制约束,不能委托给单个 adapter 的 permission flag。
 - preview iframe 是 sandboxed 的 vendored React+Babel,**不能跨域 fetch**,所以不能让 user 让 preview 自己去抓数据;browser-use 把这条路在另一端打开。
 - Electron desktop 已经在 deps 里了,**但不应该走 Labaik 的"自研 BrowserWindow"路径**:那条路只对 Electron 生效,web 模式失效;且需要对每个 adapter 单独注册 tool schema,失去 MCP 的复用优势。
 
 **为什么选 MCP 而非自研**:
 - `chrome-devtools-mcp@0.17.0` 是 Google 官方维护的 npm 包(CDP 协议封装),自研无优势。
 - MCP 协议天生跨 adapter:claude-code / codex / gemini-cli / cursor-agent / opencode 都已支持 MCP;接一次,所有 adapter 同时获得能力。
-- 安全模型(独立 profile + tool consent)是 MCP 标准,不需要自己重做。
+- **但 MCP 协议本身并不构成 Open Design 需要的 trust boundary**。多个 adapter 在 auto-approve / non-interactive 模式下跑,pass-through 的 MCP "tool consent" 形同虚设。daemon 必须在 adapter 与 MCP server 之间插一层自己拥有的代理:
+  1. **默认 deny browser-use**:settings 中显式启用前,daemon 拒绝把任何 browser MCP server 注入到 adapter 配置。
+  2. **传输层 read-only allowlist**:启用后,proxy 默认只放行 `browser_navigate` / `browser_get_text` / `browser_screenshot` 等只读工具;`click` / `fill` / `type` / `evaluate` 等交互工具默认 block,即使 adapter 自身 auto-approve 也无法绕过(filter 在 daemon 侧,不在 adapter 侧)。
+  3. **UI-level explicit approval for interactive tools**:解锁交互工具需要用户在 daemon UI 里按工具粒度逐个确认,不是 adapter 单独的 "always allow"。
+  4. **per-call audit + revocation**:每次 browser MCP 调用走 audit log(§5.2 P1-1),用户可以一键吊销已经授予的工具。
+- 安全模型由 daemon 主动构建,不依赖各 adapter 的 permission flag —— 这才是把"分散 + 高权限"的 adapter 现状收敛到统一可控面的方式。
 
 **最小落地形态**(P0 范围):
 
@@ -256,18 +262,31 @@ import { spawn } from 'node:child_process';
 export interface BrowserMcpConfig {
   pinnedVersion: string;        // '0.17.0',避免 latest 漂移
   profileDir: string;           // .od/browser-profile/(独立,不复用 user Chrome)
-  enabled: boolean;             // settings 默认 false
+  enabled: boolean;             // settings 默认 false (default-deny)
+  toolAllowlist: string[];      // daemon-owned,默认仅只读工具
 }
 
+// daemon 自己启动 chrome-devtools-mcp,并在 adapter 与该 server 之间插一层
+// proxy:adapter 看到的是 daemon 暴露的 MCP endpoint,不是直连
+// chrome-devtools-mcp。proxy 在传输层强制 toolAllowlist —— 即使 adapter
+// 在 --dangerously-skip-permissions / bypassPermissions 模式下跑,被 block
+// 的工具也不会到达底层 server。
 export function spawnBrowserMcp(cfg: BrowserMcpConfig) {
-  // npm exec --yes chrome-devtools-mcp@<pinned> -- --user-data-dir=<profileDir>
-  // stdio JSON-RPC,daemon 把 endpoint 注入到所有 adapter 的 MCP 配置
+  // 1. spawn `npm exec --yes chrome-devtools-mcp@<pinned>
+  //    --user-data-dir=<profileDir>` (stdio JSON-RPC, daemon-owned)
+  // 2. open daemon-owned MCP proxy endpoint; adapter MCP 配置只指向此
+  //    proxy,不直接看到 chrome-devtools-mcp。
+  // 3. proxy 在 `tools/list` 上裁剪到 cfg.toolAllowlist,在
+  //    `tools/call` 上拒绝任何不在 allowlist 内的调用,并把结果写入 audit。
 }
 ```
 
-P0 阶段只解锁 3 个只读工具:`browser_navigate` / `browser_get_text` / `browser_screenshot`(交互 click/fill 留 P1)。
+P0 阶段 `toolAllowlist` 默认只解锁 3 个只读工具:`browser_navigate` / `browser_get_text` / `browser_screenshot`(交互 `click` / `fill` 留 P1,且解锁需要 UI-level 显式确认,不允许 adapter 单独 always-allow)。
 
-UI:settings 加开关 "Allow agents to browse web",默认关。
+UI:
+- settings 加开关 "Allow agents to browse web",默认关 (default-deny)。
+- 启用后,只读工具自动可用;交互工具列表为空,需要逐个手动添加。
+- audit log 抽屉显式区分 `browser.*` 行,支持一键吊销当前 allowlist。
 
 **为什么不抄 Labaik 的 BrowserWindow 路径**:
 1. 只在 Electron 模式有 BrowserWindow;web 模式(浏览器访问 daemon)拿不到。
@@ -339,7 +358,7 @@ bundle 内容(JSON):
 | 3 | **ACP 协议一等公民化 + AcpDetector** | AionUi `src/process/acp/` + `src/process/agent/acp/AcpDetector.ts` | batch `command -v` + Windows fallback `where` + `getEnhancedEnv` 解析 login shell PATH;`POTENTIAL_ACP_CLIS` 表新增 CLI 不改源码 | 从 `agents.ts` 把 ACP 类 adapter 抽成"通过 sdk 连接 + 一行 detector 注册"的形态 |
 | 4 | **Conversation Command Queue** | AionUi `src/renderer/.../useConversationCommandQueue.ts` | AI busy 时缓冲用户消息,空闲后出队;sessionStorage 持久化;可暂停/编辑/拖拽 | 纯前端 hook,后端 0 改动 |
 | 5 | **Memory Inspector UI** | 自研 + Labaik UI 形态 | 列表 / 编辑 / 归档 / scope+kind 过滤 / 一键 pin | `apps/web/src/components/MemoryInspector.tsx`(P0 表上线后做) |
-| 6 | **Browser-use 完整工具集 + tool consent UI** | openwork MCP 同意流 | 解锁 click/fill;每个写操作弹一次确认 | 升级 P0 的 browser-mcp 启动器,放开工具 filter |
+| 6 | **Browser-use 完整工具集 + daemon-side tool consent UI** | 自研(不抄 adapter pass-through) | 解锁 click/fill 等交互工具,每个工具按粒度需要 UI 显式批准;由 daemon proxy 在传输层强制,绕过 adapter 的 auto-approve / bypassPermissions | 升级 P0 的 daemon-owned proxy,允许逐工具加入 `toolAllowlist`,并把每次调用写入 audit |
 | 7 | **Multi-tab Preview + git history** | AionUi `Preview/` | 13+ viewer + 3 editor + git 版本历史 + Cmd+S/W + split-screen | 升级现有 PreviewModal,渐进式叠加 viewer |
 | 8 | **@-mention 文件** | AionUi `AtFileMenu/` | sendbox 上 `@` 选目录文件注入 prompt | 改 ChatComposer + 后端在 spawn agent 前 expand 路径 |
 | 9 | **Streaming UI rAF coalesce** | openwork `session-sync.ts` | SSE delta 用 requestAnimationFrame 合并,避免 setQueryData per token starve main thread | 重构 web 流式 pipeline,加 12 个 hot-event throttle |

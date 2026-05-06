@@ -99,8 +99,24 @@ function ensureAuditFile(projectId: string, opts: AuditOptions): string {
 // --- Redaction -------------------------------------------------------------
 
 const REDACTED = '[redacted]';
+// Token / api_key / authorization etc. — case-insensitive, with optional `_` /
+// `-` separators on either side. The matcher first inserts a `_` at every
+// camelCase boundary so common JS DTO names like `accessToken`,
+// `refreshToken`, `clientSecret`, and `sessionId` redact through the same
+// rules as their snake/kebab equivalents (PR #617 review, P2). Adding
+// `access|refresh|client|session` × `key|token|secret|id` keeps the rule
+// surface aligned with what hits mutation routes in practice.
 const SENSITIVE_KEY_PATTERN =
-  /^(?:.*[_-])?(?:token|secret|password|passwd|api[_-]?key|authorization|auth[_-]?header|access[_-]?key|private[_-]?key|cookie|session[_-]?id|credential|bearer|x[_-]?api[_-]?key)(?:[_-].*)?$/i;
+  /^(?:.*[_-])?(?:token|secret|password|passwd|api[_-]?key|authorization|auth[_-]?header|access[_-]?(?:key|token|secret|id)|refresh[_-]?(?:key|token|secret|id)|client[_-]?(?:key|token|secret|id)|session[_-]?(?:key|token|secret|id)|private[_-]?key|cookie|credential|bearer|x[_-]?api[_-]?key)(?:[_-].*)?$/i;
+
+function isSensitiveKey(key: string): boolean {
+  // Insert a separator at every lower→Upper or digit→Upper boundary so the
+  // existing snake/kebab rules cover camelCase names too. `accessToken`
+  // becomes `access_Token`; `xApiKey` becomes `x_Api_Key`.
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2');
+  return SENSITIVE_KEY_PATTERN.test(normalized);
+}
+
 const MAX_REDACTION_DEPTH = 6;
 // Truncate excessively long string values defensively so a stray paste of a
 // large blob (e.g. a base64-encoded screenshot) cannot bloat the audit file.
@@ -135,7 +151,7 @@ function redactValue(value: unknown, depth: number): unknown {
   if (isPlainObject(value)) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      out[k] = SENSITIVE_KEY_PATTERN.test(k) ? REDACTED : redactValue(v, depth + 1);
+      out[k] = isSensitiveKey(k) ? REDACTED : redactValue(v, depth + 1);
     }
     return out;
   }
@@ -244,10 +260,11 @@ export async function readAuditEntries(
  * Recursively strips fields whose key looks token-like (token / api_key /
  * authorization / cookie / password / private_key / session_id / bearer /
  * x-api-key — case-insensitive, with optional `_` / `-` separators on
- * either side). Truncates over-long string values defensively. Defense in
- * depth on top of `appendAuditEntry()` redaction, in case an upstream caller
- * appends raw lines or a future field gets added without going through the
- * append helper.
+ * either side, and the camelCase equivalents `accessToken` / `refreshToken`
+ * / `clientSecret` / `sessionId`). Truncates over-long string values
+ * defensively. Defense in depth on top of `appendAuditEntry()` redaction,
+ * in case an upstream caller appends raw lines or a future field gets added
+ * without going through the append helper.
  */
 export function redactForExport(entry: AuditEntry): AuditEntry {
   return redactEntry(entry);

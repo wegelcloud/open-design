@@ -460,9 +460,41 @@ export function resolveSafeChild(targetRoot: string, name: string): string {
   return resolved;
 }
 
+/**
+ * Caller-supplied approval token. Manifest schema validation alone is NOT a
+ * trust boundary — `SKILL.md` / `DESIGN.md` / craft markdown become
+ * authoritative agent prompt material once written, so a compromised hub or
+ * custom repo could persist prompt injection across projects without user
+ * awareness (PR #617 review, P1).
+ *
+ * The starter therefore refuses to install unless the caller threads an
+ * `InstallApproval` carrying:
+ *   - `pinnedSha` — the immutable commit SHA the user reviewed (a branch
+ *     ref like `main` is mutable and not acceptable here);
+ *   - `userApproved: true` — a type-level forcing function so a default-
+ *     constructed options object cannot trigger a write.
+ *
+ * The integration PR will:
+ *   1. Resolve every hub list/install through the SHA captured here, not
+ *      through the live `branch` ref.
+ *   2. Surface provenance + a diff against the previously installed copy
+ *      before persisting.
+ *   3. Default the install destination to a quarantined / user-managed
+ *      store separate from the active prompt directories, until the user
+ *      explicitly activates the entry — mirroring npm/homebrew/apt trust
+ *      boundaries.
+ */
+export interface InstallApproval {
+  pinnedSha: string;
+  userApproved: true;
+}
+
+const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+
 interface InstallOptions {
   targetRoot: string;            // e.g. <projectRoot>/skills or ~/.open-design/skills
   overwrite?: boolean;
+  approval: InstallApproval;     // see `InstallApproval` — required
 }
 
 /**
@@ -471,19 +503,37 @@ interface InstallOptions {
  * `<targetRoot>/<name>.md` directly at the craft root, matching how
  * `apps/daemon/src/craft.ts` resolves sections (`<craftDir>/<slug>.md`).
  *
+ * Trust boundary (PR #617 review, P1): callers must thread an
+ * `InstallApproval` carrying the immutable commit SHA the user reviewed and
+ * an explicit `userApproved: true`. Manifest validation is a *parsing*
+ * step, not a trust step; without the approval gate, a hub repo could
+ * silently overwrite an installed skill on its next mutation. See
+ * `InstallApproval` for the planned quarantine + provenance flow.
+ *
  * Re-validates frontmatter before writing — list cache may be stale, and an
  * untrusted hub entry that bypassed the listing path (e.g. via a custom
  * crafted `HubEntry`) is still rejected here.
  *
  * Note: this v0 only writes the manifest file. A full install also fetches
  * sibling assets (example.html, references/, assets/) — that pass should
- * iterate `GET /repos/.../contents/<dir>?ref=<branch>` and stream each child.
- * Tracked for the integration PR.
+ * iterate `GET /repos/.../contents/<dir>?ref=<sha>` (SHA, not branch) and
+ * stream each child. Tracked for the integration PR.
  */
 export async function installHubEntry(
   entry: HubEntry,
   opts: InstallOptions,
 ): Promise<{ path: string }> {
+  if (!opts.approval || opts.approval.userApproved !== true) {
+    throw new Error(
+      'installHubEntry: explicit user approval required (see InstallApproval)',
+    );
+  }
+  if (
+    typeof opts.approval.pinnedSha !== 'string'
+    || !COMMIT_SHA_PATTERN.test(opts.approval.pinnedSha)
+  ) {
+    throw new Error('installHubEntry: approval.pinnedSha must be a commit SHA');
+  }
   if (!resolveManifest(entry.namespace, entry.raw, entry.name)) {
     throw new Error(`Hub entry manifest failed validation: ${entry.namespace}/${entry.name}`);
   }
