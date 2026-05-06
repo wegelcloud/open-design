@@ -237,6 +237,7 @@ export function ProjectView({
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
   );
+  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [previewComments, setPreviewComments] = useState<PreviewComment[]>([]);
   const [attachedComments, setAttachedComments] = useState<PreviewComment[]>([]);
@@ -305,19 +306,31 @@ export function ProjectView({
   // dropped), create one on the fly.
   useEffect(() => {
     let cancelled = false;
+    setConversationLoadError(null);
     (async () => {
-      const list = await listConversations(project.id);
-      if (cancelled) return;
-      if (list.length === 0) {
-        const fresh = await createConversation(project.id);
+      try {
+        const list = await listConversations(project.id);
         if (cancelled) return;
-        if (fresh) {
-          setConversations([fresh]);
-          setActiveConversationId(fresh.id);
+        if (list.length === 0) {
+          const fresh = await createConversation(project.id);
+          if (cancelled) return;
+          if (fresh) {
+            setConversations([fresh]);
+            setActiveConversationId(fresh.id);
+          } else {
+            throw new Error('Could not create a conversation for this project.');
+          }
+        } else {
+          setConversations(list);
+          setActiveConversationId(list[0]!.id);
         }
-      } else {
-        setConversations(list);
-        setActiveConversationId(list[0]!.id);
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Could not load conversations for this project.';
+        setConversations([]);
+        setActiveConversationId(null);
+        setConversationLoadError(message);
+        setError(message);
       }
     })();
     return () => {
@@ -1474,10 +1487,18 @@ export function ProjectView({
   }, [cancelSendTextBuffer, cancelReattachTextBuffers, persistMessage]);
 
   const handleNewConversation = useCallback(async () => {
-    const fresh = await createConversation(project.id);
-    if (!fresh) return;
-    setConversations((curr) => [fresh, ...curr]);
-    setActiveConversationId(fresh.id);
+    setConversationLoadError(null);
+    try {
+      const fresh = await createConversation(project.id);
+      if (!fresh) throw new Error('Could not create a conversation for this project.');
+      setConversations((curr) => [fresh, ...curr]);
+      setActiveConversationId(fresh.id);
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not create a conversation for this project.';
+      setConversationLoadError(message);
+      setError(message);
+    }
   }, [project.id]);
 
   const handleSelectConversation = useCallback((id: string) => {
@@ -1784,14 +1805,14 @@ export function ProjectView({
             }}
       >
         <div className="split-chat-slot" hidden={workspaceFocused}>
-          {activeConversationId ? (
+          {activeConversationId || conversationLoadError ? (
             <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.
-              key={activeConversationId}
+              key={activeConversationId ?? 'conversation-unavailable'}
               messages={messages}
               streaming={streaming}
-              error={error}
+              error={conversationLoadError ?? error}
               projectId={project.id}
               projectFiles={projectFiles}
               projectFileNames={projectFileNames}
