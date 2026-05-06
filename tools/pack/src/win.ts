@@ -97,11 +97,27 @@ type AssembledAppCacheMetadata = {
 };
 
 type AssembledAppCacheResult = AssembledAppCacheMetadata & {
+  appRoot: string;
   key: string;
 };
 
 type NativeRebuildCacheMetadata = {
   modules: readonly string[];
+};
+
+type NativeRebuildCacheResult = NativeRebuildCacheMetadata & {
+  key: string;
+  nodePath: string;
+};
+
+type ElectronReadyAppCacheMetadata = {
+  assembledAppKey: string;
+  nativeRebuildKey: string;
+};
+
+type ElectronReadyAppCacheResult = ElectronReadyAppCacheMetadata & {
+  appRoot: string;
+  key: string;
 };
 
 type ResourceTreeCacheMetadata = {
@@ -790,34 +806,39 @@ function nativeRebuildOutputPath(appRoot: string): string {
 
 async function rebuildWinNativeDependencies(
   config: ToolPackConfig,
-  paths: WinPaths,
   cache: ToolPackCache,
   assembledApp: AssembledAppCacheResult,
-): Promise<void> {
+): Promise<NativeRebuildCacheResult> {
+  const key = hashJson({
+    arch: "x64",
+    assembledAppKey: assembledApp.key,
+    electronVersion: config.electronVersion,
+    modules: ELECTRON_REBUILD_NATIVE_MODULES,
+    platform: "win32",
+    schemaVersion: 1,
+  });
   const node = {
     id: "win.native-rebuild",
-    key: hashJson({
-      arch: "x64",
-      assembledAppKey: assembledApp.key,
-      electronVersion: config.electronVersion,
-      modules: ELECTRON_REBUILD_NATIVE_MODULES,
-      platform: "win32",
-      schemaVersion: 1,
-    }),
+    key,
     outputs: ["better_sqlite3.node"],
     invalidate: async () => null,
     build: async ({ entryRoot }: { entryRoot: string }): Promise<NativeRebuildCacheMetadata> => {
       const stagingAppRoot = join(entryRoot, "app");
-      await cp(paths.assembledAppRoot, stagingAppRoot, { recursive: true });
+      await cp(assembledApp.appRoot, stagingAppRoot, { recursive: true });
       await runElectronRebuild(config, stagingAppRoot);
       await cp(nativeRebuildOutputPath(stagingAppRoot), join(entryRoot, "better_sqlite3.node"));
       return { modules: ELECTRON_REBUILD_NATIVE_MODULES };
     },
   };
-  await cache.acquire({
-    materialize: [{ from: "better_sqlite3.node", to: nativeRebuildOutputPath(paths.assembledAppRoot) }],
+  const manifest = await cache.acquire({
+    materialize: [],
     node,
   });
+  return {
+    key,
+    modules: manifest.payloadMetadata.modules,
+    nodePath: join(manifest.entryPath, "better_sqlite3.node"),
+  };
 }
 
 async function readPackagedVersion(config: ToolPackConfig): Promise<string> {
@@ -1003,7 +1024,10 @@ async function writePackagedConfig(config: ToolPackConfig, paths: WinPaths, pack
   );
 }
 
-function createAssembledAppDependencies(paths: WinPaths, packedTarballs: PackedTarballInfo[]): Record<string, string> {
+function createAssembledAppDependencies(
+  paths: Pick<WinPaths, "assembledAppRoot" | "tarballsRoot">,
+  packedTarballs: PackedTarballInfo[],
+): Record<string, string> {
   const tarballByPackage = Object.fromEntries(packedTarballs.map((entry) => [entry.packageName, entry.fileName] as const));
   return Object.fromEntries(
     INTERNAL_PACKAGES.map((packageInfo) => {
@@ -1015,16 +1039,17 @@ function createAssembledAppDependencies(paths: WinPaths, packedTarballs: PackedT
 }
 
 async function writeAssembledAppEntrypoints(
-  paths: WinPaths,
+  paths: Pick<WinPaths, "assembledAppRoot" | "assembledMainEntryPath" | "assembledPackageJsonPath" | "tarballsRoot">,
   packedTarballs: PackedTarballInfo[],
   packagedVersion: string,
+  options: { dependencies?: Record<string, string> } = {},
 ): Promise<void> {
   await mkdir(paths.assembledAppRoot, { recursive: true });
   await writeFile(
     paths.assembledPackageJsonPath,
     `${JSON.stringify(
       {
-        dependencies: createAssembledAppDependencies(paths, packedTarballs),
+        dependencies: options.dependencies ?? createAssembledAppDependencies(paths, packedTarballs),
         description: "Open Design packaged runtime",
         main: "./main.cjs",
         name: "open-design-packaged-app",
@@ -1056,7 +1081,7 @@ async function createAssembledAppCacheKey(
     packagedVersion,
     packedTarballs,
     platform: "win32",
-    schemaVersion: 1,
+    schemaVersion: 3,
     tarballsKey,
     webOutputMode: config.webOutputMode,
   });
@@ -1088,13 +1113,47 @@ async function writeAssembledApp(
       return { packagedVersion };
     },
   };
-  await cache.acquire({
-    materialize: [{ from: "app", to: paths.assembledAppRoot }],
+  const manifest = await cache.acquire({
+    materialize: [],
     node,
   });
-  await writeAssembledAppEntrypoints(paths, packedTarballs, packagedVersion);
   await writePackagedConfig(config, paths, packagedVersion);
-  return { key, packagedVersion };
+  return { appRoot: join(manifest.entryPath, "app"), key, packagedVersion };
+}
+
+async function prepareElectronReadyApp(
+  assembledApp: AssembledAppCacheResult,
+  nativeRebuild: NativeRebuildCacheResult,
+  cache: ToolPackCache,
+): Promise<ElectronReadyAppCacheResult> {
+  const key = hashJson({
+    assembledAppKey: assembledApp.key,
+    nativeRebuildKey: nativeRebuild.key,
+    node: "win.electron-ready-app",
+    schemaVersion: 2,
+  });
+  const node = {
+    id: "win.electron-ready-app",
+    key,
+    outputs: ["app"],
+    invalidate: async () => null,
+    build: async ({ entryRoot }: { entryRoot: string }): Promise<ElectronReadyAppCacheMetadata> => {
+      const appRoot = join(entryRoot, "app");
+      await cp(assembledApp.appRoot, appRoot, { recursive: true });
+      await cp(nativeRebuild.nodePath, nativeRebuildOutputPath(appRoot));
+      return { assembledAppKey: assembledApp.key, nativeRebuildKey: nativeRebuild.key };
+    },
+  };
+  const manifest = await cache.acquire({
+    materialize: [],
+    node,
+  });
+  return {
+    appRoot: join(manifest.entryPath, "app"),
+    assembledAppKey: manifest.payloadMetadata.assembledAppKey,
+    key,
+    nativeRebuildKey: manifest.payloadMetadata.nativeRebuildKey,
+  };
 }
 
 function resolveWinTargets(to: ToolPackConfig["to"]): Array<"dir" | "nsis"> {
@@ -1110,7 +1169,7 @@ function resolveWinTargets(to: ToolPackConfig["to"]): Array<"dir" | "nsis"> {
   }
 }
 
-async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths): Promise<void> {
+async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths, projectDir: string): Promise<void> {
   const namespaceToken = sanitizeNamespace(config.namespace);
   const packagedVersion = await readPackagedVersion(config);
   const webStandaloneHookConfigPath = config.webOutputMode === "standalone"
@@ -1176,7 +1235,7 @@ async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths): Prom
       config.electronBuilderCliPath,
       "--win",
       "--projectDir",
-      paths.assembledAppRoot,
+      projectDir,
       "--config",
       paths.appBuilderConfigPath,
       "--publish",
@@ -1335,11 +1394,10 @@ export async function packWin(config: ToolPackConfig): Promise<WinPackResult> {
   });
   const tarballs = await runPhase("workspace-tarballs", async () => collectWorkspaceTarballs(config, paths, cache));
   const assembledApp = await runPhase("assembled-app", async () => writeAssembledApp(config, paths, tarballs, cache));
-  await runPhase("native-rebuild", async () => {
-    await rebuildWinNativeDependencies(config, paths, cache, assembledApp);
-  });
+  const nativeRebuild = await runPhase("native-rebuild", async () => rebuildWinNativeDependencies(config, cache, assembledApp));
+  const electronReadyApp = await runPhase("electron-ready-app", async () => prepareElectronReadyApp(assembledApp, nativeRebuild, cache));
   await runPhase("electron-builder", async () => {
-    await runElectronBuilder(config, paths);
+    await runElectronBuilder(config, paths, electronReadyApp.appRoot);
   });
   await runPhase("latest-yml", async () => {
     await writeLocalLatestYml(config, paths);

@@ -19,6 +19,10 @@ export type CacheManifest<TMetadata> = {
   schemaVersion: number;
 };
 
+export type CacheAcquireResult<TMetadata> = CacheManifest<TMetadata> & {
+  entryPath: string;
+};
+
 export type CacheAcquireReport = {
   durationMs: number;
   entryPath: string;
@@ -116,7 +120,7 @@ export class ToolPackCache {
   }: {
     materialize: CacheMaterializeTarget[];
     node: CacheNode<TMetadata>;
-  }): Promise<CacheManifest<TMetadata>> {
+  }): Promise<CacheAcquireResult<TMetadata>> {
     const startedAt = Date.now();
     const keyHash = hashText(`${node.id}\n${node.key}`);
     const entryPath = join(this.root, "entries", safePathToken(node.id), keyHash);
@@ -201,7 +205,7 @@ export class ToolPackCache {
       reason,
       status,
     });
-    return manifest;
+    return { ...manifest, entryPath };
   }
 }
 

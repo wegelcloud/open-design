@@ -37,11 +37,12 @@ describe("ToolPackCache", () => {
     };
 
     try {
-      await cache.acquire({ materialize: [{ from: "payload", to: firstOut }], node });
+      const firstManifest = await cache.acquire({ materialize: [{ from: "payload", to: firstOut }], node });
       await writeFile(join(firstOut, "value.txt"), "mutated\n", "utf8");
       await cache.acquire({ materialize: [{ from: "payload", to: secondOut }], node });
 
       expect(builds).toBe(1);
+      expect(firstManifest.entryPath).toContain("test.node");
       expect(await readFile(join(secondOut, "value.txt"), "utf8")).toBe("build-1\n");
       expect(cache.report().entries.map((entry) => entry.status)).toEqual(["miss", "hit"]);
     } finally {
