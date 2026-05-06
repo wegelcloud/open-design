@@ -2,7 +2,7 @@
 
 import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -31,6 +31,8 @@ type DesktopStatus = {
 };
 
 type WinInstallResult = {
+  desktopShortcutExists: boolean;
+  desktopShortcutPath: string;
   installDir: string;
   installPayload: {
     fileCount: number;
@@ -44,6 +46,8 @@ type WinInstallResult = {
   installerPath: string;
   namespace: string;
   registryEntries: unknown[];
+  startMenuShortcutExists: boolean;
+  startMenuShortcutPath: string;
   timingPath: string;
   uninstallerPath: string;
 };
@@ -68,6 +72,7 @@ type WinCleanupResult = {
   residueObservation?: {
     installedExeExists?: boolean;
     managedProcessPids?: number[];
+    productNamespaceRootExists?: boolean;
     registryResidues?: string[];
     startMenuShortcutExists?: boolean;
     uninstallerExists?: boolean;
@@ -133,7 +138,14 @@ winDescribe('packaged windows runtime smoke', () => {
       expectPathInside(install.installerPath, join(outputNamespaceRoot, 'builder'));
       expectPathInside(install.installDir, join(runtimeNamespaceRoot, 'install'));
       expectPathInside(install.uninstallerPath, install.installDir);
+      expect(basename(install.uninstallerPath)).toBe('Uninstall Open Design Beta.exe');
+      expect(install.desktopShortcutExists).toBe(true);
+      expect(install.startMenuShortcutExists).toBe(true);
+      expect(basename(install.desktopShortcutPath)).toBe('Open Design Beta.lnk');
+      expect(basename(install.startMenuShortcutPath)).toBe('Open Design Beta.lnk');
       expect(install.registryEntries.length).toBeGreaterThan(0);
+      expect(JSON.stringify(install.registryEntries)).toContain('Open Design Beta');
+      expect(JSON.stringify(install.registryEntries)).toContain('Open Design-release-beta-win');
       expect(install.installPayload.fileCount).toBeGreaterThan(0);
       expect(install.installPayload.totalBytes).toBeGreaterThan(0);
       expect(install.installPayload.topLevel.length).toBeGreaterThan(0);
@@ -181,10 +193,11 @@ winDescribe('packaged windows runtime smoke', () => {
       expect(stop.status).not.toBe('partial');
       expect(stop.remainingPids).toEqual([]);
 
-      const uninstall = await runToolsPackJson<WinUninstallResult>('uninstall');
+      const uninstall = await runToolsPackJson<WinUninstallResult>('uninstall', ['--remove-product-user-data']);
       installed = false;
       expect(uninstall.namespace).toBe(namespace);
       expect(uninstall.residueObservation?.managedProcessPids ?? []).toEqual([]);
+      expect(uninstall.residueObservation?.productNamespaceRootExists).toBe(false);
       expect(uninstall.residueObservation?.registryResidues ?? []).toEqual([]);
       expect(uninstall.residueObservation?.installedExeExists).toBe(false);
       expect(uninstall.residueObservation?.uninstallerExists).toBe(false);

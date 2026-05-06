@@ -7,6 +7,7 @@ import type { ToolPackConfig } from "../config.js";
 import { winResources } from "../resources.js";
 import { PRODUCT_NAME } from "./constants.js";
 import { pathExists } from "./fs.js";
+import { resolveWinInstallIdentity } from "./identity.js";
 import { readPackagedVersion } from "./manifest.js";
 import { sanitizeNamespace } from "./paths.js";
 import type { WinBuiltAppManifest, WinPaths } from "./types.js";
@@ -62,18 +63,18 @@ async function resolveMakensisCommand(config: ToolPackConfig): Promise<string> {
 }
 
 async function writeInstallerScript(config: ToolPackConfig, paths: WinPaths): Promise<void> {
-  const productName = escapeNsisString(PRODUCT_NAME);
-  const exeName = escapeNsisString(`${PRODUCT_NAME}.exe`);
-  const uninstallerName = escapeNsisString(`Uninstall ${PRODUCT_NAME}.exe`);
-  const shortcutName = escapeNsisString(`${PRODUCT_NAME}.lnk`);
-  const registryKey = escapeNsisString(`Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}-${sanitizeNamespace(config.namespace)}`);
-  const appPathsKey = escapeNsisString(`Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${PRODUCT_NAME}.exe`);
+  const identity = resolveWinInstallIdentity(config);
+  const productName = escapeNsisString(identity.displayName);
+  const exeName = escapeNsisString(identity.exeName);
+  const uninstallerName = escapeNsisString(identity.uninstallerName);
+  const shortcutName = escapeNsisString(identity.shortcutName);
+  const registryKey = escapeNsisString(identity.registryKey);
+  const appPathsKey = escapeNsisString(identity.appPathsKey);
+  const localDataRoot = escapeNsisString(`$APPDATA\\${PRODUCT_NAME}\\namespaces\\${sanitizeNamespace(config.namespace)}`);
   const nsisLogPath = escapeNsisString(paths.nsisLogPath);
 
   await mkdir(dirname(paths.installerScriptPath), { recursive: true });
-  await writeFile(
-    paths.installerScriptPath,
-    `Unicode true
+  const script = `Unicode true
 ManifestDPIAware true
 RequestExecutionLevel user
 
@@ -98,6 +99,7 @@ RequestExecutionLevel user
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "nsDialogs.nsh"
 
 Name "${productName}"
 OutFile "\${OUTPUT_EXE}"
@@ -106,16 +108,41 @@ InstallDirRegKey HKCU "${registryKey}" "InstallLocation"
 Icon "\${APP_ICON}"
 UninstallIcon "\${APP_ICON}"
 ShowInstDetails show
-ShowUninstDetails show
+ShowUninstDetails hide
 
 !define MUI_ABORTWARNING
 !define MUI_ICON "\${APP_ICON}"
 !define MUI_UNICON "\${APP_ICON}"
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN "$INSTDIR\\${exeName}"
+!define MUI_FINISHPAGE_RUN_TEXT "$(LaunchApp)"
+!define MUI_FINISHPAGE_SHOWREADME
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "$(CreateDesktopShortcut)"
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
+!insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
+UninstPage custom un.UninstallOptionsPage un.UninstallOptionsPageLeave
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+
+LangString CreateDesktopShortcut \${LANG_ENGLISH} "Create desktop shortcut"
+LangString CreateDesktopShortcut \${LANG_SIMPCHINESE} "创建桌面快捷方式"
+LangString LaunchApp \${LANG_ENGLISH} "Launch ${productName}"
+LangString LaunchApp \${LANG_SIMPCHINESE} "启动 ${productName}"
+LangString RemoveDesktopShortcut \${LANG_ENGLISH} "Remove desktop shortcut"
+LangString RemoveDesktopShortcut \${LANG_SIMPCHINESE} "删除桌面快捷方式"
+LangString RemoveLocalData \${LANG_ENGLISH} "Delete local data for this installation"
+LangString RemoveLocalData \${LANG_SIMPCHINESE} "删除此安装的本地数据"
+LangString UninstallOptionsTitle \${LANG_ENGLISH} "Uninstall options"
+LangString UninstallOptionsTitle \${LANG_SIMPCHINESE} "卸载选项"
+LangString UninstallOptionsSubtitle \${LANG_ENGLISH} "Choose which local items to remove."
+LangString UninstallOptionsSubtitle \${LANG_SIMPCHINESE} "选择要删除的本地项目。"
+
+Var RemoveDesktopShortcutCheckbox
+Var RemoveLocalDataCheckbox
+Var RemoveDesktopShortcutState
+Var RemoveLocalDataState
 
 Function LogInstallerEvent
   Exch $0
@@ -143,13 +170,79 @@ done:
   Pop $0
 FunctionEnd
 
+Function un.onInit
+  StrCpy $RemoveDesktopShortcutState "\${BST_CHECKED}"
+  StrCpy $RemoveLocalDataState 0
+FunctionEnd
+
+Function CreateDesktopShortcut
+  SetShellVarContext current
+  CreateShortCut "$DESKTOP\\${shortcutName}" "$INSTDIR\\${exeName}" "" "$INSTDIR\\${exeName}" 0
+FunctionEnd
+
+Function RemoveInstallDir
+  Push $0
+  nsExec::ExecToLog 'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (Test-Path -LiteralPath ''$INSTDIR'') { Remove-Item -LiteralPath ''$INSTDIR'' -Recurse -Force -ErrorAction SilentlyContinue }"'
+  Pop $0
+  Push "install dir remove exit=$0"
+  Call LogInstallerEvent
+  Pop $0
+FunctionEnd
+
+Function un.UninstallOptionsPage
+  IfSilent done
+  !insertmacro MUI_HEADER_TEXT "$(UninstallOptionsTitle)" "$(UninstallOptionsSubtitle)"
+  nsDialogs::Create 1018
+  Pop $0
+  \${If} $0 == error
+    Abort
+  \${EndIf}
+
+  \${NSD_CreateCheckbox} 0 0 100% 12u "$(RemoveDesktopShortcut)"
+  Pop $RemoveDesktopShortcutCheckbox
+  \${NSD_Check} $RemoveDesktopShortcutCheckbox
+
+  \${NSD_CreateCheckbox} 0 18u 100% 12u "$(RemoveLocalData)"
+  Pop $RemoveLocalDataCheckbox
+
+  nsDialogs::Show
+done:
+FunctionEnd
+
+Function un.UninstallOptionsPageLeave
+  StrCpy $RemoveDesktopShortcutState "\${BST_CHECKED}"
+  StrCpy $RemoveLocalDataState 0
+  IfSilent done
+  \${NSD_GetState} $RemoveDesktopShortcutCheckbox $RemoveDesktopShortcutState
+  \${NSD_GetState} $RemoveLocalDataCheckbox $RemoveLocalDataState
+done:
+FunctionEnd
+
+Function un.RemoveInstallDirContents
+  Push $0
+  nsExec::ExecToLog 'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (Test-Path -LiteralPath ''$INSTDIR'') { Get-ChildItem -LiteralPath ''$INSTDIR'' -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }"'
+  Pop $0
+  Push "install dir fast remove exit=$0"
+  Call un.LogInstallerEvent
+  Pop $0
+FunctionEnd
+
+Function un.RemoveLocalDataRoot
+  Push $0
+  nsExec::ExecToLog 'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (Test-Path -LiteralPath ''${localDataRoot}'') { Remove-Item -LiteralPath ''${localDataRoot}'' -Recurse -Force -ErrorAction SilentlyContinue }"'
+  Pop $0
+  Push "local data remove exit=$0"
+  Call un.LogInstallerEvent
+  Pop $0
+FunctionEnd
+
 Section "Install"
   SetShellVarContext current
   Push "install section start"
   Call LogInstallerEvent
 
   IfFileExists "$INSTDIR\\${exeName}" 0 prepare_install_dir
-  RMDir /r "$INSTDIR"
+  Call RemoveInstallDir
 
 prepare_install_dir:
   InitPluginsDir
@@ -171,7 +264,9 @@ prepare_install_dir:
   \${EndIf}
 
   WriteUninstaller "$INSTDIR\\${uninstallerName}"
+  IfSilent 0 skip_silent_desktop_shortcut
   CreateShortCut "$DESKTOP\\${shortcutName}" "$INSTDIR\\${exeName}" "" "$INSTDIR\\${exeName}" 0
+skip_silent_desktop_shortcut:
   CreateShortCut "$SMPROGRAMS\\${shortcutName}" "$INSTDIR\\${exeName}" "" "$INSTDIR\\${exeName}" 0
   WriteRegStr HKCU "${registryKey}" "DisplayName" "${productName} \${APP_VERSION}"
   WriteRegStr HKCU "${registryKey}" "DisplayVersion" "\${APP_VERSION}"
@@ -188,18 +283,23 @@ Section "Uninstall"
   SetShellVarContext current
   Push "uninstall section start"
   Call un.LogInstallerEvent
-  Delete "$DESKTOP\\${shortcutName}"
+  \${If} $RemoveDesktopShortcutState == \${BST_CHECKED}
+    Delete "$DESKTOP\\${shortcutName}"
+  \${EndIf}
   Delete "$SMPROGRAMS\\${shortcutName}"
   DeleteRegKey HKCU "${registryKey}"
   DeleteRegKey HKCU "${appPathsKey}"
+  \${If} $RemoveLocalDataState == \${BST_CHECKED}
+    Call un.RemoveLocalDataRoot
+  \${EndIf}
+  Call un.RemoveInstallDirContents
   Delete "$INSTDIR\\${uninstallerName}"
-  RMDir /r "$INSTDIR"
+  RMDir "$INSTDIR"
   Push "uninstall section done"
   Call un.LogInstallerEvent
 SectionEnd
-`,
-    "utf8",
-  );
+`;
+  await writeFile(paths.installerScriptPath, `\uFEFF${script}`, "utf8");
 }
 
 export async function buildCustomWinNsisInstaller(
