@@ -118,8 +118,16 @@ function redactValue(value: unknown, depth: number): unknown {
   if (typeof value === 'string') {
     return value.length > MAX_STRING_LEN ? value.slice(0, MAX_STRING_LEN) + '…' : value;
   }
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+  if (typeof value === 'number' || typeof value === 'boolean') {
     return value;
+  }
+  // `JSON.stringify` throws on BigInt, so coerce to a decimal string before
+  // the entry hits `appendAuditEntry`'s serializer. A stray BigInt buried in
+  // `detail` would otherwise fail the audit write — and, once this starter
+  // is wired into mutation routes, take down the surrounding mutation with
+  // it (PR #617 review, P1).
+  if (typeof value === 'bigint') {
+    return value.toString();
   }
   if (Array.isArray(value)) {
     return value.map((v) => redactValue(v, depth + 1));
@@ -177,6 +185,22 @@ interface ReadOptions extends AuditOptions {
   actions?: AuditAction[];    // filter by action types
 }
 
+const DEFAULT_READ_LIMIT = 50;
+const MAX_READ_LIMIT = 1000;
+
+// Mirrors `clampListLimit` in memory-schema.ts. `?limit=0`, negative numbers,
+// `NaN`, and `Infinity` would otherwise reach `buffer.slice(-limit)`; in
+// particular `slice(-0)` is `slice(0)`, which returns the entire file —
+// inverting the documented bound. Floor fractional values, then cap (PR
+// #617 review, P1).
+function clampReadLimit(raw: number | undefined): number {
+  if (raw === undefined) return DEFAULT_READ_LIMIT;
+  if (!Number.isFinite(raw)) return DEFAULT_READ_LIMIT;
+  const n = Math.floor(raw);
+  if (n <= 0) return DEFAULT_READ_LIMIT;
+  return Math.min(n, MAX_READ_LIMIT);
+}
+
 /**
  * Read the most recent N audit entries. Reads from the end of the file
  * line-by-line and stops once `limit` matching entries are accumulated.
@@ -192,7 +216,7 @@ export async function readAuditEntries(
   // Reads must not create directories — use the side-effect-free resolver.
   const file = auditFilePath(projectId, opts);
   if (!fs.existsSync(file)) return [];
-  const limit = Math.min(opts.limit ?? 50, 1000);
+  const limit = clampReadLimit(opts.limit);
   const since = opts.since ?? 0;
   const filterActions = opts.actions ? new Set(opts.actions) : null;
 
