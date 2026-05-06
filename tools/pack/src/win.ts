@@ -37,6 +37,20 @@ const PRODUCT_NAME = "Open Design";
 const DESKTOP_LOG_ECHO_ENV = "OD_DESKTOP_LOG_ECHO";
 const WEB_STANDALONE_HOOK_CONFIG_ENV = "OD_TOOLS_PACK_WEB_STANDALONE_HOOK_CONFIG";
 const WEB_STANDALONE_RESOURCE_NAME = "open-design-web-standalone";
+const ELECTRON_BUILDER_ASAR = false;
+const ELECTRON_BUILDER_FILE_PATTERNS = [
+  "**/*",
+  "!**/node_modules/.bin",
+  "!**/node_modules/electron{,/**/*}",
+  "!**/*.map",
+  "!**/*.tsbuildinfo",
+  "!**/.next/cache",
+  "!**/.next/cache/**",
+  "!**/node_modules/better-sqlite3/build/Release/obj",
+  "!**/node_modules/better-sqlite3/build/Release/obj/**",
+  "!**/node_modules/better-sqlite3/deps",
+  "!**/node_modules/better-sqlite3/deps/**",
+] as const;
 const NSIS_INSTALLER_LANGUAGE_BY_WEB_LOCALE = {
   en: "en_US",
   fa: "fa_IR",
@@ -110,6 +124,7 @@ export type WinPackResult = {
 export type WinSizeReport = {
   builder: {
     asar: boolean;
+    filePatterns: readonly string[];
     targets: Array<"dir" | "nsis">;
     webOutputMode: ToolPackConfig["webOutputMode"];
   };
@@ -118,14 +133,39 @@ export type WinSizeReport = {
   outputRootBytes: number;
   resourceRootBytes: number;
   runtimeNamespaceRoot: string;
+  topLevel: {
+    appResourcesBytes: number;
+    copiedStandaloneBytes: number;
+    electronLocalesBytes: number;
+    resourcesBytes: number;
+  };
   tracked: {
     appNodeModulesBytes: number;
+    betterSqlite3Bytes: number;
+    betterSqlite3SourceResidueBytes: number;
     bundledNodeBytes: number;
+    copiedStandaloneNextBytes: number;
+    copiedStandaloneNextSwcBytes: number;
+    copiedStandaloneNodeModulesBytes: number;
+    copiedStandaloneSharpLibvipsBytes: number;
+    copiedStandaloneSourcemapBytes: number;
+    copiedStandaloneTsbuildInfoBytes: number;
+    copiedStandaloneWebNextBytes: number;
+    copiedStandaloneWebNodeModulesBytes: number;
+    electronLocalesBytes: number;
+    markdownBytes: number;
+    nextBytes: number;
+    nextSwcBytes: number;
+    sharpLibvipsBytes: number;
     sourcemapBytes: number;
     tsbuildInfoBytes: number;
     webCopiedStandaloneBytes: number;
     webNextCacheBytes: number;
+    webPackageAppBytes: number;
     webPackageBytes: number;
+    webPackageDistBytes: number;
+    webPackagePublicBytes: number;
+    webPackageSrcBytes: number;
     webPackageStandaloneBytes: number;
   };
   unpackedBytes: number | null;
@@ -447,6 +487,23 @@ async function sizePathBytes(
 async function sizeExistingFileBytes(path: string): Promise<number | null> {
   const metadata = await stat(path).catch(() => null);
   return metadata == null ? null : metadata.size;
+}
+
+async function sumChildDirectorySizes(path: string, includeChild: (name: string) => boolean): Promise<number> {
+  const entries = await readdir(path, { withFileTypes: true }).catch(() => []);
+  let total = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !includeChild(entry.name)) continue;
+    total += await sizePathBytes(join(path, entry.name));
+  }
+  return total;
+}
+
+function isBetterSqlite3SourceResidue(path: string): boolean {
+  return (
+    path.includes("/node_modules/better-sqlite3/deps/") ||
+    path.includes("/node_modules/better-sqlite3/build/Release/obj/")
+  );
 }
 
 async function listChildDirectories(root: string): Promise<string[]> {
@@ -835,7 +892,7 @@ async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths): Prom
   const builderConfig = {
     appId: "io.open-design.desktop",
     afterPack: webStandaloneHookConfigPath == null ? undefined : winResources.webStandaloneAfterPackHook,
-    asar: false,
+    asar: ELECTRON_BUILDER_ASAR,
     buildDependenciesFromSource: false,
     compression: "maximum",
     directories: { output: paths.appBuilderOutputRoot },
@@ -852,7 +909,7 @@ async function runElectronBuilder(config: ToolPackConfig, paths: WinPaths): Prom
       { from: paths.resourceRoot, to: "open-design" },
       { from: paths.packagedConfigPath, to: "open-design-config.json" },
     ],
-    files: ["**/*", "!**/node_modules/.bin", "!**/node_modules/electron{,/**/*}"],
+    files: [...ELECTRON_BUILDER_FILE_PATTERNS],
     forceCodeSigning: false,
     icon: paths.winIconPath,
     nodeGypRebuild: false,
@@ -946,9 +1003,15 @@ async function writeLocalLatestYml(config: ToolPackConfig, paths: WinPaths): Pro
 async function collectWinSizeReport(config: ToolPackConfig, paths: WinPaths): Promise<WinSizeReport> {
   const appResourcesRoot = join(paths.unpackedRoot, "resources");
   const appNodeModulesRoot = join(appResourcesRoot, "app", "node_modules");
+  const copiedStandaloneRoot = join(appResourcesRoot, WEB_STANDALONE_RESOURCE_NAME);
+  const copiedStandaloneNodeModulesRoot = join(copiedStandaloneRoot, "node_modules");
+  const copiedStandaloneWebNodeModulesRoot = join(copiedStandaloneRoot, "apps", "web", "node_modules");
+  const electronLocalesRoot = join(paths.unpackedRoot, "locales");
+  const rootWebPackageRoot = join(appNodeModulesRoot, "@open-design", "web");
   return {
     builder: {
-      asar: false,
+      asar: ELECTRON_BUILDER_ASAR,
+      filePatterns: ELECTRON_BUILDER_FILE_PATTERNS,
       targets: resolveWinTargets(config.to),
       webOutputMode: config.webOutputMode,
     },
@@ -957,15 +1020,52 @@ async function collectWinSizeReport(config: ToolPackConfig, paths: WinPaths): Pr
     outputRootBytes: await sizePathBytes(config.roots.output.namespaceRoot),
     resourceRootBytes: await sizePathBytes(paths.resourceRoot),
     runtimeNamespaceRoot: config.roots.runtime.namespaceRoot,
+    topLevel: {
+      appResourcesBytes: await sizePathBytes(join(appResourcesRoot, "app")),
+      copiedStandaloneBytes: await sizePathBytes(copiedStandaloneRoot),
+      electronLocalesBytes: await sizePathBytes(electronLocalesRoot),
+      resourcesBytes: await sizePathBytes(appResourcesRoot),
+    },
     tracked: {
       appNodeModulesBytes: await sizePathBytes(appNodeModulesRoot),
+      betterSqlite3Bytes: await sizePathBytes(join(appNodeModulesRoot, "better-sqlite3")),
+      betterSqlite3SourceResidueBytes: await sizePathBytes(paths.unpackedRoot, {
+        includeFile: isBetterSqlite3SourceResidue,
+      }),
       bundledNodeBytes: await sizePathBytes(join(paths.resourceRoot, "bin", "node.exe")),
+      copiedStandaloneNextBytes:
+        await sizePathBytes(join(copiedStandaloneNodeModulesRoot, "next")) +
+        await sizePathBytes(join(copiedStandaloneWebNodeModulesRoot, "next")),
+      copiedStandaloneNextSwcBytes:
+        await sumChildDirectorySizes(join(copiedStandaloneNodeModulesRoot, "@next"), (name) => name.startsWith("swc-win32-")) +
+        await sumChildDirectorySizes(join(copiedStandaloneWebNodeModulesRoot, "@next"), (name) => name.startsWith("swc-win32-")),
+      copiedStandaloneNodeModulesBytes: await sizePathBytes(copiedStandaloneNodeModulesRoot),
+      copiedStandaloneSharpLibvipsBytes: await sizePathBytes(
+        join(copiedStandaloneNodeModulesRoot, "@img", "sharp-libvips-win32-x64"),
+      ),
+      copiedStandaloneSourcemapBytes: await sizePathBytes(copiedStandaloneRoot, {
+        includeFile: (path) => path.endsWith(".map"),
+      }),
+      copiedStandaloneTsbuildInfoBytes: await sizePathBytes(copiedStandaloneRoot, {
+        includeFile: (path) => path.endsWith(".tsbuildinfo"),
+      }),
+      copiedStandaloneWebNextBytes: await sizePathBytes(join(copiedStandaloneWebNodeModulesRoot, "next")),
+      copiedStandaloneWebNodeModulesBytes: await sizePathBytes(copiedStandaloneWebNodeModulesRoot),
+      electronLocalesBytes: await sizePathBytes(electronLocalesRoot),
+      markdownBytes: await sizePathBytes(paths.unpackedRoot, { includeFile: (path) => path.endsWith(".md") }),
+      nextBytes: await sizePathBytes(join(appNodeModulesRoot, "next")),
+      nextSwcBytes: await sumChildDirectorySizes(join(appNodeModulesRoot, "@next"), (name) => name.startsWith("swc-win32-")),
+      sharpLibvipsBytes: await sizePathBytes(join(appNodeModulesRoot, "@img", "sharp-libvips-win32-x64")),
       sourcemapBytes: await sizePathBytes(paths.unpackedRoot, { includeFile: (path) => path.endsWith(".map") }),
       tsbuildInfoBytes: await sizePathBytes(paths.unpackedRoot, { includeFile: (path) => path.endsWith(".tsbuildinfo") }),
-      webCopiedStandaloneBytes: await sizePathBytes(join(appResourcesRoot, WEB_STANDALONE_RESOURCE_NAME)),
-      webNextCacheBytes: await sizePathBytes(join(appNodeModulesRoot, "@open-design", "web", ".next", "cache")),
-      webPackageBytes: await sizePathBytes(join(appNodeModulesRoot, "@open-design", "web")),
-      webPackageStandaloneBytes: await sizePathBytes(join(appNodeModulesRoot, "@open-design", "web", ".next", "standalone")),
+      webCopiedStandaloneBytes: await sizePathBytes(copiedStandaloneRoot),
+      webNextCacheBytes: await sizePathBytes(join(rootWebPackageRoot, ".next", "cache")),
+      webPackageAppBytes: await sizePathBytes(join(rootWebPackageRoot, "app")),
+      webPackageBytes: await sizePathBytes(rootWebPackageRoot),
+      webPackageDistBytes: await sizePathBytes(join(rootWebPackageRoot, "dist")),
+      webPackagePublicBytes: await sizePathBytes(join(rootWebPackageRoot, "public")),
+      webPackageSrcBytes: await sizePathBytes(join(rootWebPackageRoot, "src")),
+      webPackageStandaloneBytes: await sizePathBytes(join(rootWebPackageRoot, ".next", "standalone")),
     },
     unpackedBytes: (await pathExists(paths.unpackedRoot)) ? await sizePathBytes(paths.unpackedRoot) : null,
   };

@@ -317,6 +317,50 @@ async function pruneBrokenSymlinks(root, current = root, removedPaths = [], reas
   return removedPaths;
 }
 
+function isSourceBuildResidue(relativePath) {
+  const normalized = relativePath.split(path.sep).join("/");
+  return normalized.endsWith(".map") || normalized.endsWith(".tsbuildinfo");
+}
+
+async function pruneMatchingFilesSummary(root, includeRelativePath, reason) {
+  const summary = {
+    bytes: 0,
+    count: 0,
+    reason,
+    root,
+  };
+
+  async function visit(current) {
+    let metadata;
+    try {
+      metadata = await lstat(current);
+    } catch {
+      return;
+    }
+
+    if (metadata.isDirectory()) {
+      const entries = await readdir(current, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        await visit(path.join(current, entry.name));
+      }
+      return;
+    }
+
+    const relativePath = path.relative(root, current);
+    if (relativePath.length === 0 || !includeRelativePath(relativePath)) return;
+    summary.bytes += metadata.size;
+    summary.count += 1;
+    await rm(current, { force: true });
+  }
+
+  await visit(root);
+  return summary.count > 0 ? [summary] : [];
+}
+
+async function pruneSourceBuildResidue(root, reason) {
+  return await pruneMatchingFilesSummary(root, isSourceBuildResidue, reason);
+}
+
 function isForbiddenCopiedEntry(relativePath, platformName) {
   const normalized = relativePath.split(path.sep).join("/");
   const withRootSlash = `/${normalized}`;
@@ -378,6 +422,7 @@ async function auditCopiedStandalone(config, installResult, platformName) {
   const staticRoot = path.join(installResult.destinationWebRoot, ".next", "static");
   const publicRoot = path.join(installResult.destinationWebRoot, "public");
   const nodeModulesRoot = path.join(installResult.destinationRoot, "node_modules");
+  const webNodeModulesRoot = path.join(installResult.destinationWebRoot, "node_modules");
   const requiredPaths = [serverPath, staticRoot, nodeModulesRoot];
   if (await pathExists(config.webPublicSourceRoot)) requiredPaths.push(publicRoot);
 
@@ -413,6 +458,8 @@ async function auditCopiedStandalone(config, installResult, platformName) {
     resolvedModules,
     serverPath,
     symlinks: closureStats.symlinks,
+    webNextBytes: await sizePathBytes(path.join(webNodeModulesRoot, "next")),
+    webNodeModulesBytes: await sizePathBytes(webNodeModulesRoot),
   };
 }
 
@@ -458,6 +505,39 @@ async function pruneRootSharp(appNodeModulesRoot) {
   return removedPaths;
 }
 
+async function pruneRootWebPackage(appNodeModulesRoot, platformName) {
+  if (platformName !== "win32") return [];
+
+  const webPackageRoot = path.join(appNodeModulesRoot, "@open-design", "web");
+  const removedPaths = [];
+  for (const entry of [".next", "app", "next.config.ts", "public", "src"]) {
+    await removePathAndRecord(
+      path.join(webPackageRoot, entry),
+      "root @open-design/web standalone-safe package residue",
+      removedPaths,
+    );
+  }
+  return removedPaths;
+}
+
+async function auditRootWebPackage(appNodeModulesRoot) {
+  const webPackageRoot = path.join(appNodeModulesRoot, "@open-design", "web");
+  const packageJsonPath = path.join(webPackageRoot, "package.json");
+  const sidecarEntryPath = path.join(webPackageRoot, "dist", "sidecar", "index.js");
+  for (const requiredPath of [packageJsonPath, sidecarEntryPath]) {
+    if (!(await pathExists(requiredPath))) {
+      throw new Error(`[tools-pack web-standalone] root @open-design/web audit missing: ${requiredPath}`);
+    }
+  }
+  return {
+    bytes: await sizePathBytes(webPackageRoot),
+    packageJsonPath,
+    retainedDistBytes: await sizePathBytes(path.join(webPackageRoot, "dist")),
+    sidecarEntryPath,
+    webPackageRoot,
+  };
+}
+
 async function auditNoBrokenSymlinks(root, label) {
   const stats = await collectClosureStats(root);
   if (stats.brokenSymlinks.length > 0) {
@@ -485,6 +565,9 @@ async function runWebStandaloneAfterPack(context) {
   const appNodeModulesRoot = resolveRootAppNodeModulesRoot(resourcesRoot);
   const installResult = await installStandaloneResource(config, resourcesRoot, context.electronPlatformName);
   const copiedPrune = config.pruneCopiedSharp ? await pruneCopiedSharp(installResult.destinationRoot) : [];
+  const copiedBuildResiduePrune = context.electronPlatformName === "win32"
+    ? await pruneSourceBuildResidue(installResult.destinationRoot, "copied standalone source/build residue")
+    : [];
   const brokenSymlinkPrune = await pruneBrokenSymlinks(
     installResult.destinationRoot,
     installResult.destinationRoot,
@@ -494,6 +577,13 @@ async function runWebStandaloneAfterPack(context) {
   const copiedAudit = await auditCopiedStandalone(config, installResult, context.electronPlatformName);
   const rootPrune = config.pruneRootNext ? await pruneRootNext(appNodeModulesRoot, context.electronPlatformName) : [];
   const rootSharpPrune = config.pruneRootSharp ? await pruneRootSharp(appNodeModulesRoot) : [];
+  const rootWebPackagePrune = await pruneRootWebPackage(appNodeModulesRoot, context.electronPlatformName);
+  const rootBuildResiduePrune = context.electronPlatformName === "win32"
+    ? await pruneSourceBuildResidue(appNodeModulesRoot, "root app source/build residue")
+    : [];
+  const rootWebPackageAudit = context.electronPlatformName === "win32"
+    ? await auditRootWebPackage(appNodeModulesRoot)
+    : null;
   const rootBrokenSymlinkPrune = await pruneBrokenSymlinks(
     appNodeModulesRoot,
     appNodeModulesRoot,
@@ -508,14 +598,18 @@ async function runWebStandaloneAfterPack(context) {
     appPath,
     brokenSymlinkPrune,
     copiedAudit,
+    copiedBuildResiduePrune,
     copiedPrune,
     generatedAt: new Date().toISOString(),
     platformName: context.electronPlatformName,
     resourcesRoot,
+    rootBuildResiduePrune,
     rootBrokenSymlinkPrune,
     rootPrune,
     rootSharpPrune,
     rootSymlinkAudit,
+    rootWebPackageAudit,
+    rootWebPackagePrune,
     sourceWebRoot: installResult.sourceWebRoot,
     version: 1,
   };

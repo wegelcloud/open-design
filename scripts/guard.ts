@@ -34,6 +34,8 @@ const residualSkippedDirectories = new Set([
 ]);
 
 const residualAllowedExactPaths = new Set([
+  // Package build config executed by Node to emit runtime ESM from TypeScript sources.
+  "packages/contracts/esbuild.config.mjs",
   "packages/platform/esbuild.config.mjs",
   "packages/sidecar/esbuild.config.mjs",
   "packages/sidecar-proto/esbuild.config.mjs",
@@ -53,8 +55,8 @@ const residualAllowedExactPaths = new Set([
   "tools/pack/bin/tools-pack.mjs",
   "tools/pack/esbuild.config.mjs",
   "tools/pack/resources/mac/notarize.cjs",
-  // electron-builder hook path; CJS compatibility entry used by tools-pack mac builds.
-  "tools/pack/resources/mac/web-standalone-after-pack.cjs",
+  // electron-builder hook path; CJS compatibility entry used by tools-pack desktop builds.
+  "tools/pack/resources/web-standalone-after-pack.cjs",
 ]);
 
 const residualAllowedPathPrefixes = [
