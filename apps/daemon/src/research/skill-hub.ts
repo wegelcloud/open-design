@@ -24,6 +24,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { createHmac, randomBytes } from 'node:crypto';
 
 const DEFAULT_REPO = 'pftom/open-design-hub';
 const DEFAULT_BRANCH = 'main';
@@ -88,12 +89,36 @@ interface ListCacheKey {
   repo: string;
   ref: string;          // SHA or branch — caches must not collapse the two
   namespace: HubNamespace;
+  /**
+   * Auth-mode partition. Either the literal `'public'` for tokenless
+   * requests or a non-reversible HMAC fingerprint of the bearer token.
+   * Required so a tokened request that surfaces private hub repo
+   * manifests (where `entry.raw` becomes prompt material) cannot be
+   * served back to a later tokenless request with the same
+   * `(repo, ref, namespace)` (PR #617 review, P1).
+   */
+  authPartition: string;
 }
 
 const listCache = new Map<string, { ts: number; data: HubEntry[] }>();
 
+// Per-process HMAC key for token fingerprints. Random per process so the
+// fingerprint cannot be turned into a stable identifier across daemon
+// restarts (a leaked cache key from one process is useless against the
+// next), and never logged. We only use the fingerprint as a partition
+// label — equal tokens hash to the same label so a second request with
+// the same credentials can still hit the cache.
+const TOKEN_FINGERPRINT_HMAC_KEY = randomBytes(32);
+
+function authPartitionFor(token: string | undefined): string {
+  if (!token) return 'public';
+  const h = createHmac('sha256', TOKEN_FINGERPRINT_HMAC_KEY);
+  h.update(token, 'utf8');
+  return `t:${h.digest('hex').slice(0, 16)}`;
+}
+
 function cacheKey(k: ListCacheKey): string {
-  return `${k.repo}@${k.ref}/${k.namespace}`;
+  return `${k.authPartition}|${k.repo}@${k.ref}/${k.namespace}`;
 }
 
 interface ResolvedHubRef {
@@ -240,7 +265,12 @@ export async function listHubEntries(
   cfg?: HubConfig,
 ): Promise<HubEntry[]> {
   const r = await resolveHubRef(cfg);
-  const key = cacheKey({ repo: r.repo, ref: r.ref, namespace });
+  const key = cacheKey({
+    repo: r.repo,
+    ref: r.ref,
+    namespace,
+    authPartition: authPartitionFor(r.token),
+  });
   const hit = listCache.get(key);
   if (hit && Date.now() - hit.ts < CACHE_TTL_MS) return hit.data;
 
@@ -751,6 +781,198 @@ interface InstallOptions {
 }
 
 /**
+ * Server-owned selector for installing a hub manifest. Carries only the
+ * fields the daemon needs to fetch the canonical bytes itself (PR #617
+ * review, P1): a tuple identifying *which* manifest, plus the immutable
+ * commit SHA the user approved. The bytes are never threaded through this
+ * surface — the install path re-fetches them at `pinnedSha`.
+ */
+export interface HubInstallSelector {
+  namespace: HubNamespace;
+  name: string;
+  /**
+   * `<owner>/<repo>` slug. Required so an install routed to a
+   * non-default hub still pins to the right repository.
+   */
+  repo: string;
+  /**
+   * Immutable commit SHA the user reviewed. May be a 7–40 hex prefix;
+   * the install path canonicalizes it via the GitHub commits API and
+   * verifies the canonical SHA shares the input's hex prefix (so a
+   * branch/tag named like a SHA cannot stand in for a real commit).
+   */
+  pinnedSha: string;
+  /**
+   * Optional GitHub token for private hub repos. Same auth-partitioning
+   * rules apply as `listHubEntries`.
+   */
+  token?: string;
+}
+
+interface SelectorInstallOptions {
+  targetRoot: string;
+  overwrite?: boolean;
+  approval: InstallApproval;
+}
+
+const NAMESPACE_VALUES: ReadonlySet<HubNamespace> = new Set([
+  'skills',
+  'design-systems',
+  'craft',
+]);
+
+function validateInstallApproval(approval: InstallApproval | undefined, fnName: string): void {
+  if (!approval || approval.userApproved !== true) {
+    throw new Error(
+      `${fnName}: explicit user approval required (see InstallApproval)`,
+    );
+  }
+  if (
+    typeof approval.pinnedSha !== 'string'
+    || !COMMIT_SHA_PATTERN.test(approval.pinnedSha)
+  ) {
+    throw new Error(`${fnName}: approval.pinnedSha must be a commit SHA`);
+  }
+}
+
+function manifestPathFor(namespace: HubNamespace, name: string): string {
+  if (namespace === 'craft') {
+    if (!SLUG_PATTERN.test(name)) throw new Error(`Hub entry name invalid: ${name}`);
+    return `${namespace}/${name}.md`;
+  }
+  if (!NAME_PATTERN.test(name)) throw new Error(`Hub entry name invalid: ${name}`);
+  const fileName = namespace === 'skills' ? 'SKILL.md' : 'DESIGN.md';
+  return `${namespace}/${name}/${fileName}`;
+}
+
+async function fetchManifestRawAtSha(
+  selector: HubInstallSelector,
+  canonicalSha: string,
+): Promise<string> {
+  const manifestPath = manifestPathFor(selector.namespace, selector.name);
+  const url = `https://api.github.com/repos/${selector.repo}/contents/${manifestPath}?ref=${encodeURIComponent(canonicalSha)}`;
+  const res = await ghFetch(url, selector.token);
+  const meta = (await res.json()) as ContentsItem;
+  if (meta.type !== 'file') {
+    throw new Error(
+      `installHubManifest: ${selector.namespace}/${selector.name} did not resolve to a file at ${canonicalSha}`,
+    );
+  }
+  if (!meta.download_url) {
+    throw new Error(
+      `installHubManifest: ${selector.namespace}/${selector.name} has no download_url at ${canonicalSha}`,
+    );
+  }
+  const raw = await fetchRawCapped(meta.download_url, selector.token);
+  if (raw === null) {
+    throw new Error(
+      `installHubManifest: failed to fetch manifest bytes for ${selector.namespace}/${selector.name} at ${canonicalSha}`,
+    );
+  }
+  return raw;
+}
+
+/**
+ * Install a single hub manifest from a server-owned selector (PR #617
+ * review, P1). Unlike `installHubEntry`, this entry point never trusts
+ * caller-supplied bytes: it canonicalizes `selector.pinnedSha` through the
+ * GitHub commits API, fetches the manifest at that canonical SHA, and
+ * writes only the bytes it just fetched.
+ *
+ * Use this from any future route (`POST /api/skill-hub/install`) instead
+ * of letting an HTTP body forward arbitrary `entry.raw` straight into the
+ * writer. The selector is the only thing that needs to cross the trust
+ * boundary; everything else is server-owned.
+ */
+export async function installHubManifest(
+  selector: HubInstallSelector,
+  opts: SelectorInstallOptions,
+): Promise<{ path: string; commitSha: string }> {
+  validateInstallApproval(opts.approval, 'installHubManifest');
+  if (!NAMESPACE_VALUES.has(selector.namespace)) {
+    throw new Error(`installHubManifest: invalid namespace ${String(selector.namespace)}`);
+  }
+  if (typeof selector.repo !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(selector.repo)) {
+    throw new Error('installHubManifest: selector.repo must be "<owner>/<name>"');
+  }
+  if (typeof selector.pinnedSha !== 'string' || !COMMIT_SHA_PATTERN.test(selector.pinnedSha)) {
+    throw new Error('installHubManifest: selector.pinnedSha must be a 7–40 char commit SHA');
+  }
+  if (selector.pinnedSha.toLowerCase() !== opts.approval.pinnedSha.toLowerCase()) {
+    throw new Error(
+      'installHubManifest: selector.pinnedSha must match approval.pinnedSha — the user must approve the same commit the daemon will fetch',
+    );
+  }
+
+  const resolved = await resolveHubRef({
+    repo: selector.repo,
+    pinnedSha: selector.pinnedSha,
+    ...(selector.token ? { token: selector.token } : {}),
+  });
+  const canonicalSha = resolved.commitSha;
+  if (!canonicalSha) {
+    throw new Error('installHubManifest: pinnedSha did not resolve to a canonical commit SHA');
+  }
+
+  const fetchToken = resolved.token ?? selector.token;
+  const raw = await fetchManifestRawAtSha(
+    {
+      namespace: selector.namespace,
+      name: selector.name,
+      repo: selector.repo,
+      pinnedSha: selector.pinnedSha,
+      ...(fetchToken ? { token: fetchToken } : {}),
+    },
+    canonicalSha,
+  );
+  if (!resolveManifest(selector.namespace, raw, selector.name)) {
+    throw new Error(
+      `installHubManifest: manifest at ${selector.namespace}/${selector.name}@${canonicalSha} failed validation`,
+    );
+  }
+
+  const target = await writeManifest({
+    namespace: selector.namespace,
+    name: selector.name,
+    raw,
+    targetRoot: opts.targetRoot,
+    ...(opts.overwrite !== undefined ? { overwrite: opts.overwrite } : {}),
+  });
+  return { path: target, commitSha: canonicalSha };
+}
+
+interface WriteManifestArgs {
+  namespace: HubNamespace;
+  name: string;
+  raw: string;
+  targetRoot: string;
+  overwrite?: boolean;
+}
+
+async function writeManifest(args: WriteManifestArgs): Promise<string> {
+  let target: string;
+  if (args.namespace === 'craft') {
+    target = resolveSafeChild(args.targetRoot, `${args.name}.md`);
+    await fs.mkdir(args.targetRoot, { recursive: true });
+  } else {
+    const childDir = resolveSafeChild(args.targetRoot, args.name);
+    await fs.mkdir(childDir, { recursive: true });
+    const fileName = args.namespace === 'skills' ? 'SKILL.md' : 'DESIGN.md';
+    target = path.join(childDir, fileName);
+  }
+  if (!args.overwrite) {
+    try {
+      await fs.access(target);
+      throw new Error(`Already installed: ${target} (pass overwrite: true to replace)`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  }
+  await fs.writeFile(target, args.raw, 'utf8');
+  return target;
+}
+
+/**
  * Install a single hub entry. For `skills` / `design-systems` this writes
  * `<targetRoot>/<name>/SKILL.md` (or `DESIGN.md`). For `craft` this writes
  * `<targetRoot>/<name>.md` directly at the craft root, matching how
@@ -772,31 +994,24 @@ interface InstallOptions {
  *     SHA-shaped string to the install gate.
  *   - SHA comparison is case-insensitive but exact (no prefix matching),
  *     so a 7-char short SHA approval cannot stand in for a 40-char one.
+ *   - The bytes in `entry.raw` are NOT trusted: the install path re-fetches
+ *     the manifest from `https://api.github.com/.../<entry.source.path>?ref=
+ *     <entry.source.commitSha>` and writes only the freshly fetched bytes,
+ *     so a forged `HubEntry` carrying matching SHA strings still cannot
+ *     persist arbitrary prompt text (PR #617 review, P1). The freshly
+ *     fetched bytes must equal `entry.raw` byte-for-byte; otherwise the
+ *     listing cache is stale or tampered with and the install is rejected.
  *
- * Re-validates frontmatter before writing — list cache may be stale, and an
- * untrusted hub entry that bypassed the listing path (e.g. via a custom
- * crafted `HubEntry`) is still rejected here.
- *
- * Note: this v0 only writes the manifest file. A full install also fetches
- * sibling assets (example.html, references/, assets/) — that pass should
- * iterate `GET /repos/.../contents/<dir>?ref=<sha>` (SHA, not branch) and
- * stream each child. Tracked for the integration PR.
+ * Future routes that take input from HTTP should call `installHubManifest`
+ * (selector-only entry point) instead of forwarding a `HubEntry` body
+ * straight in here. This entry point remains for in-process callers that
+ * already hold an entry from `listHubEntries`.
  */
 export async function installHubEntry(
   entry: HubEntry,
   opts: InstallOptions,
 ): Promise<{ path: string }> {
-  if (!opts.approval || opts.approval.userApproved !== true) {
-    throw new Error(
-      'installHubEntry: explicit user approval required (see InstallApproval)',
-    );
-  }
-  if (
-    typeof opts.approval.pinnedSha !== 'string'
-    || !COMMIT_SHA_PATTERN.test(opts.approval.pinnedSha)
-  ) {
-    throw new Error('installHubEntry: approval.pinnedSha must be a commit SHA');
-  }
+  validateInstallApproval(opts.approval, 'installHubEntry');
   const entrySha = entry.source?.commitSha;
   if (typeof entrySha !== 'string' || entrySha.length === 0) {
     throw new Error(
@@ -813,27 +1028,43 @@ export async function installHubEntry(
       `installHubEntry: provenance mismatch — entry was fetched at ${entrySha} but approval pinned ${opts.approval.pinnedSha} (${entry.namespace}/${entry.name})`,
     );
   }
+  if (typeof entry.source?.repo !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(entry.source.repo)) {
+    throw new Error(
+      `installHubEntry: entry.source.repo must be "<owner>/<name>" (${entry.namespace}/${entry.name})`,
+    );
+  }
   if (!resolveManifest(entry.namespace, entry.raw, entry.name)) {
     throw new Error(`Hub entry manifest failed validation: ${entry.namespace}/${entry.name}`);
   }
-  let target: string;
-  if (entry.namespace === 'craft') {
-    target = resolveSafeChild(opts.targetRoot, `${entry.name}.md`);
-    await fs.mkdir(opts.targetRoot, { recursive: true });
-  } else {
-    const childDir = resolveSafeChild(opts.targetRoot, entry.name);
-    await fs.mkdir(childDir, { recursive: true });
-    const fileName = entry.namespace === 'skills' ? 'SKILL.md' : 'DESIGN.md';
-    target = path.join(childDir, fileName);
+  // Server-owned re-fetch at the canonical commit SHA. We do not trust
+  // `entry.raw`; we only trust the bytes we just pulled from GitHub at the
+  // SHA the user approved (PR #617 review, P1).
+  const canonicalSha = entrySha.toLowerCase();
+  const fresh = await fetchManifestRawAtSha(
+    {
+      namespace: entry.namespace,
+      name: entry.name,
+      repo: entry.source.repo,
+      pinnedSha: canonicalSha,
+    },
+    canonicalSha,
+  );
+  if (fresh !== entry.raw) {
+    throw new Error(
+      `installHubEntry: manifest bytes drifted from listing at ${canonicalSha} for ${entry.namespace}/${entry.name} — refusing to write`,
+    );
   }
-  if (!opts.overwrite) {
-    try {
-      await fs.access(target);
-      throw new Error(`Already installed: ${target} (pass overwrite: true to replace)`);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    }
+  if (!resolveManifest(entry.namespace, fresh, entry.name)) {
+    throw new Error(
+      `Hub entry manifest failed validation after re-fetch: ${entry.namespace}/${entry.name}`,
+    );
   }
-  await fs.writeFile(target, entry.raw, 'utf8');
+  const target = await writeManifest({
+    namespace: entry.namespace,
+    name: entry.name,
+    raw: fresh,
+    targetRoot: opts.targetRoot,
+    ...(opts.overwrite !== undefined ? { overwrite: opts.overwrite } : {}),
+  });
   return { path: target };
 }

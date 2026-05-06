@@ -121,6 +121,19 @@ const MAX_REDACTION_DEPTH = 6;
 // Truncate excessively long string values defensively so a stray paste of a
 // large blob (e.g. a base64-encoded screenshot) cannot bloat the audit file.
 const MAX_STRING_LEN = 4 * 1024;
+// Per-container caps so a mutation route that passes a large array or object
+// in `detail` cannot generate a multi-MB JSONL line and block the daemon on
+// synchronous `JSON.stringify()` / `appendFileSync()`. Items past the cap are
+// dropped and replaced with a single truncation marker (PR #617 review, P2).
+const MAX_ARRAY_ITEMS = 100;
+const MAX_OBJECT_KEYS = 100;
+// Hard upper bound on the serialized JSONL line. Even with per-string,
+// per-array, and per-object caps, a deeply branched object can still exceed
+// what is reasonable to store and to read back. After serialization we check
+// the byte length and, if over, replace `detail` with a `__truncated` marker
+// recording the original size before re-serializing (PR #617 review, P2).
+const MAX_AUDIT_LINE_BYTES = 64 * 1024;
+const TRUNCATION_MARKER = '__truncated';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false;
@@ -146,12 +159,25 @@ function redactValue(value: unknown, depth: number): unknown {
     return value.toString();
   }
   if (Array.isArray(value)) {
-    return value.map((v) => redactValue(v, depth + 1));
+    if (value.length <= MAX_ARRAY_ITEMS) {
+      return value.map((v) => redactValue(v, depth + 1));
+    }
+    const head = value.slice(0, MAX_ARRAY_ITEMS).map((v) => redactValue(v, depth + 1));
+    head.push(`[truncated ${value.length - MAX_ARRAY_ITEMS} more item(s)]`);
+    return head;
   }
   if (isPlainObject(value)) {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
+    const entries = Object.entries(value);
+    const limit = Math.min(entries.length, MAX_OBJECT_KEYS);
+    for (let i = 0; i < limit; i++) {
+      const pair = entries[i];
+      if (!pair) continue;
+      const [k, v] = pair;
       out[k] = isSensitiveKey(k) ? REDACTED : redactValue(v, depth + 1);
+    }
+    if (entries.length > MAX_OBJECT_KEYS) {
+      out[TRUNCATION_MARKER] = `dropped ${entries.length - MAX_OBJECT_KEYS} more key(s)`;
     }
     return out;
   }
@@ -181,17 +207,55 @@ function redactEntry(entry: AuditEntry): AuditEntry {
 }
 
 /**
+ * Bounded JSONL serializer for an `AuditEntry`. Per-string/per-array/
+ * per-object caps in `redactValue` already keep individual containers
+ * small, but a deeply branched object can still produce a multi-MB line.
+ * After the first stringify we check the byte length and, if over the
+ * cap, replace `detail` with a single `__truncated` marker recording the
+ * original size before re-serializing (PR #617 review, P2). The marker
+ * shape lets log readers distinguish a deliberate truncation from a
+ * malformed entry.
+ */
+function serializeAuditLine(safe: AuditEntry): string {
+  const first = JSON.stringify(safe);
+  if (Buffer.byteLength(first, 'utf8') <= MAX_AUDIT_LINE_BYTES) {
+    return first + '\n';
+  }
+  const detail = safe.detail;
+  const detailBytes = detail ? Buffer.byteLength(JSON.stringify(detail), 'utf8') : 0;
+  const truncated: AuditEntry = {
+    timestamp: safe.timestamp,
+    projectId: safe.projectId,
+    action: safe.action,
+    actor: safe.actor,
+    detail: {
+      [TRUNCATION_MARKER]: true,
+      reason: 'audit-line-too-large',
+      originalDetailBytes: detailBytes,
+      maxLineBytes: MAX_AUDIT_LINE_BYTES,
+    },
+  };
+  if (safe.conversationId !== undefined) truncated.conversationId = safe.conversationId;
+  if (safe.agentId !== undefined) truncated.agentId = safe.agentId;
+  return JSON.stringify(truncated) + '\n';
+}
+
+/**
  * Append a single audit entry. Atomic at the line level on POSIX (write(2)
  * is atomic for buffers smaller than PIPE_BUF, and JSONL stays well below).
  *
  * Sensitive fields in `entry.detail` (token / api_key / authorization etc.)
  * are recursively redacted before serialization, since `detail` is typed as
  * `Record<string, unknown>` and per-action shape is not enforced yet.
+ *
+ * Bounded by per-string, per-array, per-object, and per-line caps so that a
+ * mutation route passing a pathological `detail` cannot block the daemon on
+ * synchronous `JSON.stringify` / `appendFileSync` (PR #617 review, P2).
  */
 export function appendAuditEntry(entry: AuditEntry, opts: AuditOptions): void {
   const file = ensureAuditFile(entry.projectId, opts);
   const safe = redactEntry(entry);
-  const line = JSON.stringify(safe) + '\n';
+  const line = serializeAuditLine(safe);
   fs.appendFileSync(file, line, { encoding: 'utf8' });
 }
 

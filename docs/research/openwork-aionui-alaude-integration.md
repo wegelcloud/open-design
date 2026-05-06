@@ -312,19 +312,71 @@ UI:
 **最小落地形态**:
 
 ```ts
-// apps/daemon/src/research/skill-hub.ts(草稿)
-const HUB_REPO = process.env.OD_SKILL_HUB_REPO ?? 'pftom/open-design-hub';
-const HUB_BRANCH = 'main';
+// apps/daemon/src/research/skill-hub.ts(草稿)—— 安全形态(PR #617 review, P1)
+//
+// 关键约束(任何 follow-up `POST /api/skill-hub/install` 都必须保留):
+//   1. 列表必须 pin 到不可变 commit SHA,而不是 `main` / branch / tag。
+//      `pinnedSha` 先经 `GET /repos/{owner}/{repo}/commits/{input}` 规范化
+//      为 40 位 SHA,并验证规范 SHA 与输入的 hex 前缀一致(防止形如 SHA
+//      的分支/标签冒充 commit)。
+//   2. cache 按 `(authPartition, repo, ref, namespace)` 分桶 ——
+//      `authPartition` 是 token 的 HMAC-SHA256 指纹或 `'public'`,
+//      避免 tokened 请求的私有 manifest 漏给 tokenless 请求。
+//   3. 安装入口 `installHubManifest` 接收的是**服务器端 selector**
+//      `{ namespace, name, repo, pinnedSha }`,*不是* HTTP body 提供的
+//      `entry.raw`。daemon 在安装路径内自己重取 manifest,只写入刚刚
+//      从 GitHub 拉到的字节;`installHubEntry` 也在写入前重取并要求
+//      字节与 listing 完全一致,任何漂移都拒绝写。
+//   4. `InstallApproval { pinnedSha, userApproved: true }` 是显式批准
+//      的 forcing function(用户必须看过 diff / provenance 后明确同意)。
+//      默认构造的 options 对象(`userApproved: false`)永远不能触发写入。
+//   5. 写入目标默认进入 quarantine 目录(例如 `<store>/_pending/<sha>/`),
+//      只有用户在 UI 显式 activate 后才软链/拷贝到活动 prompt 目录,
+//      对齐 npm / homebrew / apt 的信任边界。
+//   6. 兄弟资源(example.html / references/ / assets/)同样必须 pin 到
+//      `commitSha`,绝不能再走 branch ref。
+
+const DEFAULT_REPO = 'pftom/open-design-hub';
+const DEFAULT_BRANCH = 'main';                 // 仅供"浏览"阶段的兜底,不允许进入安装路径
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-export async function listHubSkills(): Promise<HubSkillEntry[]> {
-  // GET https://api.github.com/repos/{HUB_REPO}/contents/skills?ref={HUB_BRANCH}
-  // 5 分钟缓存;parse 每个目录的 SKILL.md frontmatter
+export interface HubInstallSelector {
+  namespace: 'skills' | 'design-systems' | 'craft';
+  name: string;
+  repo: string;                                // owner/name
+  pinnedSha: string;                           // 用户已审阅的不可变 commit SHA
+  token?: string;                              // 私库时使用,触发 cache 分桶
 }
 
-export async function installHubSkill(name: string): Promise<void> {
-  // resolveSafeChild(name) 防路径越界
-  // GET raw SKILL.md + assets;落 ./skills/<name>/  或 ~/.open-design/skills/<name>/
+export interface InstallApproval {
+  pinnedSha: string;                           // 必须等于 selector.pinnedSha
+  userApproved: true;                          // type-level forcing function
+}
+
+export async function listHubSkills(cfg: {
+  pinnedSha: string;                           // 浏览阶段也强烈建议 pin,安装阶段必需
+  token?: string;
+}): Promise<HubSkillEntry[]> {
+  // 1) 规范化 pinnedSha → 40 位 commit SHA,拒绝 hex-shaped branch/tag。
+  // 2) GET https://api.github.com/repos/{repo}/contents/skills?ref={canonicalSha}
+  // 3) 缓存 key 含 authPartition(token 的 HMAC 指纹),避免私库泄漏。
+  // 4) 每个返回的 HubEntry 都把规范 40 位 SHA 写入 source.commitSha,
+  //    供后续安装入口校验 provenance。
+}
+
+export async function installHubManifest(
+  selector: HubInstallSelector,
+  opts: { targetRoot: string; overwrite?: boolean; approval: InstallApproval },
+): Promise<{ path: string; commitSha: string }> {
+  // 1) 校验 approval.userApproved === true、approval.pinnedSha 形状正确。
+  // 2) 校验 selector.pinnedSha === approval.pinnedSha(用户必须批准
+  //    daemon 即将拉取的同一个 commit)。
+  // 3) resolveHubRef(selector) → 规范 40 位 commitSha;
+  //    daemon 自己 GET `/repos/.../contents/<manifestPath>?ref=<canonicalSha>`,
+  //    再 GET 它返回的 download_url —— **不信任 caller 提供的 raw**。
+  // 4) resolveManifest 验证刚拉到的字节通过 frontmatter / 名称槽匹配。
+  // 5) resolveSafeChild + 写入 quarantine 目录;后续 UI activate 才进入
+  //    活动 prompt 目录。
 }
 ```
 
