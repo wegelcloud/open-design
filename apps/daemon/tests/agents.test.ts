@@ -16,6 +16,7 @@ import {
   checkPromptArgvBudget,
   checkWindowsCmdShimCommandLineBudget,
   checkWindowsDirectExeCommandLineBudget,
+  detectAgents,
   resolveAgentExecutable,
   spawnEnvForAgent,
 } from '../src/agents.js';
@@ -32,6 +33,7 @@ const kilo = AGENT_DEFS.find((agent) => agent.id === 'kilo');
 const vibe = AGENT_DEFS.find((agent) => agent.id === 'vibe');
 const claude = AGENT_DEFS.find((agent) => agent.id === 'claude');
 const devin = AGENT_DEFS.find((agent) => agent.id === 'devin');
+const pi = AGENT_DEFS.find((agent) => agent.id === 'pi');
 const deepseek = AGENT_DEFS.find((agent) => agent.id === 'deepseek');
 const gemini = AGENT_DEFS.find((agent) => agent.id === 'gemini');
 const originalDisablePlugins = process.env.OD_CODEX_DISABLE_PLUGINS;
@@ -168,12 +170,30 @@ test('codex args do not include the literal `-` stdin sentinel (regression of #2
   assert.equal(withDisablePlugins.includes('-'), false);
 });
 
+test('codex args pass valid extraAllowedDirs with repeatable --add-dir flags', () => {
+  delete process.env.OD_CODEX_DISABLE_PLUGINS;
+
+  const args = codex.buildArgs(
+    '',
+    [],
+    ['/repo/skills', '', null, '/tmp/codex/generated_images', undefined],
+    {},
+    { cwd: '/tmp/od-project' },
+  );
+
+  assert.deepEqual(
+    args.filter((arg, index) => arg === '--add-dir' || args[index - 1] === '--add-dir'),
+    ['--add-dir', '/repo/skills', '--add-dir', '/tmp/codex/generated_images'],
+  );
+});
+
 test('live artifact MCP discovery is limited to mature ACP agents', () => {
   assert.deepEqual(buildLiveArtifactsMcpServersForAgent(hermes), [
     {
       name: 'open-design-live-artifacts',
       command: 'od',
       args: ['mcp', 'live-artifacts'],
+      env: [],
     },
   ]);
   assert.deepEqual(buildLiveArtifactsMcpServersForAgent(kimi), [
@@ -181,6 +201,7 @@ test('live artifact MCP discovery is limited to mature ACP agents', () => {
       name: 'open-design-live-artifacts',
       command: 'od',
       args: ['mcp', 'live-artifacts'],
+      env: [],
     },
   ]);
 
@@ -205,6 +226,7 @@ test('live artifact MCP discovery can use daemon-resolved CLI command', () => {
         name: 'open-design-live-artifacts',
         command: process.execPath,
         args: ['/workspace/apps/daemon/dist/cli.js', 'mcp', 'live-artifacts'],
+        env: [],
       },
     ],
   );
@@ -391,6 +413,31 @@ test('devin args use acp subcommand for json-rpc streaming', () => {
     'acp',
   ]);
   assert.equal(devin.streamFormat, 'acp-json-rpc');
+});
+
+test('pi args use rpc mode without --no-session and append model/thinking options', () => {
+  const baseArgs = pi.buildArgs('', [], [], {}, {});
+
+  assert.deepEqual(baseArgs, ['--mode', 'rpc']);
+  assert.ok(!baseArgs.includes('--no-session'), 'pi must not pass --no-session');
+  assert.equal(pi.promptViaStdin, true);
+  assert.equal(pi.streamFormat, 'pi-rpc');
+
+  const withModel = pi.buildArgs('', [], [], { model: 'anthropic/claude-sonnet-4-5' }, {});
+  assert.deepEqual(withModel, [
+    '--mode',
+    'rpc',
+    '--model',
+    'anthropic/claude-sonnet-4-5',
+  ]);
+
+  const withThinking = pi.buildArgs('', [], [], { reasoning: 'high' }, {});
+  assert.deepEqual(withThinking, [
+    '--mode',
+    'rpc',
+    '--thinking',
+    'high',
+  ]);
 });
 
 test('gemini args avoid version-fragile trust flags', () => {
@@ -1192,6 +1239,58 @@ test('spawnEnvForAgent strips ANTHROPIC_API_KEY for the claude adapter', () => {
   assert.equal(env.OD_DAEMON_URL, 'http://127.0.0.1:7456');
 });
 
+test('spawnEnvForAgent applies configured Claude Code env before auth stripping', () => {
+  const env = spawnEnvForAgent(
+    'claude',
+    {
+      ANTHROPIC_API_KEY: 'sk-leak',
+      PATH: '/usr/bin',
+    },
+    {
+      CLAUDE_CONFIG_DIR: '/Users/test/.claude-2',
+    },
+  );
+
+  assert.equal(env.CLAUDE_CONFIG_DIR, '/Users/test/.claude-2');
+  assert.equal('ANTHROPIC_API_KEY' in env, false);
+  assert.equal(env.PATH, '/usr/bin');
+});
+
+test('spawnEnvForAgent applies configured Codex env without mutating the base env', () => {
+  const base = { PATH: '/usr/bin' };
+  const env = spawnEnvForAgent('codex', base, {
+    CODEX_HOME: '/Users/test/.codex-alt',
+  });
+
+  assert.equal(env.CODEX_HOME, '/Users/test/.codex-alt');
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal('CODEX_HOME' in base, false);
+});
+
+test('detectAgents applies configured env while probing the CLI', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'od-agent-env-'));
+  try {
+    const bin = join(dir, 'claude');
+    writeFileSync(
+      bin,
+      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "$CLAUDE_CONFIG_DIR"; exit 0; fi\nif [ "$1" = "-p" ]; then echo "--add-dir --include-partial-messages"; exit 0; fi\nexit 0\n',
+    );
+    chmodSync(bin, 0o755);
+    process.env.PATH = dir;
+    process.env.OD_AGENT_HOME = dir;
+
+    const agents = await detectAgents({
+      claude: { CLAUDE_CONFIG_DIR: '/tmp/claude-config-probe' },
+    });
+
+    const detected = agents.find((agent) => agent.id === 'claude');
+    assert.equal(detected?.available, true);
+    assert.equal(detected?.version, '/tmp/claude-config-probe');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Windows env-var names are case-insensitive at the kernel level, but
 // spreading process.env into a plain object loses Node's case-insensitive
 // accessor — a `Anthropic_Api_Key` key would survive a literal
@@ -1222,6 +1321,40 @@ test('spawnEnvForAgent preserves ANTHROPIC_API_KEY for non-claude adapters', () 
       `expected ${agentId} to preserve ANTHROPIC_API_KEY`,
     );
   }
+});
+
+test('spawnEnvForAgent preserves ANTHROPIC_API_KEY when ANTHROPIC_BASE_URL is set', () => {
+  const env = spawnEnvForAgent('claude', {
+    ANTHROPIC_API_KEY: 'sk-kimi',
+    ANTHROPIC_BASE_URL: 'https://api.moonshot.cn/v1',
+    PATH: '/usr/bin',
+  });
+
+  assert.equal(env.ANTHROPIC_API_KEY, 'sk-kimi');
+  assert.equal(env.ANTHROPIC_BASE_URL, 'https://api.moonshot.cn/v1');
+  assert.equal(env.PATH, '/usr/bin');
+});
+
+test('spawnEnvForAgent strips ANTHROPIC_API_KEY when ANTHROPIC_BASE_URL is empty', () => {
+  const env = spawnEnvForAgent('claude', {
+    ANTHROPIC_API_KEY: 'sk-leak',
+    ANTHROPIC_BASE_URL: '',
+    PATH: '/usr/bin',
+  });
+
+  assert.equal('ANTHROPIC_API_KEY' in env, false);
+  assert.equal(env.PATH, '/usr/bin');
+});
+
+test('spawnEnvForAgent strips ANTHROPIC_API_KEY when ANTHROPIC_BASE_URL is whitespace', () => {
+  const env = spawnEnvForAgent('claude', {
+    ANTHROPIC_API_KEY: 'sk-leak',
+    ANTHROPIC_BASE_URL: '   ',
+    PATH: '/usr/bin',
+  });
+
+  assert.equal('ANTHROPIC_API_KEY' in env, false);
+  assert.equal(env.PATH, '/usr/bin');
 });
 
 test('spawnEnvForAgent does not mutate the input env', () => {

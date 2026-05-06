@@ -1,10 +1,14 @@
 {
   "name": "@open-design/contracts",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
-  "main": "./dist/index.mjs",
   "description": "Shared pure TypeScript contracts for the Open Design web/daemon boundary.",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -15,10 +19,6 @@
       "default": "./dist/critique.mjs"
     }
   },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "node ./esbuild.config.mjs && tsc -p tsconfig.json --emitDeclarationOnly",
     "test": "vitest run",
