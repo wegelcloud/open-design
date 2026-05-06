@@ -19,6 +19,7 @@ export type RawPackagedConfig = {
   namespaceBaseRoot?: string;
   nodeCommandRelative?: string;
   resourceRoot?: string;
+  webSidecarEntryRelative?: string;
   webStandaloneRoot?: string;
   webOutputMode?: string;
 };
@@ -29,6 +30,7 @@ export type PackagedConfig = {
   namespaceBaseRoot: string;
   nodeCommand: string | null;
   resourceRoot: string;
+  webSidecarEntry: string | null;
   webStandaloneRoot: string | null;
   webOutputMode: PackagedWebOutputMode;
 };
@@ -98,6 +100,16 @@ function resolvePackagedWebStandaloneRoot(
   return join(process.resourcesPath, "open-design-web-standalone");
 }
 
+async function resolvePackagedRelativeEntry(value: string | undefined): Promise<string | null> {
+  const cleaned = cleanOptionalString(value);
+  if (cleaned == null) return null;
+  const entry = join(process.resourcesPath, cleaned);
+  if (!(await pathExists(entry))) {
+    throw new Error(`configured packaged entry not found at ${entry}`);
+  }
+  return entry;
+}
+
 export async function readPackagedConfig(): Promise<PackagedConfig> {
   const raw = await readRawPackagedConfig();
   const namespace = normalizeNamespace(
@@ -124,6 +136,7 @@ export async function readPackagedConfig(): Promise<PackagedConfig> {
       ? process.env[PACKAGED_WEB_STANDALONE_ROOT_ENV] ?? raw.webStandaloneRoot
       : raw.webStandaloneRoot,
   );
+  const webSidecarEntry = await resolvePackagedRelativeEntry(raw.webSidecarEntryRelative);
 
   return {
     appVersion: cleanOptionalString(raw.appVersion),
@@ -131,6 +144,7 @@ export async function readPackagedConfig(): Promise<PackagedConfig> {
     namespaceBaseRoot,
     nodeCommand,
     resourceRoot,
+    webSidecarEntry,
     webStandaloneRoot,
     webOutputMode,
   };

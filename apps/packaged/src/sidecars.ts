@@ -240,6 +240,7 @@ export async function startPackagedSidecars(
   options: {
     appVersion: string | null;
     nodeCommand: string | null;
+    webSidecarEntry: string | null;
     webStandaloneRoot: string | null;
     webOutputMode: PackagedWebOutputMode;
   },
@@ -281,7 +282,7 @@ export async function startPackagedSidecars(
 
     const web = await spawnSidecarChild({
       app: APP_KEYS.WEB,
-      entryPath: resolveSidecarEntry("@open-design/web", "sidecar"),
+      entryPath: options.webSidecarEntry ?? resolveSidecarEntry("@open-design/web", "sidecar"),
       env: {
         [SIDECAR_ENV.DAEMON_PORT]: extractPort(daemonStatus.url),
         [SIDECAR_ENV.WEB_PORT]: "0",
