@@ -466,14 +466,24 @@ async function auditCopiedStandalone(config, installResult, platformName) {
 async function pruneRootNext(appNodeModulesRoot, platformName) {
   const removedPaths = [];
 
-  const nextScopeRoot = path.join(appNodeModulesRoot, "@next");
-  const nextScopeEntries = await readdir(nextScopeRoot).catch(() => []);
-  for (const entry of nextScopeEntries) {
-    if (platformName === "darwin" && entry.startsWith("swc-darwin-")) {
-      await removePathAndRecord(path.join(nextScopeRoot, entry), "root next darwin swc package", removedPaths);
-    }
-    if (platformName === "win32" && entry.startsWith("swc-") && !entry.startsWith("swc-win32-")) {
-      await removePathAndRecord(path.join(nextScopeRoot, entry), "root next non-win32 swc package", removedPaths);
+  if (platformName === "win32") {
+    await removePathAndRecord(
+      path.join(appNodeModulesRoot, "next"),
+      "root next package superseded by copied standalone resource",
+      removedPaths,
+    );
+    await removePathAndRecord(
+      path.join(appNodeModulesRoot, "@next"),
+      "root @next package scope superseded by copied standalone resource",
+      removedPaths,
+    );
+  } else {
+    const nextScopeRoot = path.join(appNodeModulesRoot, "@next");
+    const nextScopeEntries = await readdir(nextScopeRoot).catch(() => []);
+    for (const entry of nextScopeEntries) {
+      if (platformName === "darwin" && entry.startsWith("swc-darwin-")) {
+        await removePathAndRecord(path.join(nextScopeRoot, entry), "root next darwin swc package", removedPaths);
+      }
     }
   }
 
@@ -484,6 +494,27 @@ async function pruneRootNext(appNodeModulesRoot, platformName) {
   );
 
   return removedPaths;
+}
+
+async function auditRootNextPruned(appNodeModulesRoot, platformName, enabled) {
+  if (platformName !== "win32" || !enabled) return null;
+
+  const checkedPaths = [
+    path.join(appNodeModulesRoot, "next"),
+    path.join(appNodeModulesRoot, "@next"),
+  ];
+  const remainingPaths = [];
+  for (const checkedPath of checkedPaths) {
+    if (await pathExists(checkedPath)) remainingPaths.push(checkedPath);
+  }
+  if (remainingPaths.length > 0) {
+    throw new Error(`[tools-pack web-standalone] root next pruning audit found remaining paths: ${remainingPaths.join(", ")}`);
+  }
+
+  return {
+    checkedPaths,
+    remainingPaths,
+  };
 }
 
 async function pruneRootSharp(appNodeModulesRoot) {
@@ -584,6 +615,11 @@ async function runWebStandaloneAfterPack(context) {
   const rootWebPackageAudit = context.electronPlatformName === "win32"
     ? await auditRootWebPackage(appNodeModulesRoot)
     : null;
+  const rootNextPruneAudit = await auditRootNextPruned(
+    appNodeModulesRoot,
+    context.electronPlatformName,
+    config.pruneRootNext,
+  );
   const rootBrokenSymlinkPrune = await pruneBrokenSymlinks(
     appNodeModulesRoot,
     appNodeModulesRoot,
@@ -605,6 +641,7 @@ async function runWebStandaloneAfterPack(context) {
     resourcesRoot,
     rootBuildResiduePrune,
     rootBrokenSymlinkPrune,
+    rootNextPruneAudit,
     rootPrune,
     rootSharpPrune,
     rootSymlinkAudit,
