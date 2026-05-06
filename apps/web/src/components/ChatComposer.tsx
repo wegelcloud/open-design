@@ -10,8 +10,13 @@ import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { projectRawUrl, uploadProjectFiles } from "../providers/registry";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ProjectFile } from "../types";
+import type { ResearchOptions } from '@open-design/contracts';
 import { Icon } from "./Icon";
 import { BUILT_IN_PETS, CUSTOM_PET_ID, resolveActivePet } from "./pet/pets";
+
+export interface ChatSendMeta {
+  research?: ResearchOptions;
+}
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -43,7 +48,12 @@ interface Props {
   onEnsureProject: () => Promise<string | null>;
   commentAttachments?: ChatCommentAttachment[];
   onRemoveCommentAttachment?: (id: string) => void;
-  onSend: (prompt: string, attachments: ChatAttachment[], commentAttachments: ChatCommentAttachment[]) => void;
+  onSend: (
+    prompt: string,
+    attachments: ChatAttachment[],
+    commentAttachments: ChatCommentAttachment[],
+    meta?: ChatSendMeta,
+  ) => void;
   onStop: () => void;
   // Opens the global settings dialog (CLI / model / agent picker). The
   // composer's leading gear icon routes here so users can switch models
@@ -116,6 +126,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [importOpen, setImportOpen] = useState(false);
     const [petOpen, setPetOpen] = useState(false);
+    // Pre-generation research toggle. When on, ChatPane forwards a
+    // `research: { enabled: true }` block in the daemon request, so the
+    // daemon performs a Tavily search round and prepends the findings as
+    // a <research_context> block ahead of the agent's instructions.
+    const [researchOn, setResearchOn] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const importMenuRef = useRef<HTMLDivElement | null>(null);
@@ -458,15 +473,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       // prompt and *is* sent to the agent — the agent runs the skill,
       // packages a Codex pet under `~/.codex/pets/`, and the user
       // adopts it from "Recently hatched" in pet settings afterwards.
+      const meta: ChatSendMeta | undefined = researchOn
+        ? { research: { enabled: true } }
+        : undefined;
       const hatched = expandHatchCommand(prompt);
       if (hatched) {
         if (streaming) return;
-        onSend(hatched, staged, commentAttachments);
+        onSend(hatched, staged, commentAttachments, meta);
         reset();
         return;
       }
       if ((!prompt && commentAttachments.length === 0) || streaming) return;
-      onSend(prompt, staged, commentAttachments);
+      onSend(prompt, staged, commentAttachments, meta);
       reset();
     }
 
@@ -638,6 +656,22 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 </div>
               ) : null}
             </div>
+            <button
+              type="button"
+              className={`composer-research${researchOn ? ' on' : ''}`}
+              onClick={() => setResearchOn((v) => !v)}
+              aria-pressed={researchOn}
+              data-testid="chat-research-toggle"
+              title={
+                researchOn
+                  ? 'Pre-generation research: ON (Tavily). Click to disable.'
+                  : 'Enable pre-generation research (Tavily web search) before the agent runs.'
+              }
+            >
+              <Icon name="search" size={13} />
+              <span>Research</span>
+              {researchOn ? <span className="composer-research-dot" aria-hidden /> : null}
+            </button>
             {petEnabled ? (
               <div className="composer-pet-wrap">
                 <button

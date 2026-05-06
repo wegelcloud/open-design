@@ -1,5 +1,6 @@
-import type { ProjectFile } from './files';
-import type { PreviewCommentPosition } from './comments';
+import type { ProjectFile } from './files.js';
+import type { PreviewCommentPosition } from './comments.js';
+import type { ResearchOptions } from './research.js';
 
 export type ChatRole = 'user' | 'assistant';
 
@@ -17,6 +18,7 @@ export interface ChatRequest {
   commentAttachments?: ChatCommentAttachment[];
   model?: string | null;
   reasoning?: string | null;
+  research?: ResearchOptions;
 }
 
 export interface ChatRunCreateRequest extends ChatRequest {

@@ -18,6 +18,7 @@ import {
   spawnEnvForAgent,
 } from './agents.js';
 import { findSkillById, listSkills } from './skills.js';
+import { runResearch } from './research/index.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
 import { listDesignSystems, readDesignSystem } from './design-systems.js';
@@ -2341,6 +2342,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       commentAttachments = [],
       model,
       reasoning,
+      research,
     } = chatBody;
     if (typeof projectId === 'string' && projectId) run.projectId = projectId;
     if (typeof conversationId === 'string' && conversationId)
@@ -2440,7 +2442,70 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         skillId,
         designSystemId,
       });
-    const instructionPrompt = [daemonSystemPrompt, systemPrompt]
+
+    // Optional pre-generation research. When the user toggled Research in
+    // the composer, we run a search round and prepend the findings as a
+    // <research_context> block ahead of all other instructions, so the
+    // agent's first-pass plan is grounded in the same sources.
+    let researchBlock = '';
+    if (research && research.enabled) {
+      const emitResearch = (status) => {
+        if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
+        if (status.phase === 'start') {
+          design.runs.emit(run, 'agent', {
+            type: 'status',
+            label: 'researching',
+            detail: `${status.provider} · ${status.depth} · "${(status.query || '').slice(0, 80)}"`,
+          });
+        } else if (status.phase === 'searching') {
+          design.runs.emit(run, 'agent', {
+            type: 'status',
+            label: 'researching',
+            detail: `searching ${status.provider}…`,
+          });
+        } else if (status.phase === 'done') {
+          design.runs.emit(run, 'agent', {
+            type: 'status',
+            label: 'research-done',
+            detail: `${status.sourceCount} sources · ${status.provider}`,
+          });
+        } else if (status.phase === 'skipped') {
+          design.runs.emit(run, 'agent', {
+            type: 'status',
+            label: 'research-skipped',
+            detail: status.reason,
+          });
+        } else if (status.phase === 'error') {
+          design.runs.emit(run, 'agent', {
+            type: 'status',
+            label: 'research-error',
+            detail: status.message,
+          });
+        }
+      };
+      try {
+        const result = await runResearch({
+          message: typeof message === 'string' ? message : '',
+          options: research,
+          projectRoot: PROJECT_ROOT,
+          emit: emitResearch,
+        });
+        if (result.promptBlock) {
+          researchBlock = result.promptBlock;
+        }
+      } catch (err) {
+        // Research is best-effort. A provider outage or network error
+        // should never block the actual generation — emit a status note
+        // and fall through with no research block.
+        design.runs.emit(run, 'agent', {
+          type: 'status',
+          label: 'research-error',
+          detail: (err && err.message) || String(err),
+        });
+      }
+    }
+
+    const instructionPrompt = [researchBlock, daemonSystemPrompt, systemPrompt]
       .map((part) => (typeof part === 'string' ? part.trim() : ''))
       .filter(Boolean)
       .join('\n\n---\n\n');
