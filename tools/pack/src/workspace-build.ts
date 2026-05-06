@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { hashJson, hashPath, ToolPackCache } from "./cache.js";
 import type { ToolPackConfig } from "./config.js";
@@ -32,6 +32,11 @@ const BUILD_COMMANDS = [
 type WorkspaceBuildMetadata = {
   builtAt: string;
   outputFiles: string[];
+};
+
+type WorkspaceBuildArtifact = {
+  cachePath: string;
+  workspacePath: string;
 };
 
 async function pathExists(path: string): Promise<boolean> {
@@ -68,7 +73,7 @@ async function createWorkspaceBuildCacheKey(config: ToolPackConfig): Promise<str
     packageManager: await readPackageManager(config.workspaceRoot),
     platform: config.platform,
     pnpmLock: await hashPath(join(config.workspaceRoot, "pnpm-lock.yaml")),
-    schemaVersion: 3,
+    schemaVersion: 4,
     webOutputMode: config.webOutputMode,
   });
 }
@@ -100,6 +105,36 @@ function workspaceBuildOutputFiles(config: ToolPackConfig): string[] {
   ];
 }
 
+function workspaceBuildArtifacts(config: ToolPackConfig): WorkspaceBuildArtifact[] {
+  const artifacts = [
+    "packages/contracts/dist",
+    "packages/sidecar-proto/dist",
+    "packages/sidecar/dist",
+    "packages/platform/dist",
+    "apps/daemon/dist",
+    "apps/web/dist",
+    "apps/desktop/dist",
+    "apps/packaged/dist",
+  ];
+  if (config.webOutputMode === "standalone") {
+    artifacts.push("apps/web/.next/standalone", "apps/web/.next/static");
+  } else {
+    artifacts.push("apps/web/.next/BUILD_ID");
+  }
+  return artifacts.map((workspacePath) => ({
+    cachePath: join("outputs", ...workspacePath.split("/")),
+    workspacePath,
+  }));
+}
+
+async function copyWorkspaceBuildArtifactsToCache(config: ToolPackConfig, entryRoot: string): Promise<void> {
+  for (const artifact of workspaceBuildArtifacts(config)) {
+    const targetPath = join(entryRoot, artifact.cachePath);
+    await mkdir(dirname(targetPath), { recursive: true });
+    await cp(join(config.workspaceRoot, artifact.workspacePath), targetPath, { recursive: true });
+  }
+}
+
 async function missingWorkspaceBuildOutput(config: ToolPackConfig): Promise<string | null> {
   for (const output of workspaceBuildOutputFiles(config)) {
     const candidates = output.split("|");
@@ -120,22 +155,24 @@ export async function ensureWorkspaceBuildArtifacts(
   build: () => Promise<void>,
 ): Promise<void> {
   const key = await createWorkspaceBuildCacheKey(config);
+  const artifacts = workspaceBuildArtifacts(config);
   await cache.acquire<WorkspaceBuildMetadata>({
-    materialize: [],
+    materialize: artifacts.map((artifact) => ({
+      from: artifact.cachePath,
+      to: join(config.workspaceRoot, artifact.workspacePath),
+    })),
     node: {
       id: "win.workspace-build",
       key,
-      outputs: ["stamp.json"],
-      invalidate: async () => {
-        const missingOutput = await missingWorkspaceBuildOutput(config);
-        return missingOutput == null ? null : { reason: `missing workspace build output: ${missingOutput}` };
-      },
+      outputs: ["stamp.json", ...artifacts.map((artifact) => artifact.cachePath)],
+      invalidate: async () => null,
       build: async ({ entryRoot }) => {
         await build();
         const missingOutput = await missingWorkspaceBuildOutput(config);
         if (missingOutput != null) {
           throw new Error(`workspace build completed but output is missing: ${missingOutput}`);
         }
+        await copyWorkspaceBuildArtifactsToCache(config, entryRoot);
         const outputFiles = workspaceBuildOutputFiles(config);
         await mkdir(entryRoot, { recursive: true });
         await writeFile(

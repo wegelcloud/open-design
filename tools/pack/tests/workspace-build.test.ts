@@ -34,6 +34,7 @@ const OUTPUT_FILES = [
   "apps/web/dist/sidecar/index.js",
   "apps/web/dist/sidecar/index.d.ts",
   "apps/web/.next/standalone/apps/web/server.js",
+  "apps/web/.next/static/chunk.js",
   "apps/desktop/dist/main/index.js",
   "apps/desktop/dist/main/index.d.ts",
   "apps/packaged/dist/index.mjs",
@@ -119,7 +120,7 @@ describe("ensureWorkspaceBuildArtifacts", () => {
     }
   });
 
-  it("rebuilds when an expected workspace output is missing", async () => {
+  it("materializes cached outputs when an expected workspace output is missing", async () => {
     const root = await mkdtemp(join(tmpdir(), "open-design-workspace-build-stale-"));
     const cache = new ToolPackCache(join(root, ".cache"));
     const config = createConfig(root, cache.root);
@@ -137,9 +138,9 @@ describe("ensureWorkspaceBuildArtifacts", () => {
         await writeOutputs(root, `build-${builds}`);
       });
 
-      expect(builds).toBe(2);
-      expect(cache.report().entries.map((entry) => entry.status)).toEqual(["miss", "stale"]);
-      expect(cache.report().entries[1]?.reason).toContain("apps/web/dist/sidecar/index.js");
+      expect(builds).toBe(1);
+      expect(cache.report().entries.map((entry) => entry.status)).toEqual(["miss", "hit"]);
+      expect(await readFile(join(root, "apps/web/dist/sidecar/index.js"), "utf8")).toBe("build-1\n");
     } finally {
       await rm(root, { force: true, recursive: true });
     }
