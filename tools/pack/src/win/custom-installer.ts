@@ -9,13 +9,40 @@ import { PRODUCT_NAME } from "./constants.js";
 import { pathExists } from "./fs.js";
 import { resolveWinInstallIdentity } from "./identity.js";
 import { readPackagedVersion } from "./manifest.js";
+import { ensureNsisPersianLanguageAlias } from "./nsis.js";
 import { sanitizeNamespace } from "./paths.js";
 import type { WinBuiltAppManifest, WinPaths } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
+const NSIS_LANGUAGES = [
+  { macro: "LANG_ENGLISH", name: "English" },
+  { macro: "LANG_SIMPCHINESE", name: "SimpChinese" },
+  { macro: "LANG_TRADCHINESE", name: "TradChinese" },
+  { macro: "LANG_PORTUGUESEBR", name: "PortugueseBR" },
+  { macro: "LANG_RUSSIAN", name: "Russian" },
+  { macro: "LANG_PERSIAN", name: "Persian" },
+] as const;
+
 function escapeNsisString(value: string): string {
   return value.replace(/"/g, '$\\"').replace(/\r?\n/g, "$\\r$\\n");
+}
+
+function createNsisLanguageInserts(): string {
+  return NSIS_LANGUAGES.map((language) => `!insertmacro MUI_LANGUAGE "${language.name}"`).join("\n");
+}
+
+function createNsisLangString(
+  key: string,
+  english: string,
+  translations: Partial<Record<(typeof NSIS_LANGUAGES)[number]["macro"], string>> = {},
+): string {
+  return NSIS_LANGUAGES
+    .map((language) => {
+      const value = translations[language.macro] ?? english;
+      return `LangString ${key} \${${language.macro}} "${escapeNsisString(value)}"`;
+    })
+    .join("\n");
 }
 
 async function findFirstExistingPath(candidates: string[]): Promise<string | null> {
@@ -128,29 +155,18 @@ ShowUninstDetails hide
 !insertmacro MUI_UNPAGE_CONFIRM
 UninstPage custom un.UninstallOptionsPage un.UninstallOptionsPageLeave
 !insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "English"
-!insertmacro MUI_LANGUAGE "SimpChinese"
+${createNsisLanguageInserts()}
 
-LangString CreateDesktopShortcut \${LANG_ENGLISH} "Create desktop shortcut"
-LangString CreateDesktopShortcut \${LANG_SIMPCHINESE} "创建桌面快捷方式"
-LangString LaunchApp \${LANG_ENGLISH} "Launch ${productName}"
-LangString LaunchApp \${LANG_SIMPCHINESE} "启动 ${productName}"
-LangString RemoveDesktopShortcut \${LANG_ENGLISH} "Remove desktop shortcut"
-LangString RemoveDesktopShortcut \${LANG_SIMPCHINESE} "删除桌面快捷方式"
-LangString RemoveLocalData \${LANG_ENGLISH} "Delete local data for this installation"
-LangString RemoveLocalData \${LANG_SIMPCHINESE} "删除此安装的本地数据"
-LangString UninstallOptionsTitle \${LANG_ENGLISH} "Uninstall options"
-LangString UninstallOptionsTitle \${LANG_SIMPCHINESE} "卸载选项"
-LangString UninstallOptionsSubtitle \${LANG_ENGLISH} "Choose which local items to remove."
-LangString UninstallOptionsSubtitle \${LANG_SIMPCHINESE} "选择要删除的本地项目。"
-LangString RunningInstancesMessage \${LANG_ENGLISH} "${productName} is still running. Close all ${productName} windows and background processes, then choose Retry."
-LangString RunningInstancesMessage \${LANG_SIMPCHINESE} "${productName} 仍在运行。请关闭所有 ${productName} 窗口和后台进程，然后选择重试。"
-LangString RunningInstancesSilentAbort \${LANG_ENGLISH} "${productName} is still running. Close it before running the installer silently."
-LangString RunningInstancesSilentAbort \${LANG_SIMPCHINESE} "${productName} 仍在运行。请先关闭它，再运行静默安装。"
-LangString ExistingInstallMessage \${LANG_ENGLISH} "${productName} is already installed in the selected folder. Choose OK to overwrite it, or Cancel to stop installation."
-LangString ExistingInstallMessage \${LANG_SIMPCHINESE} "所选文件夹中已经安装了 ${productName}。选择确定覆盖，或取消安装。"
-LangString ExistingInstallSilentOverwrite \${LANG_ENGLISH} "Existing installation found; silent install will overwrite it."
-LangString ExistingInstallSilentOverwrite \${LANG_SIMPCHINESE} "发现已有安装；静默安装将覆盖它。"
+${createNsisLangString("CreateDesktopShortcut", "Create desktop shortcut", { LANG_SIMPCHINESE: "创建桌面快捷方式" })}
+${createNsisLangString("LaunchApp", `Launch ${productName}`, { LANG_SIMPCHINESE: `启动 ${productName}` })}
+${createNsisLangString("RemoveDesktopShortcut", "Remove desktop shortcut", { LANG_SIMPCHINESE: "删除桌面快捷方式" })}
+${createNsisLangString("RemoveLocalData", "Delete local data for this installation", { LANG_SIMPCHINESE: "删除此安装的本地数据" })}
+${createNsisLangString("UninstallOptionsTitle", "Uninstall options", { LANG_SIMPCHINESE: "卸载选项" })}
+${createNsisLangString("UninstallOptionsSubtitle", "Choose which local items to remove.", { LANG_SIMPCHINESE: "选择要删除的本地项目。" })}
+${createNsisLangString("RunningInstancesMessage", `${productName} is still running. Close all ${productName} windows and background processes, then choose Retry.`, { LANG_SIMPCHINESE: `${productName} 仍在运行。请关闭所有 ${productName} 窗口和后台进程，然后选择重试。` })}
+${createNsisLangString("RunningInstancesSilentAbort", `${productName} is still running. Close it before running the installer silently.`, { LANG_SIMPCHINESE: `${productName} 仍在运行。请先关闭它，再运行静默安装。` })}
+${createNsisLangString("ExistingInstallMessage", `${productName} is already installed in the selected folder. Choose OK to overwrite it, or Cancel to stop installation.`, { LANG_SIMPCHINESE: `所选文件夹中已经安装了 ${productName}。选择确定覆盖，或取消安装。` })}
+${createNsisLangString("ExistingInstallSilentOverwrite", "Existing installation found; silent install will overwrite it.", { LANG_SIMPCHINESE: "发现已有安装；静默安装将覆盖它。" })}
 
 Var RemoveDesktopShortcutCheckbox
 Var RemoveLocalDataCheckbox
@@ -382,6 +398,7 @@ export async function buildCustomWinNsisInstaller(
   if (process.platform !== "win32") throw new Error("Windows installer build must run on Windows");
   const makensisCommand = await resolveMakensisCommand(config);
   const packagedVersion = await readPackagedVersion(config);
+  await ensureNsisPersianLanguageAlias(config);
 
   await mkdir(dirname(paths.installerPayloadPath), { recursive: true });
   await mkdir(dirname(paths.setupPath), { recursive: true });
