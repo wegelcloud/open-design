@@ -104,11 +104,11 @@ export function buildDockerArgs(
   //
   // The `electronuserland/builder:base` image provides the native Linux build
   // dependencies but intentionally does not ship Node/npm/npx. Bootstrap the
-  // repo's supported Node major into the writable Docker home cache, then use
+  // repo's supported Node major into the writable Docker home, then use
   // that Node's corepack binary to execute a pinned pnpm version. Keep Node
-  // under `$HOME/.node` instead of `$HOME/.cache`: electron-builder cache mounts shadow
-  // `$HOME/.cache/*`, and Docker may create that intermediate directory as
-  // root-owned before the non-root container user runs.
+  // and Corepack under `$HOME/.node` instead of `$HOME/.cache`: electron-builder
+  // cache mounts shadow `$HOME/.cache/*`, and Docker may create that intermediate
+  // directory as root-owned before the non-root container user runs.
   const NODE_VERSION = "24.14.1";
   const NODE_DIST = `node-v${NODE_VERSION}-linux-x64`;
   const PNPM_VERSION = "10.33.2";
@@ -116,6 +116,8 @@ export function buildDockerArgs(
     `node_dir="$HOME/.node/${NODE_DIST}"`,
     `if [ ! -x "$node_dir/bin/node" ]; then tmp_dir="$(mktemp -d)" && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_DIST}.tar.xz" -o "$tmp_dir/node.tar.xz" && mkdir -p "$HOME/.node" && rm -rf "$node_dir" && tar -xJf "$tmp_dir/node.tar.xz" -C "$HOME/.node" && rm -rf "$tmp_dir"; fi`,
     `export PATH="$node_dir/bin:$PATH"`,
+    `export COREPACK_HOME="$HOME/.node/corepack"`,
+    `mkdir -p "$COREPACK_HOME"`,
   ].join(" && ");
   const pnpmCmd = `corepack pnpm@${PNPM_VERSION}`;
   const innerArgs = [

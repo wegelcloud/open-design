@@ -103,6 +103,9 @@ describe("buildDockerArgs", () => {
     expect(last).toMatch(/tar -xJf "\$tmp_dir\/node\.tar\.xz" -C "\$HOME\/\.node"/);
     expect(last).not.toMatch(/node_dir="\$HOME\/\.cache\//);
     expect(last).toMatch(/export PATH="\$node_dir\/bin:\$PATH"/);
+    expect(last).toMatch(/export COREPACK_HOME="\$HOME\/\.node\/corepack"/);
+    expect(last).toMatch(/mkdir -p "\$COREPACK_HOME"/);
+    expect(last).not.toMatch(/\.cache\/node/);
     expect(last).not.toMatch(/\bnpx\b/);
     expect(last).not.toMatch(/npm exec/);
     expect(last).toMatch(/corepack pnpm@/);
