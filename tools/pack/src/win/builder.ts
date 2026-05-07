@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -30,6 +30,7 @@ import { resolveWinTargets } from "./report.js";
 import type { ResourceTreeResult } from "./resources.js";
 import type {
   ElectronBuilderDirCacheMetadata,
+  WinBuiltAppManifest,
   WinPaths,
 } from "./types.js";
 
@@ -206,6 +207,23 @@ async function materializeCachedElectronBuilderAudit(entryRoot: string, paths: W
   );
 }
 
+export async function materializeCachedUnpackedForInstaller(cachedUnpackedRoot: string, paths: WinPaths): Promise<WinBuiltAppManifest> {
+  await removeTree(paths.unpackedRoot);
+  await mkdir(dirname(paths.unpackedRoot), { recursive: true });
+  await cp(cachedUnpackedRoot, paths.unpackedRoot, { recursive: true });
+  await cp(paths.packagedConfigPath, join(paths.unpackedRoot, "resources", "open-design-config.json"));
+  return {
+    appBuilderOutputRoot: paths.appBuilderOutputRoot,
+    cacheEntryPath: null,
+    configPath: paths.packagedConfigPath,
+    executablePath: paths.unpackedExePath,
+    source: "namespace",
+    unpackedRoot: paths.unpackedRoot,
+    version: 1,
+    webStandaloneHookAuditPath: (await pathExists(paths.webStandaloneHookAuditPath)) ? paths.webStandaloneHookAuditPath : null,
+  };
+}
+
 export async function runElectronBuilder(
   config: ToolPackConfig,
   paths: WinPaths,
@@ -289,15 +307,6 @@ export async function runElectronBuilder(
     webStandaloneHookAuditPath: (await pathExists(paths.webStandaloneHookAuditPath)) ? paths.webStandaloneHookAuditPath : null,
   });
   if (config.to === "nsis" || config.to === "all") {
-    await buildCustomWinNsisInstaller(config, paths, {
-      appBuilderOutputRoot: cachedBuilderRoot,
-      cacheEntryPath: manifest.entryPath,
-      configPath: paths.packagedConfigPath,
-      executablePath: cachedExecutablePath,
-      source: "cache",
-      unpackedRoot: cachedUnpackedRoot,
-      version: 1,
-      webStandaloneHookAuditPath: (await pathExists(paths.webStandaloneHookAuditPath)) ? paths.webStandaloneHookAuditPath : null,
-    });
+    await buildCustomWinNsisInstaller(config, paths, await materializeCachedUnpackedForInstaller(cachedUnpackedRoot, paths));
   }
 }
