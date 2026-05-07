@@ -5,6 +5,12 @@ export interface AgentModelPrefs {
 
 export type AgentCliEnvPrefs = Record<string, Record<string, string>>;
 
+export interface TelemetryPrefs {
+  metrics?: boolean;
+  content?: boolean;
+  artifactManifest?: boolean;
+}
+
 export interface AppConfigPrefs {
   onboardingCompleted?: boolean;
   agentId?: string | null;
@@ -14,6 +20,8 @@ export interface AppConfigPrefs {
   designSystemId?: string | null;
   disabledSkills?: string[];
   disabledDesignSystems?: string[];
+  installationId?: string | null;
+  telemetry?: TelemetryPrefs;
 }
 
 export interface AppConfigResponse {
