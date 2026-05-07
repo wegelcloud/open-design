@@ -47,6 +47,7 @@ import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
+import { reportRunCompletedFromDaemon } from './langfuse-bridge.js';
 import {
   testAgentConnection,
   testProviderConnection,
@@ -3522,7 +3523,21 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   );
 
   const design = {
-    runs: createChatRunService({ createSseResponse, createSseErrorPayload }),
+    runs: createChatRunService({
+      createSseResponse,
+      createSseErrorPayload,
+      // Forwards completed agent runs to Langfuse when LANGFUSE_PUBLIC_KEY /
+      // _SECRET_KEY are set in the daemon env AND the user has opted into
+      // metrics in Settings → Privacy. Always async, always wrapped in
+      // try/catch by the bridge — never blocks or fails a run.
+      onTerminate: (run) => {
+        void reportRunCompletedFromDaemon({
+          db,
+          dataDir: RUNTIME_DATA_DIR,
+          run,
+        });
+      },
+    }),
   };
 
   const composeDaemonSystemPrompt = async ({
@@ -3636,6 +3651,10 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     if (typeof clientRequestId === 'string' && clientRequestId)
       run.clientRequestId = clientRequestId;
     if (typeof agentId === 'string' && agentId) run.agentId = agentId;
+    // Stash the original user prompt so the langfuse-bridge onTerminate hook
+    // can include it in the trace without needing to reach back into
+    // chatBody (which it cannot see across the createChatRunService boundary).
+    if (typeof message === 'string' && message) run.userPrompt = message;
     const def = getAgentDef(agentId);
     if (!def)
       return design.runs.fail(

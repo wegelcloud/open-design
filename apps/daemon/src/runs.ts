@@ -8,6 +8,7 @@ export function createChatRunService({
   createSseErrorPayload,
   maxEvents = 2_000,
   ttlMs = 30 * 60 * 1000,
+  onTerminate = null,
 }) {
   const runs = new Map();
 
@@ -80,6 +81,13 @@ export function createChatRunService({
     for (const waiter of run.waiters) waiter(statusBody(run));
     run.waiters.clear();
     scheduleCleanup(run);
+    if (typeof onTerminate === 'function') {
+      try {
+        onTerminate(run);
+      } catch (err) {
+        console.warn('[runs] onTerminate hook threw:', err);
+      }
+    }
   };
 
   const fail = (run, code, message, init = {}) => {
