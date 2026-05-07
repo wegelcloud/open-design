@@ -12,6 +12,9 @@ import type { ResearchSource } from '@open-design/contracts';
 
 const DEFAULT_BASE_URL = 'https://api.tavily.com';
 const DEFAULT_TIMEOUT_MS = 30_000;
+// Tavily's /search endpoint requires `max_results` in [0, 20]; values above
+// trigger a 400. https://docs.tavily.com/documentation/api-reference/endpoint/search
+const TAVILY_MAX_RESULTS_LIMIT = 20;
 
 export interface TavilySearchInput {
   apiKey: string;
@@ -61,10 +64,15 @@ export async function tavilySearch(
     throw new TavilyError('Tavily API key is not configured');
   }
   const base = (input.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '');
+  const requestedMax = input.maxResults ?? 5;
+  const maxResults = Math.max(
+    0,
+    Math.min(requestedMax, TAVILY_MAX_RESULTS_LIMIT),
+  );
   const body = {
     query: input.query,
     search_depth: input.searchDepth ?? 'basic',
-    max_results: input.maxResults ?? 5,
+    max_results: maxResults,
     include_answer: input.includeAnswer ?? true,
     include_raw_content: false,
   };
