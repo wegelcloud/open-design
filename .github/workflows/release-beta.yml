@@ -440,6 +440,7 @@ jobs:
               exit 1
             fi
             npx --yes wrangler@4 r2 object put "$CLOUDFLARE_R2_RELEASES_BUCKET/$object_key" \
+              --remote \
               --file "$file_path" \
               --content-type "$content_type" \
               --cache-control "$cache_control"
