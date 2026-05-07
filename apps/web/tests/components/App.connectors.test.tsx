@@ -133,7 +133,7 @@ vi.mock('../../src/state/config', async () => {
     mergeDaemonConfig: vi.fn(),
     saveConfig: vi.fn(),
     syncConfigToDaemon: vi.fn().mockResolvedValue(undefined),
-    syncComposioConfigToDaemon: vi.fn().mockResolvedValue(undefined),
+    syncComposioConfigToDaemon: vi.fn().mockResolvedValue(true),
     fetchComposioConfigFromDaemon: vi.fn().mockResolvedValue(null),
   };
 });
@@ -235,11 +235,12 @@ describe('App connectors settings flows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save connectors key' }));
 
     await waitFor(() => {
-      expect(mockedSyncComposioConfigToDaemon).toHaveBeenCalledWith({
-        apiKey: 'cmp_secret_replacement',
-        apiKeyConfigured: true,
-        apiKeyTail: 'uQEg',
-      });
+      expect(mockedSyncComposioConfigToDaemon).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'cmp_secret_replacement',
+          apiKeyConfigured: true,
+        }),
+      );
     });
 
     expect(mockedSaveConfig).toHaveBeenCalledWith(

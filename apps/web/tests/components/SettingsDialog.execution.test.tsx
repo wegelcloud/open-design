@@ -382,6 +382,7 @@ describe('SettingsDialog execution settings BYOK interactions', () => {
         model: 'claude-sonnet-4-5',
         apiProviderBaseUrl: null,
       }),
+      true,
     );
   });
 
@@ -442,6 +443,7 @@ describe('SettingsDialog execution settings BYOK interactions', () => {
         apiVersion: '2024-10-21',
         apiProviderBaseUrl: null,
       }),
+      true,
     );
   });
 
@@ -470,6 +472,7 @@ describe('SettingsDialog execution settings BYOK interactions', () => {
         model: 'gpt-4.1-custom',
         baseUrl: 'https://api.openai.com/v1',
       }),
+      true,
     );
   });
 });
@@ -513,6 +516,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
         mode: 'daemon',
         agentId: 'codex',
       }),
+      true,
     );
   });
 
@@ -613,6 +617,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
           codex: { CODEX_HOME: '~/.codex-team' },
         },
       }),
+      true,
     );
   });
 
@@ -690,6 +695,7 @@ describe('SettingsDialog media providers interactions', () => {
       expect.objectContaining({
         mediaProviders: {},
       }),
+      true,
     );
   });
 
