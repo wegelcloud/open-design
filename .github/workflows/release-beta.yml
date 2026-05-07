@@ -36,20 +36,16 @@ jobs:
     name: Prepare beta metadata
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ github.token }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
       OPEN_DESIGN_BETA_LATEST_MAC_URL: ${{ secrets.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}/beta/latest/latest-mac.yml
       OPEN_DESIGN_RELEASE_SIGNED: ${{ inputs.signed }}
     outputs:
       asset_version_suffix: ${{ steps.beta.outputs.asset_version_suffix }}
       base_version: ${{ steps.beta.outputs.base_version }}
-      beta_tag: ${{ steps.beta.outputs.beta_tag }}
       beta_version: ${{ steps.beta.outputs.beta_version }}
       branch: ${{ steps.beta.outputs.branch }}
       commit: ${{ steps.beta.outputs.commit }}
       release_name: ${{ steps.beta.outputs.release_name }}
       signed: ${{ steps.beta.outputs.signed }}
-      version_tag: ${{ steps.beta.outputs.version_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -109,8 +105,6 @@ jobs:
     needs: metadata
     if: ${{ inputs.enable_mac }}
     runs-on: macos-14
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -218,7 +212,7 @@ jobs:
           zip_sha512="$(openssl dgst -sha512 -binary "$release_dir/$versioned_zip" | openssl base64 -A)"
           zip_size="$(stat -f%z "$release_dir/$versioned_zip")"
           public_origin="${CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN%/}"
-          version_prefix="beta/${{ needs.metadata.outputs.version_tag }}"
+          version_prefix="beta/versions/${{ needs.metadata.outputs.beta_version }}${asset_suffix}"
           zip_url="$public_origin/$version_prefix/$versioned_zip"
           release_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           cat > "$release_dir/latest-mac.yml" <<EOF
@@ -244,8 +238,6 @@ jobs:
     needs: metadata
     if: ${{ inputs.enable_win }}
     runs-on: windows-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -280,6 +272,8 @@ jobs:
 
       - name: Prepare windows beta assets
         shell: pwsh
+        env:
+          CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN: ${{ secrets.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
         run: |
           $releaseDir = Join-Path $env:RUNNER_TEMP "release-assets"
           New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
@@ -306,7 +300,9 @@ jobs:
           $installerBytes = [System.IO.File]::ReadAllBytes($installerPath)
           $installerSha512 = [System.Convert]::ToBase64String([System.Security.Cryptography.SHA512]::Create().ComputeHash($installerBytes))
           $installerSize = (Get-Item $installerPath).Length
-          $installerUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/${{ needs.metadata.outputs.version_tag }}/$versionedInstaller"
+          $publicOrigin = $env:CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN.TrimEnd("/")
+          $versionPrefix = "beta/versions/${{ needs.metadata.outputs.beta_version }}$windowsAssetSuffix"
+          $installerUrl = "$publicOrigin/$versionPrefix/$versionedInstaller"
           $releaseDate = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
           @(
             'version: "${{ needs.metadata.outputs.beta_version }}"'
@@ -331,8 +327,6 @@ jobs:
     needs: metadata
     if: ${{ inputs.enable_linux }}
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -457,7 +451,7 @@ jobs:
           versioned_dmg="open-design-${{ needs.metadata.outputs.beta_version }}${asset_suffix}-mac-arm64.dmg"
           versioned_zip="open-design-${{ needs.metadata.outputs.beta_version }}${asset_suffix}-mac-arm64.zip"
           public_origin="${CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN%/}"
-          version_prefix="beta/${{ needs.metadata.outputs.version_tag }}"
+          version_prefix="beta/versions/${{ needs.metadata.outputs.beta_version }}${asset_suffix}"
           latest_prefix="beta/latest"
 
           upload() {
@@ -487,6 +481,7 @@ jobs:
 
           {
             echo "version_feed_url=$public_origin/$version_prefix/latest-mac.yml"
+            echo "version_prefix=$version_prefix"
             echo "latest_feed_url=$public_origin/$latest_prefix/latest-mac.yml"
             echo "version_zip_url=$public_origin/$version_prefix/$versioned_zip"
             echo "version_dmg_url=$public_origin/$version_prefix/$versioned_dmg"
@@ -509,7 +504,7 @@ jobs:
             echo "## Beta release"
             echo "- Channel: beta"
             echo "- Version: ${{ needs.metadata.outputs.beta_version }}"
-            echo "- Version path: beta/${{ needs.metadata.outputs.version_tag }}"
+            echo "- Artifact path: ${{ steps.r2.outputs.version_prefix }}"
             echo "- mac enabled: $ENABLE_MAC"
             echo "- mac signed/notarized: ${{ needs.metadata.outputs.signed }}"
             echo "- mac dmg: ${{ steps.r2.outputs.version_dmg_url }}"
