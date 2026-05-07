@@ -6,32 +6,175 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: open-design-release-beta-windows-signer-dry-run
+  cancel-in-progress: false
+
 jobs:
-  windows_signer_hello:
-    name: Windows signer hello world
+  windows_signer_dry_run:
+    name: Windows signer release-beta dry run
     runs-on:
       - self-hosted
       - Windows
       - windows-signer
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      OPEN_DESIGN_RELEASE_SIGNED: "true"
+      OD_RELEASE_BETA_DRY_RUN_NAMESPACE: release-beta-win
     steps:
-      - name: Hello from signer runner
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          "signer runner hello"
-          "runner_name=$env:RUNNER_NAME"
-          "runner_os=$env:RUNNER_OS"
-          "computername=$env:COMPUTERNAME"
-          "user=$(whoami)"
-          "pwd=$(Get-Location)"
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
 
-      - name: Check signing tool visibility
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Prepare beta release metadata
+        id: beta
+        shell: pwsh
+        run: node --experimental-strip-types ./scripts/release-beta.ts
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Locate signing certificate and signtool
+        id: signing
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
           if ($null -eq $signtool) {
-            "signtool.exe not found on PATH"
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+          }
+          if ($null -eq $signtool) {
+            throw "signtool.exe was not found"
+          }
+
+          $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
+            Sort-Object NotAfter -Descending |
+            Select-Object -First 1
+          if ($null -eq $cert) {
+            throw "no CurrentUser code signing certificate was found"
+          }
+
+          "signtool_path=$($signtool.Source ?? $signtool.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "cert_thumbprint=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "### Windows signing dry run" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Runner: $env:RUNNER_NAME" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- signtool: ``$($signtool.Source ?? $signtool.FullName)``" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Certificate subject: $($cert.Subject)" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Certificate expires: $($cert.NotAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Setup NSIS
+        shell: pwsh
+        run: |
+          if ((Get-Command makensis.exe -ErrorAction SilentlyContinue) -or (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
             exit 0
           }
-          "signtool=$($signtool.Source)"
+          choco install nsis -y --no-progress
+
+      - name: Apply beta package version
+        run: npm pkg set "version=${{ steps.beta.outputs.beta_version }}" --prefix apps/packaged
+
+      - name: Build beta windows artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $toolsPackDir = Join-Path $env:RUNNER_TEMP "tools-pack"
+          $cacheDir = Join-Path $env:RUNNER_TEMP "tools-pack-cache"
+          $buildJsonPath = Join-Path $env:RUNNER_TEMP "windows-tools-pack-build.json"
+          $buildOutput = pnpm exec tools-pack win build `
+            --dir $toolsPackDir `
+            --cache-dir $cacheDir `
+            --namespace $env:OD_RELEASE_BETA_DRY_RUN_NAMESPACE `
+            --portable `
+            --to nsis `
+            --json
+          if ($LASTEXITCODE -ne 0) {
+            throw "tools-pack win build exited with code $LASTEXITCODE"
+          }
+          $buildOutput | Set-Content -Path $buildJsonPath
+          $buildOutput
+
+      - name: Sign beta windows installer
+        id: sign_installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $signtool = "${{ steps.signing.outputs.signtool_path }}"
+          $installer = Join-Path $env:RUNNER_TEMP "tools-pack/out/win/namespaces/$env:OD_RELEASE_BETA_DRY_RUN_NAMESPACE/builder/Open Design-$env:OD_RELEASE_BETA_DRY_RUN_NAMESPACE-setup.exe"
+          if (!(Test-Path $installer)) {
+            throw "expected installer not found at $installer"
+          }
+
+          & $signtool sign /sha1 "${{ steps.signing.outputs.cert_thumbprint }}" /fd SHA256 /tr http://timestamp.sectigo.com /td SHA256 $installer
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool sign exited with code $LASTEXITCODE"
+          }
+
+          & $signtool verify /pa /v $installer
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool verify exited with code $LASTEXITCODE"
+          }
+
+          $hash = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "installer_sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "- Signed installer SHA256: ``$hash``" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Smoke beta windows packaged runtime
+        working-directory: e2e
+        env:
+          OD_PACKAGED_E2E_WIN: "1"
+          OD_PACKAGED_E2E_NAMESPACE: release-beta-win
+          OD_PACKAGED_E2E_TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
+          OD_PACKAGED_E2E_SCREENSHOT_PATH: ${{ runner.temp }}/open-design-win-smoke.png
+        run: pnpm test specs/win.spec.ts
+
+      - name: Summarize dry run
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $buildJsonPath = Join-Path $env:RUNNER_TEMP "windows-tools-pack-build.json"
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "### Release-beta dry run result" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Version: `${{ steps.beta.outputs.beta_version }}`" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Tag that would be used: `${{ steps.beta.outputs.version_tag }}`" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Published release artifacts: none" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          if (!(Test-Path $buildJsonPath)) {
+            "- Build JSON: missing" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+
+          $build = Get-Content -Raw -Path $buildJsonPath | ConvertFrom-Json
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "| Phase | Duration |" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "| --- | ---: |" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          foreach ($timing in $build.timings) {
+            $seconds = [math]::Round(([double]$timing.durationMs) / 1000, 1)
+            "| `$($timing.phase)` | ${seconds}s |" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          }
+
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "| Cache node | Status | Reason | Duration |" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "| --- | --- | --- | ---: |" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          foreach ($entry in $build.cacheReport.entries) {
+            $seconds = [math]::Round(([double]$entry.durationMs) / 1000, 1)
+            $reason = if ($null -eq $entry.reason) { "" } else { [string]$entry.reason }
+            "| `$($entry.nodeId)` | `$($entry.status)` | $reason | ${seconds}s |" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          }
