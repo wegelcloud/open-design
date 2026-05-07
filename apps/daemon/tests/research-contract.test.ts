@@ -16,6 +16,8 @@ describe('renderResearchCommandContract', () => {
       'use your own search capability as fallback and label the fallback clearly',
     );
     expect(prompt).toContain('EV market 2025 trends');
-    expect(prompt).toContain('node "$OD_BIN" research search --query "<search query>" --max-sources 5');
+    expect(prompt).toContain(
+      '"$OD_NODE_BIN" "$OD_BIN" research search --query "<search query>" --max-sources 5',
+    );
   });
 });

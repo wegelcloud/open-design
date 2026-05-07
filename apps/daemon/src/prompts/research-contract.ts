@@ -7,7 +7,7 @@ export function renderResearchCommandContract(query?: string): string {
     'Use this command when current external facts would improve the answer:',
     '',
     '```bash',
-    'node "$OD_BIN" research search --query "<search query>" --max-sources 5',
+    '"$OD_NODE_BIN" "$OD_BIN" research search --query "<search query>" --max-sources 5',
     '```',
     '',
     'The command prints exactly one JSON object on stdout:',

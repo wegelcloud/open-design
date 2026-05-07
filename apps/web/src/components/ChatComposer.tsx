@@ -307,7 +307,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         prompt: [
           `Search for: ${query}`,
           '',
-          `Before answering, your first tool action must be this OD research command: node "$OD_BIN" research search --query ${JSON.stringify(query)} --max-sources 5`,
+          `Before answering, your first tool action must be this OD research command: "$OD_NODE_BIN" "$OD_BIN" research search --query ${JSON.stringify(query)} --max-sources 5`,
           'If the OD command fails because Tavily is not configured or unavailable, report that error, then use your own search capability as fallback and label the fallback clearly.',
           'Then summarize the findings with citations by source index.',
         ].join('\n'),

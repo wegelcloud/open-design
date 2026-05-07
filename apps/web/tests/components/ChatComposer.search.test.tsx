@@ -31,7 +31,7 @@ describe('ChatComposer /search command', () => {
       'Before answering, your first tool action must be this OD research command:',
     );
     expect(prompt).toContain(
-      'node "$OD_BIN" research search --query "EV market 2025 trends" --max-sources 5',
+      '"$OD_NODE_BIN" "$OD_BIN" research search --query "EV market 2025 trends" --max-sources 5',
     );
     expect(prompt).toContain(
       'If the OD command fails because Tavily is not configured or unavailable',

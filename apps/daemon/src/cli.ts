@@ -198,7 +198,6 @@ What the daemon does:
 
 async function runResearch(args) {
   const sub = args.find((a) => a && !a.startsWith('--'));
-  const subArgs = sub ? args.filter((a) => a !== sub) : args;
   if (!sub || sub === 'help' || args.includes('--help') || args.includes('-h')) {
     printResearchHelp();
     process.exit(sub === 'help' || args.includes('--help') || args.includes('-h') ? 0 : 2);
@@ -208,6 +207,8 @@ async function runResearch(args) {
     printResearchHelp();
     process.exit(2);
   }
+  const idx = args.indexOf(sub);
+  const subArgs = [...args.slice(0, idx), ...args.slice(idx + 1)];
   return runResearchSearch(subArgs);
 }
 
