@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, chmod, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -27,7 +27,6 @@ import {
   spawnBackgroundProcess,
   stopProcesses,
 } from "@open-design/platform";
-import { resolveProjectRelativePath } from "../../../apps/daemon/src/home-expansion.js";
 
 import type { ToolPackBuildOutput, ToolPackConfig } from "./config.js";
 import { copyBundledResourceTrees, macResources } from "./resources.js";
@@ -310,6 +309,18 @@ async function seedPackagedAppConfig(config: ToolPackConfig): Promise<void> {
 
 function toPosixPath(value: string): string {
   return value.replaceAll("\\", "/");
+}
+
+function expandHomePrefix(raw: string): string {
+  const home = homedir();
+  if (raw === "~" || raw === "$HOME" || raw === "${HOME}") return home;
+  const match = /^(~|\$\{HOME\}|\$HOME)[/\\](.*)$/.exec(raw);
+  return match ? join(home, match[2] ?? "") : raw;
+}
+
+function resolveProjectRelativePath(raw: string, projectRoot: string): string {
+  const expanded = expandHomePrefix(raw);
+  return isAbsolute(expanded) ? expanded : resolve(projectRoot, expanded);
 }
 
 async function sizePathBytes(

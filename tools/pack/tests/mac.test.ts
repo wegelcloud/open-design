@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { ToolPackConfig } from "../src/config.js";
 import { resolveSeededAppConfigPaths, seedPackagedAppConfig } from "../src/mac.js";
@@ -81,18 +81,12 @@ describe("resolveSeededAppConfigPaths", () => {
   });
 
   it("expands $HOME-style OD_DATA_DIR values", () => {
-    const fakeHome = "/fake/home";
-    const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
     process.env.OD_DATA_DIR = "$HOME/.open-design";
     const config = makeConfig("/work");
-    try {
-      expect(resolveSeededAppConfigPaths(config)).toEqual({
-        sourcePath: "/fake/home/.open-design/app-config.json",
-        targetPath: "/work/.tmp/tools-pack/runtime/mac/namespaces/local-test/data/app-config.json",
-      });
-    } finally {
-      homedirSpy.mockRestore();
-    }
+    expect(resolveSeededAppConfigPaths(config)).toEqual({
+      sourcePath: join(os.homedir(), ".open-design", "app-config.json"),
+      targetPath: "/work/.tmp/tools-pack/runtime/mac/namespaces/local-test/data/app-config.json",
+    });
   });
 });
 
