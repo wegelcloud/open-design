@@ -54,7 +54,14 @@ Decks that need to feel digital-native polished or rigorously data-driven — ha
 
 ## Workflow
 
-1. **Clone `example.html`** into the user's workspace as the working file.
+1. **Clone `example.html` AND the `assets/` folder** into the user's workspace.
+   This template ships an `assets/deck-stage.js` runtime (keyboard navigation,
+   stage rendering) and an `assets/styles.css` stylesheet. The HTML references
+   them as `assets/deck-stage.js` and `assets/styles.css`, so both must sit next
+   to the cloned HTML or those paths will 404 in the generated artifact and
+   navigation/styling will silently break. Inlining the JS/CSS into a single
+   `<script>`/`<style>` block in the HTML is an acceptable alternative when a
+   single self-contained file is preferred.
 2. **Replace placeholder content** with the user's real headlines, body copy,
    numbers, names, dates, and section labels. Match existing dimensions when
    swapping image placeholders.
@@ -83,8 +90,11 @@ Emit between `<artifact>` tags:
 </artifact>
 ```
 
-## Source
+## Source & license
 
 Vendored from upstream MIT-licensed
 [`zarazhangrui/beautiful-html-templates`](https://github.com/zarazhangrui/beautiful-html-templates/tree/main/templates/pin-and-paper).
-See `template.json` for the upstream metadata snapshot.
+
+The full upstream MIT license text — including the original copyright notice — ships in this skill at
+[`LICENSE`](./LICENSE) and must be redistributed alongside any copy of `example.html`,
+`template.json`, or any vendored `assets/` runtime. See `template.json` for the upstream metadata snapshot.

@@ -83,8 +83,11 @@ Emit between `<artifact>` tags:
 </artifact>
 ```
 
-## Source
+## Source & license
 
 Vendored from upstream MIT-licensed
 [`zarazhangrui/beautiful-html-templates`](https://github.com/zarazhangrui/beautiful-html-templates/tree/main/templates/cobalt-grid).
-See `template.json` for the upstream metadata snapshot.
+
+The full upstream MIT license text — including the original copyright notice — ships in this skill at
+[`LICENSE`](./LICENSE) and must be redistributed alongside any copy of `example.html`,
+`template.json`, or any vendored `assets/` runtime. See `template.json` for the upstream metadata snapshot.
