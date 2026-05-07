@@ -29,10 +29,12 @@ import {
   syncConfigToDaemon,
   syncMediaProvidersToDaemon,
 } from './state/config';
+import { applyAppearanceToDocument } from './state/appearance';
 import {
   createProject,
   deleteProject as deleteProjectApi,
   importClaudeDesignZip,
+  importFolderProject,
   listProjects,
   listTemplates,
   patchProject,
@@ -90,13 +92,11 @@ export function App() {
   // live theme switch in Settings applies atomically — no 1-frame flash of
   // the old theme. Safe here because the component tree is ssr:false.
   useLayoutEffect(() => {
-    const theme = config.theme ?? 'system';
-    if (theme === 'system') {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
-  }, [config.theme]);
+    applyAppearanceToDocument({
+      theme: config.theme ?? 'system',
+      accentColor: config.accentColor,
+    });
+  }, [config.theme, config.accentColor]);
 
   // Tell the daemon what the user is currently looking at, so the MCP
   // server can surface it as `get_active_context` to a coding agent in
@@ -244,10 +244,16 @@ export function App() {
     setTemplates(list);
   }, []);
 
-  const handleConfigSave = useCallback((next: AppConfig) => {
-    // Saving from any settings dialog (welcome or regular) counts as
-    // having completed onboarding — the user has actively chosen a
-    // configuration, so future page loads can skip the auto-popup.
+  const handleConfigSave = useCallback(async (next: AppConfig, closeModal: boolean = true) => {
+    // Only sync Composio key to the daemon when it actually changed,
+    // so unrelated saves (theme, model, etc.) are never blocked.
+    const composioChanged =
+      next.composio?.apiKey !== config.composio?.apiKey ||
+      next.composio?.apiKeyConfigured !== config.composio?.apiKeyConfigured;
+    if (composioChanged) {
+      const ok = await syncComposioConfigToDaemon(next.composio);
+      if (!ok) return { success: false };
+    }
     const withOnboarding: AppConfig = {
       ...next,
       composio: normalizeSavedComposioConfig(next.composio),
@@ -258,12 +264,10 @@ export function App() {
       force: true,
     });
     void syncConfigToDaemon(withOnboarding);
-    // Keep the Composio secret out of localStorage, but send the raw pending
-    // edit to the daemon before it is normalized away for local persistence.
-    void syncComposioConfigToDaemon(next.composio);
     setConfig(withOnboarding);
-    setSettingsOpen(false);
-  }, []);
+    if (closeModal) setSettingsOpen(false);
+    return { success: true };
+  }, [config]);
 
   const handleModeChange = useCallback(
     (mode: AppConfig['mode']) => {
@@ -359,6 +363,17 @@ export function App() {
       result.project,
       ...curr.filter((p) => p.id !== result.project.id),
     ]);
+    navigate({
+      kind: 'project',
+      projectId: result.project.id,
+      fileName: result.entryFile,
+    });
+  }, []);
+
+  const handleImportFolder = useCallback(async (baseDir: string) => {
+    const result = await importFolderProject({ baseDir });
+    if (!result) return;
+    setProjects((curr) => [result.project, ...curr.filter((p) => p.id !== result.project.id)]);
     navigate({
       kind: 'project',
       projectId: result.project.id,
@@ -557,6 +572,7 @@ export function App() {
           loading={bootstrapping}
           onCreateProject={handleCreateProject}
           onImportClaudeDesign={handleImportClaudeDesign}
+          onImportFolder={handleImportFolder}
           onOpenProject={handleOpenProject}
           onOpenLiveArtifact={handleOpenLiveArtifact}
           onDeleteProject={handleDeleteProject}

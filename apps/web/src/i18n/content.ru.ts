@@ -313,6 +313,7 @@ export const RU_DESIGN_SYSTEM_CATEGORIES: Record<string, string> = {
 };
 
 export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
+  'flowai-live-dashboard-template',
   'html-ppt-taste-brutalist',
   'html-ppt-taste-editorial',
   // Vendored upstream English-language Zara templates (zarazhangrui/beautiful-html-templates).
@@ -349,6 +350,7 @@ export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
   'html-ppt-zhangzara-stencil-tablet',
   'html-ppt-zhangzara-studio',
   'html-ppt-zhangzara-vellum',
+  'live-dashboard',
   'orbit-general',
   'orbit-github',
   'orbit-gmail',
@@ -360,6 +362,7 @@ export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
   'web-prototype-taste-brutalist',
   'web-prototype-taste-editorial',
   'web-prototype-taste-soft',
+  'waitlist-page',
 ] as const;
 
 export const RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
@@ -424,6 +427,7 @@ export const RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'sleek',
   'spacious',
   'storytelling',
+  'totality-festival',
   'tetris',
   // TODO: add localized DS summary for totality-festival (introduced in #678).
   // Fallback for now so the localized-content coverage test passes.
@@ -453,9 +457,10 @@ export const RU_PROMPT_TEMPLATE_CATEGORIES: Record<string, string> = {
   Product: 'Продукт',
   'Short Form': 'Короткий формат',
   Travel: 'Путешествия',
+  'Live Artifact': 'Live-артефакт',
 };
 
-export const RU_PROMPT_TEMPLATE_IDS_WITH_EN_FALLBACK = [] as const;
+export const RU_PROMPT_TEMPLATE_IDS_WITH_EN_FALLBACK = ['notion-team-dashboard-live-artifact'] as const;
 
 export const RU_PROMPT_TEMPLATE_TAGS: Record<string, string> = {
   '3d': '3D',
@@ -512,6 +517,7 @@ export const RU_PROMPT_TEMPLATE_TAGS: Record<string, string> = {
   'key-visual': 'Ключевой визуал',
   'kinetic-typography': 'Кинетическая типографика',
   'linear-style': 'Стиль Linear',
+  'live-artifact': 'Live-артефакт',
   logo: 'Логотип',
   lyubu: 'Люй Бу',
   map: 'Карта',
