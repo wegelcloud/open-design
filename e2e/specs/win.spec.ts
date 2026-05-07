@@ -15,6 +15,7 @@ const toolsPackDir = resolveFromWorkspace(process.env.OD_PACKAGED_E2E_TOOLS_PACK
 const namespace = process.env.OD_PACKAGED_E2E_NAMESPACE ?? 'release-beta-win';
 const toolsPackBin = join(workspaceRoot, 'tools', 'pack', 'bin', 'tools-pack.mjs');
 const maxInstallDurationMs = Number.parseInt(process.env.OD_PACKAGED_E2E_WIN_MAX_INSTALL_MS ?? '120000', 10);
+const installIdentity = resolveInstallIdentity(namespace);
 
 const outputNamespaceRoot = join(toolsPackDir, 'out', 'win', 'namespaces', namespace);
 const runtimeNamespaceRoot = join(toolsPackDir, 'runtime', 'win', 'namespaces', namespace);
@@ -146,14 +147,14 @@ winDescribe('packaged windows runtime smoke', () => {
       expectPathInside(install.installerPath, join(outputNamespaceRoot, 'builder'));
       expectPathInside(install.installDir, join(runtimeNamespaceRoot, 'install'));
       expectPathInside(install.uninstallerPath, install.installDir);
-      expect(basename(install.uninstallerPath)).toBe('Uninstall Open Design Beta.exe');
+      expect(basename(install.uninstallerPath)).toBe(`Uninstall ${installIdentity.displayName}.exe`);
       expect(install.desktopShortcutExists).toBe(true);
       expect(install.startMenuShortcutExists).toBe(true);
-      expect(basename(install.desktopShortcutPath)).toBe('Open Design Beta.lnk');
-      expect(basename(install.startMenuShortcutPath)).toBe('Open Design Beta.lnk');
+      expect(basename(install.desktopShortcutPath)).toBe(`${installIdentity.displayName}.lnk`);
+      expect(basename(install.startMenuShortcutPath)).toBe(`${installIdentity.displayName}.lnk`);
       expect(install.registryEntries.length).toBeGreaterThan(0);
-      expect(JSON.stringify(install.registryEntries)).toContain('Open Design Beta');
-      expect(JSON.stringify(install.registryEntries)).toContain('Open Design-release-beta-win');
+      expect(JSON.stringify(install.registryEntries)).toContain(installIdentity.displayName);
+      expect(JSON.stringify(install.registryEntries)).toContain(`Open Design-${installIdentity.namespaceToken}`);
       expect(install.installPayload.fileCount).toBeGreaterThan(0);
       expect(install.installPayload.totalBytes).toBeGreaterThan(0);
       expect(install.installPayload.topLevel.length).toBeGreaterThan(0);
@@ -384,6 +385,16 @@ async function readTiming(filePath: string): Promise<TimingResult> {
 
 function resolveFromWorkspace(filePath: string): string {
   return isAbsolute(filePath) ? filePath : resolve(workspaceRoot, filePath);
+}
+
+function resolveInstallIdentity(value: string): { displayName: string; namespaceToken: string } {
+  const namespaceToken = value.replace(/[^A-Za-z0-9._-]+/g, '-');
+  const displayName = /(^|[-_.])beta($|[-_.])/i.test(value)
+    ? 'Open Design Beta'
+    : value === 'default'
+      ? 'Open Design'
+      : `Open Design ${namespaceToken}`;
+  return { displayName, namespaceToken };
 }
 
 function delay(ms: number): Promise<void> {

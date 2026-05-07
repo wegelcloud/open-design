@@ -24,6 +24,7 @@ export type ToolPackCliOptions = {
   containerized?: boolean;
   dir?: string;
   expr?: string;
+  headless?: boolean;
   json?: boolean;
   macCompression?: string;
   namespace?: string;
