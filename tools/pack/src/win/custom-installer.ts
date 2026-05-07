@@ -374,7 +374,7 @@ FunctionEnd
 Function RemoveInstallDir
   !insertmacro LOG_PATH_STATE "install_dir_before_remove" "$INSTDIR"
   Push $0
-  nsExec::ExecToLog 'cmd.exe /d /s /c if exist "$INSTDIR" rmdir /s /q "$INSTDIR"'
+  nsExec::ExecToLog 'cmd.exe /d /s /c if exist "$INSTDIR" rmdir /s /q "\\\\?\\$INSTDIR"'
   Pop $0
   Push "install dir remove exit=$0"
   Call LogInstallerEvent
@@ -414,7 +414,7 @@ FunctionEnd
 Function un.RemoveInstallDirContents
   !insertmacro UN_LOG_PATH_STATE "install_dir_before_remove" "$INSTDIR"
   Push $0
-  nsExec::ExecToLog 'cmd.exe /d /s /c if exist "$INSTDIR" rmdir /s /q "$INSTDIR"'
+  nsExec::ExecToLog 'cmd.exe /d /s /c if exist "$INSTDIR" rmdir /s /q "\\\\?\\$INSTDIR"'
   Pop $0
   Push "install dir fast remove exit=$0"
   Call un.LogInstallerEvent
@@ -425,7 +425,7 @@ FunctionEnd
 Function un.RemoveLocalDataRoot
   !insertmacro UN_LOG_PATH_STATE "local_data_before_remove" "${localDataRoot}"
   Push $0
-  nsExec::ExecToLog 'cmd.exe /d /s /c if exist "${localDataRoot}" rmdir /s /q "${localDataRoot}"'
+  nsExec::ExecToLog 'cmd.exe /d /s /c if exist "${localDataRoot}" rmdir /s /q "\\\\?\\${localDataRoot}"'
   Pop $0
   Push "local data remove exit=$0"
   Call un.LogInstallerEvent
