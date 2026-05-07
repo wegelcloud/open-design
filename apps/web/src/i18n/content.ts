@@ -370,6 +370,7 @@ const DE_SKILL_IDS_WITH_EN_FALLBACK = [
   'orbit-linear',
   'orbit-notion',
   'social-media-dashboard',
+  'social-media-matrix-tracker-template',
   'web-prototype-taste-brutalist',
   'web-prototype-taste-editorial',
   'web-prototype-taste-soft',
