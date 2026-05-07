@@ -117,6 +117,10 @@ export async function ensureNsisPersianLanguageAlias(config: ToolPackConfig): Pr
     process.env.LOCALAPPDATA == null ? undefined : join(process.env.LOCALAPPDATA, "electron-builder", "Cache"),
     process.env.APPDATA == null ? undefined : join(process.env.APPDATA, "electron-builder", "Cache"),
     join(config.workspaceRoot, "node_modules", ".cache", "electron-builder"),
+    process.env["ProgramFiles(x86)"] == null ? undefined : join(process.env["ProgramFiles(x86)"], "NSIS"),
+    process.env.ProgramFiles == null ? undefined : join(process.env.ProgramFiles, "NSIS"),
+    "C:\\Program Files (x86)\\NSIS",
+    "C:\\Program Files\\NSIS",
   ].filter((entry): entry is string => entry != null && entry.length > 0);
   let updated = false;
   for (const cacheRoot of cacheRoots) {
