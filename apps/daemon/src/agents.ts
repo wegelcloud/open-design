@@ -1,14 +1,30 @@
 // @ts-nocheck
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { delimiter } from 'node:path';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import {
+  createCommandInvocation,
+  wellKnownUserToolchainBins,
+} from '@open-design/platform';
 import { detectAcpModels } from './acp.js';
 import { parsePiModels } from './pi-rpc.js';
 
 const execFileP = promisify(execFile);
+
+function execAgentFile(command, args, options = {}) {
+  const invocation = createCommandInvocation({
+    command,
+    args,
+    env: options.env,
+  });
+  return execFileP(invocation.command, invocation.args, {
+    ...options,
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+  });
+}
 
 // Capability flags detected at probe time (per agent id). buildArgs consults
 // this map so we only pass flags the installed CLI actually advertises in
@@ -54,6 +70,9 @@ const agentCapabilities = new Map();
 //   - 'claude-stream-json' : line-delimited JSON emitted by Claude Code's
 //     `--output-format stream-json`. Daemon parses it into typed events
 //     (text / thinking / tool_use / tool_result / status) for the UI.
+//   - 'qoder-stream-json' : line-delimited JSON emitted by Qoder CLI's
+//     `--output-format stream-json`. Daemon parses Qoder's wrappers into
+//     typed events while preserving Qoder-specific result metadata.
 //   - 'acp-json-rpc'       : ACP JSON-RPC over stdio. Daemon drives the
 //     initialize/session/new/session/prompt lifecycle and maps updates into
 //     typed UI events.
@@ -70,6 +89,7 @@ const agentCapabilities = new Map();
 // documented, non-secret runtime knobs that belong to the adapter contract.
 
 const DEFAULT_MODEL_OPTION = { id: 'default', label: 'Default (CLI config)' };
+const AGENT_BIN_ENV_KEYS = new Map([['codex', 'CODEX_BIN']]);
 
 // Map a user-picked reasoning effort to one the chosen model will accept.
 // Codex's CLI accepts `none | minimal | low | medium | high | xhigh`, but
@@ -495,43 +515,110 @@ export const AGENT_DEFS = [
     streamFormat: 'plain',
   },
   {
+    id: 'qoder',
+    name: 'Qoder CLI',
+    bin: 'qodercli',
+    versionArgs: ['--version'],
+    fallbackModels: [
+      DEFAULT_MODEL_OPTION,
+      { id: 'lite', label: 'Lite' },
+      { id: 'efficient', label: 'Efficient' },
+      { id: 'auto', label: 'Auto' },
+      { id: 'performance', label: 'Performance' },
+      { id: 'ultimate', label: 'Ultimate' },
+    ],
+    // Qoder print mode exits after the turn. Deliver the composed prompt via
+    // stdin to avoid argv length limits, while using stream-json so the daemon
+    // can surface text and usage incrementally. `--yolo` is Qoder's documented
+    // non-interactive approval flag, and `-w` selects the workspace.
+    // Authentication remains Qoder CLI-owned: users can rely on persisted
+    // `qodercli login` state, or launch the daemon with
+    // QODER_PERSONAL_ACCESS_TOKEN for automation. Do not add that token to
+    // static adapter env; unlike Gemini's workspace trust flag it is a user
+    // secret and already flows through the inherited process environment.
+    buildArgs: (
+      _prompt,
+      imagePaths,
+      extraAllowedDirs = [],
+      options = {},
+      runtimeContext = {},
+    ) => {
+      const args = [
+        '-p',
+        '--output-format',
+        'stream-json',
+        '--yolo',
+      ];
+      if (runtimeContext.cwd) {
+        args.push('-w', runtimeContext.cwd);
+      }
+      if (options.model && options.model !== 'default') {
+        args.push('--model', options.model);
+      }
+      const dirs = (extraAllowedDirs || []).filter(
+        (d) => typeof d === 'string' && path.isAbsolute(d),
+      );
+      const attachments = (imagePaths || []).filter(
+        (p) => typeof p === 'string' && path.isAbsolute(p),
+      );
+      for (const d of dirs) args.push('--add-dir', d);
+      for (const p of attachments) args.push('--attachment', p);
+      return args;
+    },
+    promptViaStdin: true,
+    streamFormat: 'qoder-stream-json',
+  },
+  {
     id: 'copilot',
     name: 'GitHub Copilot CLI',
     bin: 'copilot',
     versionArgs: ['--version'],
-    // The prompt is passed directly as the value of `-p`: `copilot -p
-    // "<prompt>" --allow-all-tools --output-format json`. Copilot does NOT
-    // treat `-` as a stdin sentinel — it reads it as a literal one-character
-    // prompt string — so the previous `-p -` + stdin pattern produced a
-    // nonsensical single-dash prompt instead of the composed prompt body.
+    // Prompt is delivered via stdin (gated by `promptViaStdin: true`
+    // below) to avoid Windows `spawn ENAMETOOLONG` (issue #705):
+    // `copilot -p <body>` ships the full composed prompt as a single
+    // argv entry, and CreateProcess caps `lpCommandLine` at ~32 KB
+    // direct or ~8 KB through a `.cmd` shim. Any non-trivial Open
+    // Design prompt blows past that — even a "Hi" expands to several
+    // thousand chars after skills + design-system context are composed
+    // in.
     //
-    // `--allow-all-tools` is required for non-interactive runs: without it
-    // the CLI blocks waiting for human approval on every tool call. Unlike
-    // Codex (where `exec` is a dedicated headless subcommand with
-    // auto-approve baked in) or Claude Code (which inherits its permission
-    // policy from the user's settings.json), Copilot's `-p` mode always
-    // prompts unless this flag is passed explicitly.
+    // The transport is "omit `-p` entirely, pipe the prompt to stdin"
+    // per upstream copilot-cli issue #1046 (closed as already supported,
+    // confirmed working on Copilot CLI for `echo "..." | copilot
+    // --model <id>` and `cat prompt.txt | copilot --model <id>`). The
+    // earlier `-p -` attempt (PR #351) and the argv-bound revert
+    // (PR #466) both pre-dated that confirmation: `-p -` made Copilot
+    // interpret `-` as a literal one-character prompt, but omitting
+    // `-p` entirely is a separate code path that does delegate to
+    // stdin under a non-TTY pipe — which is exactly how the daemon
+    // spawns the child (`stdio: ['pipe', 'pipe', 'pipe']`).
     //
-    // `--output-format json` produces JSONL that copilot-stream.js parses
-    // into the same typed events as claude-stream.js.
+    // `--allow-all-tools` is still required for non-interactive runs:
+    // without it the CLI blocks waiting for human approval on every
+    // tool call. Unlike Codex (where `exec` is a dedicated headless
+    // subcommand with auto-approve baked in) or Claude Code (which
+    // inherits its permission policy from the user's settings.json),
+    // Copilot always prompts unless this flag is passed explicitly.
     //
-    // `--add-dir` (repeatable, same flag as Claude Code's) widens Copilot's
-    // path-level sandbox to skill seeds + design-system specs outside the
-    // project cwd.
+    // `--output-format json` produces JSONL that copilot-stream.js
+    // parses into the same typed events as claude-stream.js.
     //
-    // No `models` subcommand; the CLI accepts whatever the user's Copilot
-    // subscription exposes. Ship a small evidence-based hint list — the
-    // default we observed in the JSON stream and the example from
-    // `copilot --help`. Users can paste any other id via Settings.
+    // `--add-dir` (repeatable, same flag as Claude Code's) widens
+    // Copilot's path-level sandbox to skill seeds + design-system
+    // specs outside the project cwd.
+    //
+    // No `models` subcommand; the CLI accepts whatever the user's
+    // Copilot subscription exposes. Ship a small evidence-based hint
+    // list — the default we observed in the JSON stream and the
+    // example from `copilot --help`. Users can paste any other id via
+    // Settings.
     fallbackModels: [
       DEFAULT_MODEL_OPTION,
       { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
       { id: 'gpt-5.2', label: 'GPT-5.2' },
     ],
-    buildArgs: (prompt, _imagePaths, extraAllowedDirs = [], options = {}) => {
+    buildArgs: (_prompt, _imagePaths, extraAllowedDirs = [], options = {}) => {
       const args = [
-        '-p',
-        prompt,
         '--allow-all-tools',
         '--output-format',
         'json',
@@ -545,7 +632,7 @@ export const AGENT_DEFS = [
       for (const d of dirs) args.push('--add-dir', d);
       return args;
     },
-    promptViaStdin: false,
+    promptViaStdin: true,
     streamFormat: 'copilot-stream-json',
   },
   {
@@ -557,7 +644,7 @@ export const AGENT_DEFS = [
     // so we use a custom fetchModels that reads stderr.
     fetchModels: async (resolvedBin, env) => {
       try {
-        const { stderr } = await execFileP(resolvedBin, ['--list-models'], {
+        const { stderr } = await execAgentFile(resolvedBin, ['--list-models'], {
           env,
           timeout: 20_000,
           maxBuffer: 8 * 1024 * 1024,
@@ -726,22 +813,12 @@ export const AGENT_DEFS = [
   },
 ];
 
-function existingDirsUnder(root, segments = []) {
-  const dirs = [];
-  let entries = [];
-  try {
-    entries = readdirSync(root, { withFileTypes: true });
-  } catch {
-    return dirs;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const full = path.join(root, entry.name, ...segments);
-    if (existsSync(full)) dirs.push(full);
-  }
-  return dirs;
-}
-
+// Toolchain dir computation lives in @open-design/platform so the daemon
+// resolver and the packaged sidecar PATH builder can never drift again
+// (issue #442). See @open-design/platform's wellKnownUserToolchainBins
+// for the canonical search list. The wrapper here just preserves the
+// OD_AGENT_HOME test hook and the per-home cache that reduces
+// filesystem scans on every resolveOnPath() call.
 const TOOLCHAIN_DIR_CACHE_TTL_MS = 5000;
 let cachedToolchainHome = null;
 let cachedToolchainDirs = null;
@@ -760,27 +837,17 @@ function userToolchainDirs() {
   }
   cachedToolchainHome = home;
   cachedToolchainDirsAt = now;
-  cachedToolchainDirs = [
-    path.join(home, '.local', 'bin'),
-    path.join(home, '.opencode', 'bin'),
-    path.join(home, '.bun', 'bin'),
-    path.join(home, '.volta', 'bin'),
-    path.join(home, '.asdf', 'shims'),
-    path.join(home, 'Library', 'pnpm'),
-    path.join(home, '.cargo', 'bin'),
-    ...(process.platform !== 'win32' && !homeOverride
-      ? ['/opt/homebrew/bin', '/usr/local/bin']
-      : []),
-    ...existingDirsUnder(
-      path.join(home, '.local', 'share', 'mise', 'installs', 'node'),
-      ['bin'],
-    ),
-    ...existingDirsUnder(path.join(home, '.nvm', 'versions', 'node'), ['bin']),
-    ...existingDirsUnder(
-      path.join(home, '.local', 'share', 'fnm', 'node-versions'),
-      ['installation', 'bin'],
-    ),
-  ];
+  // When OD_AGENT_HOME is set, scope the search strictly to the override
+  // home: skip Homebrew / /usr/local *and* pass an empty env so that a
+  // developer or CI runner with NPM_CONFIG_PREFIX / npm_config_prefix
+  // exported can't leak the real machine's <prefix>/bin into a sandboxed
+  // detection run. Without this the agents.test.ts cases that build a
+  // tmp home would be machine-environment-dependent.
+  cachedToolchainDirs = wellKnownUserToolchainBins({
+    home,
+    includeSystemBins: process.platform !== 'win32' && !homeOverride,
+    env: homeOverride ? {} : process.env,
+  });
   return cachedToolchainDirs;
 }
 
@@ -821,8 +888,20 @@ export function resolveOnPath(bin) {
 // agents whose forks ship under a different binary name but speak the
 // exact same CLI (Claude Code → OpenClaude, issue #235). Returns null
 // when no candidate is on PATH.
-export function resolveAgentExecutable(def) {
+function configuredExecutableOverride(def, configuredEnv = {}) {
+  const envKey = AGENT_BIN_ENV_KEYS.get(def?.id);
+  if (!envKey) return null;
+  const raw = configuredEnv?.[envKey];
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+  const expanded = expandHomePath(raw.trim());
+  if (!path.isAbsolute(expanded)) return null;
+  return existsSync(expanded) ? expanded : null;
+}
+
+export function resolveAgentExecutable(def, configuredEnv = {}) {
   if (!def?.bin) return null;
+  const configured = configuredExecutableOverride(def, configuredEnv);
+  if (configured) return configured;
   const candidates = [
     def.bin,
     ...(Array.isArray(def.fallbackBins) ? def.fallbackBins : []),
@@ -846,7 +925,7 @@ async function fetchModels(def, resolvedBin, env) {
   }
   if (!def.listModels) return def.fallbackModels;
   try {
-    const { stdout } = await execFileP(resolvedBin, def.listModels.args, {
+    const { stdout } = await execAgentFile(resolvedBin, def.listModels.args, {
       env,
       timeout: def.listModels.timeoutMs ?? 5000,
       // Models lists from popular CLIs (e.g. opencode) easily exceed the
@@ -866,7 +945,7 @@ async function fetchModels(def, resolvedBin, env) {
 }
 
 async function probe(def, configuredEnv = {}) {
-  const resolved = resolveAgentExecutable(def);
+  const resolved = resolveAgentExecutable(def, configuredEnv);
   if (!resolved) {
     return {
       ...stripFns(def),
@@ -884,7 +963,7 @@ async function probe(def, configuredEnv = {}) {
   );
   let version = null;
   try {
-    const { stdout } = await execFileP(resolved, def.versionArgs, {
+    const { stdout } = await execAgentFile(resolved, def.versionArgs, {
       env: probeEnv,
       timeout: 3000,
     });
@@ -897,7 +976,7 @@ async function probe(def, configuredEnv = {}) {
   if (def.helpArgs && def.capabilityFlags) {
     const caps = {};
     try {
-      const { stdout } = await execFileP(resolved, def.helpArgs, {
+      const { stdout } = await execAgentFile(resolved, def.helpArgs, {
         env: probeEnv,
         timeout: 5000,
         maxBuffer: 4 * 1024 * 1024,
@@ -1142,8 +1221,8 @@ function looksLikeWindowsPath(p) {
 //     never go through this path);
 //   - the resolved binary is a `.cmd` / `.bat` shim — that's handled by
 //     `checkWindowsCmdShimCommandLineBudget` so we don't double-emit;
-//   - the resolved binary is a POSIX path on a POSIX host (no
-//     CreateProcess in play);
+//   - the resolved binary is not a Windows path (no CreateProcess
+//     command-line shape to budget);
 //   - the assembled command line fits under the safe limit.
 //
 // Pure: takes `resolvedBin` and `args` explicitly so a test on macOS can
@@ -1156,12 +1235,11 @@ export function checkWindowsDirectExeCommandLineBudget(def, resolvedBin, args) {
   // The cmd-shim guard owns `.bat` / `.cmd`; skip those here so a single
   // oversized prompt doesn't trip both guards.
   if (/\.(bat|cmd)$/i.test(resolvedBin)) return null;
-  // Only fire when the spawn would actually go through Windows'
-  // CreateProcess. On POSIX hosts, `execvp` accepts each argv entry as a
-  // separate buffer — there's no command-line concatenation step that
-  // could expand past a kernel cap, so we have nothing to guard.
-  if (process.platform !== 'win32' && !looksLikeWindowsPath(resolvedBin))
-    return null;
+  // Only fire for Windows-shaped resolved binaries. On POSIX-shaped
+  // paths, `execvp` accepts each argv entry as a separate buffer —
+  // there's no command-line concatenation step that could expand past a
+  // kernel cap, so we have nothing to guard.
+  if (!looksLikeWindowsPath(resolvedBin)) return null;
   const argList = Array.isArray(args) ? args : [];
   // `[command, ...args].map(quote).join(' ')` is the exact shape libuv
   // builds before handing it to CreateProcess.
@@ -1186,10 +1264,10 @@ export function checkWindowsDirectExeCommandLineBudget(def, resolvedBin, args) {
 // Used by the chat handler so spawn() gets the same executable that
 // detection reported as available — fixes Windows ENOENT when the bare
 // bin name isn't on the child process's PATH (issue #10).
-export function resolveAgentBin(id) {
+export function resolveAgentBin(id, configuredEnv = {}) {
   const def = getAgentDef(id);
   if (!def?.bin) return null;
-  return resolveAgentExecutable(def);
+  return resolveAgentExecutable(def, configuredEnv);
 }
 
 // Build the env passed to spawn() for a given agent adapter.

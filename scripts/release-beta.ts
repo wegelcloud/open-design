@@ -22,6 +22,14 @@ type ParsedBetaVersion = {
   betaVersion: string;
 };
 
+type ParsedBetaMetadata = ParsedBetaVersion & {
+  source: "metadata-json";
+};
+
+type ParsedLegacyMacFeed = ParsedBetaVersion & {
+  source: "legacy-latest-mac-yml";
+};
+
 function fail(message: string): never {
   console.error(`[release-beta] ${message}`);
   process.exit(1);
@@ -84,6 +92,64 @@ function parseBetaVersionFromLatestMacYml(value: string): ParsedBetaVersion {
   }
 
   return parseBetaParts(betaMatch[1], betaMatch[2]);
+}
+
+function readStringField(record: Record<string, unknown>, field: string): string | null {
+  const value = record[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readNumberField(record: Record<string, unknown>, field: string): number | null {
+  const value = record[field];
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+}
+
+function parseBetaVersion(value: string, sourceName: string): ParsedBetaVersion {
+  const match = betaVersionPattern.exec(value);
+  if (match?.[1] == null || match[2] == null) {
+    fail(`${sourceName} betaVersion must be x.y.z-beta.N; got ${value}`);
+  }
+  return parseBetaParts(match[1], match[2]);
+}
+
+function parseBetaMetadataJson(value: string): ParsedBetaMetadata {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    fail(`R2 beta metadata.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) {
+    fail("R2 beta metadata.json must be a JSON object");
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const betaVersion = readStringField(record, "betaVersion");
+  const betaNumber = readNumberField(record, "betaNumber");
+  const baseVersion = readStringField(record, "baseVersion");
+
+  if (betaVersion != null) {
+    const beta = parseBetaVersion(betaVersion, "R2 beta metadata.json");
+    if (baseVersion != null && baseVersion !== beta.baseVersion) {
+      fail(`R2 beta metadata.json baseVersion ${baseVersion} does not match betaVersion ${beta.betaVersion}`);
+    }
+    if (betaNumber != null && betaNumber !== beta.betaNumber) {
+      fail(`R2 beta metadata.json betaNumber ${betaNumber} does not match betaVersion ${beta.betaVersion}`);
+    }
+    return { ...beta, source: "metadata-json" };
+  }
+
+  if (baseVersion == null || betaNumber == null) {
+    fail("R2 beta metadata.json must include betaVersion or baseVersion+betaNumber");
+  }
+
+  const parsedBase = parseStableVersion(baseVersion);
+  if (parsedBase == null) {
+    fail(`R2 beta metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
+  }
+
+  return { ...parseBetaParts(baseVersion, String(betaNumber)), source: "metadata-json" };
 }
 
 async function readPackagedVersion(): Promise<string> {
@@ -205,25 +271,47 @@ if (latestStable != null && compareVersions(packagedParsed, latestStable.parsed)
   fail(`packaged base version ${packagedVersion} must be strictly greater than latest stable ${latestStable.value}`);
 }
 
-const latestMacFeedUrl = process.env.OPEN_DESIGN_BETA_LATEST_MAC_URL;
-if (latestMacFeedUrl == null || latestMacFeedUrl.length === 0) {
-  fail("OPEN_DESIGN_BETA_LATEST_MAC_URL is required");
+const metadataUrl = process.env.OPEN_DESIGN_BETA_METADATA_URL;
+if (metadataUrl == null || metadataUrl.length === 0) {
+  fail("OPEN_DESIGN_BETA_METADATA_URL is required");
 }
-validateHttpsUrl(latestMacFeedUrl, "OPEN_DESIGN_BETA_LATEST_MAC_URL");
+validateHttpsUrl(metadataUrl, "OPEN_DESIGN_BETA_METADATA_URL");
+
+const legacyLatestMacFeedUrl = process.env.OPEN_DESIGN_BETA_LEGACY_LATEST_MAC_URL;
+if (legacyLatestMacFeedUrl != null && legacyLatestMacFeedUrl.length > 0) {
+  validateHttpsUrl(legacyLatestMacFeedUrl, "OPEN_DESIGN_BETA_LEGACY_LATEST_MAC_URL");
+}
 
 let betaNumber = 1;
 let latestBeta: ParsedBetaVersion | null = null;
-const latestMacFeed = await fetchOptionalHttpsText(latestMacFeedUrl);
-if (latestMacFeed == null) {
-  console.log("[release-beta] R2 beta latest-mac.yml: not found");
+let stateSource = "R2 metadata.json";
+const latestMetadataJson = await fetchOptionalHttpsText(metadataUrl);
+if (latestMetadataJson == null) {
+  console.log("[release-beta] R2 beta metadata.json: not found");
+  if (legacyLatestMacFeedUrl != null && legacyLatestMacFeedUrl.length > 0) {
+    const latestMacFeed = await fetchOptionalHttpsText(legacyLatestMacFeedUrl);
+    if (latestMacFeed == null) {
+      console.log("[release-beta] legacy R2 beta latest-mac.yml bootstrap: not found");
+    } else {
+      const parsedLegacy: ParsedLegacyMacFeed = {
+        ...parseBetaVersionFromLatestMacYml(latestMacFeed),
+        source: "legacy-latest-mac-yml",
+      };
+      latestBeta = parsedLegacy;
+      stateSource = "legacy R2 latest-mac.yml bootstrap";
+      console.log(`[release-beta] legacy R2 beta latest-mac.yml version: ${latestBeta.betaVersion}`);
+    }
+  }
 } else {
-  latestBeta = parseBetaVersionFromLatestMacYml(latestMacFeed);
-  console.log(`[release-beta] R2 beta latest-mac.yml version: ${latestBeta.betaVersion}`);
+  latestBeta = parseBetaMetadataJson(latestMetadataJson);
+  console.log(`[release-beta] R2 beta metadata.json version: ${latestBeta.betaVersion}`);
+}
 
+if (latestBeta != null) {
   const beta = latestBeta;
   const existingBase = parseStableVersion(beta.baseVersion);
   if (existingBase == null) {
-    fail(`invalid beta base version in R2 beta latest-mac.yml: ${beta.baseVersion}`);
+    fail(`invalid beta base version in ${stateSource}: ${beta.baseVersion}`);
   }
 
   const ordering = compareVersions(packagedParsed, existingBase);
@@ -246,7 +334,7 @@ console.log(`[release-beta] channel: beta`);
 console.log(`[release-beta] base version: ${packagedVersion}`);
 console.log(`[release-beta] beta version: ${betaVersion}`);
 console.log(`[release-beta] signed: ${signed ? "true" : "false"}`);
-console.log("[release-beta] beta state source: R2 latest-mac.yml");
+console.log(`[release-beta] beta state source: ${stateSource}`);
 if (latestStable != null) console.log(`[release-beta] latest stable: ${latestStable.value}`);
 if (latestBeta != null) console.log(`[release-beta] latest beta: ${latestBeta.betaVersion}`);
 
@@ -259,3 +347,4 @@ setOutput("commit", commit);
 setOutput("latest_stable", latestStable?.value ?? "");
 setOutput("release_name", releaseName);
 setOutput("signed", signed ? "true" : "false");
+setOutput("state_source", stateSource);
