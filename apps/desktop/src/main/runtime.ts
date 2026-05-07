@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -66,6 +66,12 @@ export type DesktopRuntime = {
 
 export type DesktopRuntimeOptions = {
   discoverUrl(): Promise<string | null>;
+  /**
+   * Optional file path to append renderer-process error/warning console
+   * messages to. Lets the diagnostics export pick up UI errors that would
+   * otherwise only live in DevTools.
+   */
+  rendererLogPath?: string | null;
 };
 
 const MAC_WINDOW_CHROME =
@@ -282,8 +288,8 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
       preload: preloadPath,
+      sandbox: true,
     },
     width: 1280,
   });
@@ -321,16 +327,39 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
     });
   }
 
+  const rendererLogPath = options.rendererLogPath ?? null;
+  let rendererLogReady: Promise<void> | null = null;
+  const ensureRendererLogDir = async (): Promise<void> => {
+    if (rendererLogPath == null) return;
+    if (rendererLogReady == null) {
+      rendererLogReady = mkdir(dirname(rendererLogPath), { recursive: true }).then(() => undefined);
+    }
+    await rendererLogReady;
+  };
+  const persistRendererEntry = async (entry: DesktopConsoleEntry): Promise<void> => {
+    if (rendererLogPath == null) return;
+    if (entry.level !== "error" && entry.level !== "warn") return;
+    try {
+      await ensureRendererLogDir();
+      const line = `${JSON.stringify({ timestamp: entry.timestamp, level: entry.level, text: entry.text })}\n`;
+      await appendFile(rendererLogPath, line, "utf8");
+    } catch (error) {
+      console.error("desktop renderer log append failed", error);
+    }
+  };
+
   (window.webContents as any).on("console-message", (event: { level?: number | string; message?: string }) => {
     const level = typeof event.level === "number" ? mapConsoleLevel(event.level) : (event.level ?? "log");
-    consoleEntries.push({
+    const entry: DesktopConsoleEntry = {
       level,
       text: event.message ?? "",
       timestamp: new Date().toISOString(),
-    });
+    };
+    consoleEntries.push(entry);
     if (consoleEntries.length > MAX_CONSOLE_ENTRIES) {
       consoleEntries.splice(0, consoleEntries.length - MAX_CONSOLE_ENTRIES);
     }
+    void persistRendererEntry(entry);
   });
 
   await window.loadURL(createPendingHtml());

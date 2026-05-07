@@ -1236,4 +1236,12 @@ export interface Dict {
   'sketch.close': string;
   'sketch.textPrompt': string;
   'sketch.textModalTitle': string;
+
+  // Diagnostics export
+  'diagnostics.exportTitle': string;
+  'diagnostics.exportButton': string;
+  'diagnostics.exportHint': string;
+  'diagnostics.exporting': string;
+  'diagnostics.exportSuccess': string;
+  'diagnostics.exportFailed': string;
 }
