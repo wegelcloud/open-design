@@ -124,7 +124,7 @@ jobs:
             --dir "$RUNNER_TEMP/tools-pack" \
             --namespace release-beta \
             --portable \
-            --mac-compression normal \
+            --mac-compression maximum \
             --to all \
             --json \
             $signed_flag
