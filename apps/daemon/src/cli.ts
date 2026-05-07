@@ -4,6 +4,7 @@ import { startServer } from './server.js';
 import { runLiveArtifactsMcpServer } from './mcp-live-artifacts-server.js';
 import { runConnectorsToolCli } from './tools-connectors-cli.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
+import { splitResearchSubcommand } from './research/cli-args.js';
 
 const argv = process.argv.slice(2);
 
@@ -197,7 +198,7 @@ What the daemon does:
 // ---------------------------------------------------------------------------
 
 async function runResearch(args) {
-  const sub = args.find((a) => a && !a.startsWith('--'));
+  const { sub, subArgs } = splitResearchSubcommand(args);
   if (!sub || sub === 'help' || args.includes('--help') || args.includes('-h')) {
     printResearchHelp();
     process.exit(sub === 'help' || args.includes('--help') || args.includes('-h') ? 0 : 2);
@@ -207,8 +208,6 @@ async function runResearch(args) {
     printResearchHelp();
     process.exit(2);
   }
-  const idx = args.indexOf(sub);
-  const subArgs = [...args.slice(0, idx), ...args.slice(idx + 1)];
   return runResearchSearch(subArgs);
 }
 

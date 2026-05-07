@@ -1,4 +1,15 @@
-export function renderResearchCommandContract(query?: string): string {
+const DEFAULT_MAX_SOURCES = 5;
+const TAVILY_MAX_RESULTS_LIMIT = 20;
+
+export interface ResearchCommandContractOptions {
+  query?: string;
+  maxSources?: number;
+}
+
+export function renderResearchCommandContract(
+  options: ResearchCommandContractOptions = {},
+): string {
+  const maxSources = normalizeMaxSources(options.maxSources);
   const lines = [
     '## Research command contract',
     '',
@@ -7,7 +18,7 @@ export function renderResearchCommandContract(query?: string): string {
     'Use this command when current external facts would improve the answer:',
     '',
     '```bash',
-    '"$OD_NODE_BIN" "$OD_BIN" research search --query "<search query>" --max-sources 5',
+    `"$OD_NODE_BIN" "$OD_BIN" research search --query "<search query>" --max-sources ${maxSources}`,
     '```',
     '',
     'The command prints exactly one JSON object on stdout:',
@@ -23,7 +34,7 @@ export function renderResearchCommandContract(query?: string): string {
     '- If the command fails, report the actual stderr/error instead of inventing a cause.',
   ];
 
-  const safeQuery = typeof query === 'string' ? query.trim() : '';
+  const safeQuery = typeof options.query === 'string' ? options.query.trim() : '';
   if (safeQuery) {
     lines.push(
       '',
@@ -40,4 +51,11 @@ export function renderResearchCommandContract(query?: string): string {
   }
 
   return lines.join('\n');
+}
+
+function normalizeMaxSources(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_MAX_SOURCES;
+  }
+  return Math.max(1, Math.min(Math.floor(value), TAVILY_MAX_RESULTS_LIMIT));
 }

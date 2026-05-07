@@ -3936,9 +3936,11 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     });
     const researchCommandContract =
       research && research.enabled
-        ? renderResearchCommandContract(
-            typeof research.query === 'string' ? research.query : undefined,
-          )
+        ? renderResearchCommandContract({
+            query: typeof research.query === 'string' ? research.query : undefined,
+            maxSources:
+              typeof research.maxSources === 'number' ? research.maxSources : undefined,
+          })
         : '';
     const clientInstructionPrompt = [researchCommandContract, systemPrompt]
       .map((part) => (typeof part === 'string' ? part.trim() : ''))
