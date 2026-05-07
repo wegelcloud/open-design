@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       signed:
-        description: "Build signed/notarized mac artifacts. Disable only for explicit unsigned validation releases."
+        description: "Build signed/notarized mac and signed Windows artifacts. Disable only for explicit unsigned validation releases."
         required: true
         type: boolean
         default: true
@@ -666,8 +666,122 @@ jobs:
       - name: Upload windows release bundle
         uses: actions/upload-artifact@v7
         with:
-          name: open-design-beta-win-release-assets
+          name: open-design-beta-win-unsigned-release-assets
           path: ${{ runner.temp }}/release-assets
+
+  sign_win:
+    name: Sign beta win x64
+    needs:
+      - metadata
+      - build_win
+    if: ${{ inputs.enable_win && inputs.signed }}
+    runs-on:
+      - self-hosted
+      - Windows
+      - windows-signer
+    steps:
+      - name: Download unsigned windows release bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: open-design-beta-win-unsigned-release-assets
+          path: ${{ runner.temp }}/unsigned-release-assets
+
+      - name: Locate signing certificate and signtool
+        id: signing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+          if ($null -eq $signtool) {
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+          }
+          if ($null -eq $signtool) {
+            throw "signtool.exe was not found"
+          }
+
+          $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
+            Sort-Object NotAfter -Descending |
+            Select-Object -First 1
+          if ($null -eq $cert) {
+            throw "no CurrentUser code signing certificate was found"
+          }
+
+          "signtool_path=$($signtool.Source ?? $signtool.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "cert_thumbprint=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "### Windows signing" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Runner: $env:RUNNER_NAME" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- signtool: ``$($signtool.Source ?? $signtool.FullName)``" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Certificate subject: $($cert.Subject)" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Certificate expires: $($cert.NotAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Sign windows installer
+        shell: pwsh
+        env:
+          CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN: ${{ secrets.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN)) {
+            throw "CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN is required"
+          }
+
+          $unsignedDir = Join-Path $env:RUNNER_TEMP "unsigned-release-assets"
+          $releaseDir = Join-Path $env:RUNNER_TEMP "signed-release-assets"
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+
+          $unsignedInstallerName = "open-design-${{ needs.metadata.outputs.beta_version }}.unsigned-win-x64-setup.exe"
+          $signedInstallerName = "open-design-${{ needs.metadata.outputs.beta_version }}-win-x64-setup.exe"
+          $unsignedInstaller = Join-Path $unsignedDir $unsignedInstallerName
+          $signedInstaller = Join-Path $releaseDir $signedInstallerName
+          if (!(Test-Path $unsignedInstaller)) {
+            throw "expected unsigned installer not found at $unsignedInstaller"
+          }
+
+          Copy-Item $unsignedInstaller $signedInstaller
+          $signtool = "${{ steps.signing.outputs.signtool_path }}"
+          & $signtool sign /sha1 "${{ steps.signing.outputs.cert_thumbprint }}" /fd SHA256 /tr http://timestamp.sectigo.com /td SHA256 $signedInstaller
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool sign exited with code $LASTEXITCODE"
+          }
+
+          & $signtool verify /pa /v $signedInstaller
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool verify exited with code $LASTEXITCODE"
+          }
+
+          $checksumFile = "$signedInstallerName.sha256"
+          $hash = (Get-FileHash -Path $signedInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $signedInstallerName" | Set-Content -Path (Join-Path $releaseDir $checksumFile)
+          $installerBytes = [System.IO.File]::ReadAllBytes($signedInstaller)
+          $installerSha512 = [System.Convert]::ToBase64String([System.Security.Cryptography.SHA512]::Create().ComputeHash($installerBytes))
+          $installerSize = (Get-Item $signedInstaller).Length
+          $publicOrigin = $env:CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN.TrimEnd("/")
+          $versionPrefix = "beta/versions/${{ needs.metadata.outputs.beta_version }}${{ needs.metadata.outputs.asset_version_suffix }}"
+          $installerUrl = "$publicOrigin/$versionPrefix/$signedInstallerName"
+          $releaseDate = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+          @(
+            'version: "${{ needs.metadata.outputs.beta_version }}"'
+            'files:'
+            "  - url: `"$installerUrl`""
+            "    sha512: `"$installerSha512`""
+            "    size: $installerSize"
+            "path: `"$installerUrl`""
+            "sha512: `"$installerSha512`""
+            "releaseDate: `"$releaseDate`""
+            "releaseNotes: `"Open Design beta ${{ needs.metadata.outputs.beta_version }}`""
+          ) | Set-Content -Path (Join-Path $releaseDir "latest.yml")
+
+          "- Signed installer: ``$signedInstallerName``" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Signed installer SHA256: ``$hash``" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload signed windows release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: open-design-beta-win-release-assets
+          path: ${{ runner.temp }}/signed-release-assets
 
   build_linux:
     name: Build beta linux x64
@@ -751,6 +865,7 @@ jobs:
       - metadata
       - build_mac
       - build_win
+      - sign_win
       - build_linux
     if: >-
       ${{
@@ -759,7 +874,7 @@ jobs:
         needs.metadata.result == 'success' &&
         (inputs.enable_mac || inputs.enable_win || inputs.enable_linux) &&
         (!inputs.enable_mac || needs.build_mac.result == 'success') &&
-        (!inputs.enable_win || needs.build_win.result == 'success') &&
+        (!inputs.enable_win || (inputs.signed && needs.sign_win.result == 'success') || (!inputs.signed && needs.build_win.result == 'success')) &&
         (!inputs.enable_linux || needs.build_linux.result == 'success')
       }}
     runs-on: ubuntu-latest
@@ -788,11 +903,18 @@ jobs:
           name: open-design-beta-mac-release-assets
           path: ${{ runner.temp }}/release-assets/mac
 
-      - name: Download windows release bundle
-        if: ${{ inputs.enable_win }}
+      - name: Download signed windows release bundle
+        if: ${{ inputs.enable_win && inputs.signed }}
         uses: actions/download-artifact@v8
         with:
           name: open-design-beta-win-release-assets
+          path: ${{ runner.temp }}/release-assets/win
+
+      - name: Download unsigned windows release bundle
+        if: ${{ inputs.enable_win && !inputs.signed }}
+        uses: actions/download-artifact@v8
+        with:
+          name: open-design-beta-win-unsigned-release-assets
           path: ${{ runner.temp }}/release-assets/win
 
       - name: Download linux release bundle
@@ -843,7 +965,7 @@ jobs:
 
           mac_dmg="open-design-${BETA_VERSION}${ASSET_VERSION_SUFFIX}-mac-arm64.dmg"
           mac_zip="open-design-${BETA_VERSION}${ASSET_VERSION_SUFFIX}-mac-arm64.zip"
-          win_installer="open-design-${BETA_VERSION}.unsigned-win-x64-setup.exe"
+          win_installer="open-design-${BETA_VERSION}${ASSET_VERSION_SUFFIX}-win-x64-setup.exe"
           linux_appimage="open-design-${BETA_VERSION}.unsigned-linux-x64.AppImage"
           metadata_path="$release_root/metadata.json"
 
@@ -941,7 +1063,7 @@ jobs:
                 name: "latest.yml",
                 url: url(versionPrefix, "latest.yml"),
               },
-              signed: false,
+              signed: env.RELEASE_SIGNED === "true",
               artifacts: {
                 installer: fileEntry("win", env.WIN_INSTALLER, "application/vnd.microsoft.portable-executable"),
               },
@@ -1052,6 +1174,7 @@ jobs:
             echo "- windows enabled: $ENABLE_WIN"
             echo "- linux enabled: $ENABLE_LINUX"
             echo "- mac signed/notarized: ${{ needs.metadata.outputs.signed }}"
+            echo "- windows signed: ${{ needs.metadata.outputs.signed }}"
             if [ "$ENABLE_MAC" = "true" ]; then
               echo "- mac dmg: ${{ steps.r2.outputs.mac_dmg_url }}"
               echo "- mac zip: ${{ steps.r2.outputs.mac_zip_url }}"
