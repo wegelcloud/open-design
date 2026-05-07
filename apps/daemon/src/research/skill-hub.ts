@@ -1041,9 +1041,16 @@ export async function installHubEntry(
       `installHubEntry: entry has no source.commitSha — list with HubConfig.pinnedSha so bytes are anchored to an immutable commit (${entry.namespace}/${entry.name})`,
     );
   }
-  if (!COMMIT_SHA_PATTERN.test(entrySha)) {
+  // Require the canonical 40-char SHA, not just the 7–40 hex prefix shape.
+  // Entries produced by `listHubEntries` already carry the canonical SHA
+  // resolved through the GitHub commits API; accepting a short prefix here
+  // would let an in-process caller forge an entry whose `commitSha` matches
+  // the approval string by luck and trigger a re-fetch with `?ref=<short>`,
+  // which `?ref=` happily resolves through branch/tag names too. Forcing a
+  // 40-char SHA closes that gap (PR #617 review, P1).
+  if (!FULL_COMMIT_SHA_PATTERN.test(entrySha)) {
     throw new Error(
-      `installHubEntry: entry.source.commitSha is not a commit SHA (${entry.namespace}/${entry.name})`,
+      `installHubEntry: entry.source.commitSha must be a canonical 40-char commit SHA (${entry.namespace}/${entry.name})`,
     );
   }
   if (entrySha.toLowerCase() !== opts.approval.pinnedSha.toLowerCase()) {

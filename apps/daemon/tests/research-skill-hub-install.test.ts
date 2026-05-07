@@ -207,6 +207,24 @@ describe('research/skill-hub installHubEntry provenance gate', () => {
     ).rejects.toThrow(/provenance mismatch/i);
   });
 
+  it('rejects an entry whose source.commitSha is a short SHA prefix, even if it matches the approval', async () => {
+    // Regression for PR #617 review (P1): the install gate must require the
+    // canonical 40-char SHA on `entry.source.commitSha`. If a short prefix
+    // were accepted, an in-process caller could craft a `HubEntry` whose
+    // `commitSha` is the same short string the user "approved", pass the
+    // exact-string equality check, and trigger a re-fetch with `?ref=<short>`
+    // that GitHub happily resolves through branch/tag names. Forcing a
+    // 40-char SHA here closes that gap.
+    const shortSha = PINNED_SHA.slice(0, 7);
+    const entry = makeEntry({ commitSha: shortSha });
+    await expect(
+      installHubEntry(entry, {
+        targetRoot,
+        approval: { pinnedSha: shortSha, userApproved: true },
+      }),
+    ).rejects.toThrow(/canonical 40-char commit SHA/i);
+  });
+
   it('still requires explicit userApproved: true', async () => {
     const entry = makeEntry();
     await expect(

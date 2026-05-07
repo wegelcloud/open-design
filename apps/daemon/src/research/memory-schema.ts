@@ -46,6 +46,51 @@ function assertMemoryContent(content: string): void {
   }
 }
 
+// Tag validation. `buildMemoryPrefix()` emits tags into the rendered prompt
+// JSON, so an unvalidated `input.tags` would let a caller bypass the 8KB
+// content cap and the prompt-frame token check by smuggling large or
+// instruction-like strings through tags. We require a bounded array of
+// short slug strings, cap count/total bytes, and reject control characters
+// and prompt-frame tokens (PR #617 review, P1).
+const MEMORY_MAX_TAGS = 16;
+const MEMORY_TAG_MAX_BYTES = 64;
+const MEMORY_TAGS_TOTAL_MAX_BYTES = 512;
+const MEMORY_TAG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+function assertMemoryTags(tags: unknown): asserts tags is string[] {
+  if (!Array.isArray(tags)) {
+    throw new Error('memory tags must be an array of strings');
+  }
+  if (tags.length > MEMORY_MAX_TAGS) {
+    throw new Error(`memory tags must not exceed ${MEMORY_MAX_TAGS} entries`);
+  }
+  let total = 0;
+  for (const tag of tags) {
+    if (typeof tag !== 'string') {
+      throw new Error('memory tags must be strings');
+    }
+    if (!MEMORY_TAG_PATTERN.test(tag)) {
+      throw new Error(
+        'memory tags must be lowercase slug strings (a-z, 0-9, "._-"), 1–64 chars',
+      );
+    }
+    const bytes = Buffer.byteLength(tag, 'utf8');
+    if (bytes > MEMORY_TAG_MAX_BYTES) {
+      throw new Error(`memory tag exceeds ${MEMORY_TAG_MAX_BYTES} bytes`);
+    }
+    total += bytes;
+    if (total > MEMORY_TAGS_TOTAL_MAX_BYTES) {
+      throw new Error(`memory tags exceed ${MEMORY_TAGS_TOTAL_MAX_BYTES} bytes total`);
+    }
+    if (CONTROL_CHAR_PATTERN.test(tag)) {
+      throw new Error('memory tags must not contain control characters');
+    }
+    if (PROMPT_FRAME_TOKEN_PATTERN.test(tag)) {
+      throw new Error('memory tags must not contain prompt-frame tokens');
+    }
+  }
+}
+
 export interface MemoryEntry {
   id: string;
   scope: MemoryScope;
@@ -100,9 +145,10 @@ interface CreateMemoryInput {
 
 export function createMemory(db: Database, input: CreateMemoryInput): MemoryEntry {
   assertMemoryContent(input.content);
+  const tags = input.tags ?? [];
+  assertMemoryTags(tags);
   const now = Date.now();
   const id = randomUUID();
-  const tags = input.tags ?? [];
   db.prepare(
     `INSERT INTO memories (
        id, scope, scope_id, kind, content, source,
