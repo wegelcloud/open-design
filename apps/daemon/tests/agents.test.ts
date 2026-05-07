@@ -1564,6 +1564,29 @@ test('resolveAgentExecutable prefers a configured CODEX_BIN override over PATH r
   }
 });
 
+test('resolveAgentExecutable ignores relative CODEX_BIN overrides', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'od-codex-bin-rel-'));
+  const oldCwd = process.cwd();
+  try {
+    const configured = 'codex-custom';
+    writeFileSync(join(dir, configured), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(dir, configured), 0o755);
+    process.chdir(dir);
+    process.env.PATH = '';
+    process.env.OD_AGENT_HOME = dir;
+
+    const resolved = resolveAgentExecutable(
+      { id: 'codex', bin: 'codex' },
+      { CODEX_BIN: configured },
+    );
+
+    assert.equal(resolved, null);
+  } finally {
+    process.chdir(oldCwd);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('detectAgents applies configured env while probing the CLI', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-agent-env-'));
   try {

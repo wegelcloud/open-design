@@ -879,6 +879,7 @@ function configuredExecutableOverride(def, configuredEnv = {}) {
   const raw = configuredEnv?.[envKey];
   if (typeof raw !== 'string' || raw.trim().length === 0) return null;
   const expanded = expandHomePath(raw.trim());
+  if (!path.isAbsolute(expanded)) return null;
   return existsSync(expanded) ? expanded : null;
 }
 
