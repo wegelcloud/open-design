@@ -77,16 +77,23 @@ const residualAllowedPathPrefixes = [
   "skills/hyperframes/scripts/",
   // Vendored upstream html-ppt skill runtime assets (lewislulu/html-ppt-skill).
   "skills/html-ppt/assets/",
-  // Vendored upstream Zara template runtimes — one skill per template, name prefix
-  // `html-ppt-zhangzara-` (zarazhangrui/beautiful-html-templates).
-  "skills/html-ppt-zhangzara-",
   "test-results/",
   "vendor/",
 ];
 
+const residualAllowedPathPatterns: RegExp[] = [
+  // Vendored upstream Zara template runtimes — one skill per template, name prefix
+  // `html-ppt-zhangzara-` (zarazhangrui/beautiful-html-templates). Only the
+  // vendored deck-stage runtime asset is allowlisted; any other JavaScript under
+  // these skill directories must still be converted to TypeScript or explicitly
+  // listed in `residualAllowedExactPaths`.
+  /^skills\/html-ppt-zhangzara-[^/]+\/assets\/deck-stage\.js$/,
+];
+
 function isResidualAllowedPath(repositoryPath: string): boolean {
   if (residualAllowedExactPaths.has(repositoryPath)) return true;
-  return residualAllowedPathPrefixes.some((prefix) => repositoryPath.startsWith(prefix));
+  if (residualAllowedPathPrefixes.some((prefix) => repositoryPath.startsWith(prefix))) return true;
+  return residualAllowedPathPatterns.some((pattern) => pattern.test(repositoryPath));
 }
 
 function isResidualSkippedDirectoryName(directoryName: string): boolean {

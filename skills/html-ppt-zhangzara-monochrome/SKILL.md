@@ -40,7 +40,7 @@ breaks the system; stay inside this one.
 - **Scheme:** light
 - **Formality:** high
 - **Density:** high
-- **Slides in demo:** 18
+- **Slides in demo:** 16
 
 ## Best for
 

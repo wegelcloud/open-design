@@ -41,7 +41,7 @@ breaks the system; stay inside this one.
 - **Scheme:** dark
 - **Formality:** medium-high
 - **Density:** medium
-- **Slides in demo:** 20
+- **Slides in demo:** 16
 
 ## Best for
 
