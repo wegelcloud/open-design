@@ -42,6 +42,7 @@ import { MEDIA_PROVIDERS } from '../media/models';
 import type { MediaProvider } from '../media/models';
 import { PetSettings } from './pet/PetSettings';
 import { LibrarySection } from './LibrarySection';
+import { PrivacySection } from './PrivacySection';
 import { ConnectorsBrowser } from './ConnectorsBrowser';
 import {
   applyAppearanceToDocument,
@@ -67,6 +68,7 @@ export type SettingsSection =
   | 'notifications'
   | 'pet'
   | 'library'
+  | 'privacy'
   | 'about';
 
 interface Props {
@@ -1282,6 +1284,17 @@ export function SettingsDialog({
             </button>
             <button
               type="button"
+              className={`settings-nav-item${activeSection === 'privacy' ? ' active' : ''}`}
+              onClick={() => setActiveSection('privacy')}
+            >
+              <Icon name="eye" size={18} />
+              <span>
+                <strong>{t('settings.privacy')}</strong>
+                <small>{t('settings.privacyHint')}</small>
+              </span>
+            </button>
+            <button
+              type="button"
               className={`settings-nav-item${activeSection === 'about' ? ' active' : ''}`}
               onClick={() => setActiveSection('about')}
             >
@@ -1973,6 +1986,10 @@ export function SettingsDialog({
 
           {activeSection === 'library' ? (
             <LibrarySection cfg={cfg} setCfg={setCfg} />
+          ) : null}
+
+          {activeSection === 'privacy' ? (
+            <PrivacySection cfg={cfg} setCfg={setCfg} />
           ) : null}
 
           {activeSection === 'about' ? (

@@ -250,6 +250,11 @@ export function App() {
         // let them re-open Settings explicitly via the env pill.
         if (!next.onboardingCompleted) {
           setSettingsWelcome(true);
+          // Open the welcome modal on the Privacy section so the first-run
+          // consent decision is the first thing the user sees, not the agent
+          // selector. Closing the modal sets onboardingCompleted, so this
+          // only fires once per fresh install.
+          setSettingsInitialSection('privacy');
           setSettingsOpen(true);
         }
         return next;

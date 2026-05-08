@@ -380,6 +380,12 @@ export function mergeDaemonConfig(
   if (daemonConfig.orbit !== undefined) {
     next.orbit = normalizeOrbit(daemonConfig.orbit);
   }
+  if (daemonConfig.installationId !== undefined) {
+    next.installationId = daemonConfig.installationId;
+  }
+  if (daemonConfig.telemetry !== undefined) {
+    next.telemetry = { ...daemonConfig.telemetry };
+  }
   return next;
 }
 
@@ -435,6 +441,8 @@ export async function syncConfigToDaemon(
     disabledSkills: config.disabledSkills,
     disabledDesignSystems: config.disabledDesignSystems,
     orbit: normalizeOrbit(config.orbit),
+    installationId: config.installationId,
+    telemetry: config.telemetry,
   };
   try {
     const response = await fetch('/api/app-config', {

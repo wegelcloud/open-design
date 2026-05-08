@@ -301,6 +301,21 @@ export interface AppConfig {
   // IDs of skills/design-systems the user has explicitly disabled.
   disabledSkills?: string[];
   disabledDesignSystems?: string[];
+  // Anonymous install identifier for telemetry. Generated locally the first
+  // time a user opts in via Settings → Privacy. `null` after the user
+  // explicitly opts out (or rotates "Delete my data"); `undefined` when the
+  // user has never seen the consent surface.
+  installationId?: string | null;
+  // Privacy preferences governing what (if anything) is shipped to the
+  // Langfuse-backed telemetry endpoint. All three default to off until the
+  // user makes an explicit choice.
+  telemetry?: TelemetryConfig;
+}
+
+export interface TelemetryConfig {
+  metrics?: boolean;
+  content?: boolean;
+  artifactManifest?: boolean;
 }
 
 export interface ComposioSettings {
