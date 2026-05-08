@@ -249,7 +249,14 @@ export function App() {
         // Pop the onboarding modal only on the first run. Once the user has
         // saved or skipped past it once, we trust their stored config and
         // let them re-open Settings explicitly via the env pill.
-        if (!next.onboardingCompleted) {
+        // Hold the welcome modal until the user has resolved the privacy
+        // consent banner. Showing both at the same time made the banner
+        // race the Settings dialog (it briefly flashed and was then
+        // covered by the modal backdrop). When `installationId` is still
+        // undefined we let the banner own the foreground; the Share /
+        // Not now handlers re-trigger the welcome modal once the
+        // consent decision is persisted.
+        if (!next.onboardingCompleted && next.installationId !== undefined) {
           setSettingsWelcome(true);
           setSettingsOpen(true);
         }
@@ -723,6 +730,13 @@ export function App() {
               installationId,
               telemetry: { metrics: true, content: true, artifactManifest: false },
             });
+            // Hand the foreground over to the welcome modal now that the
+            // privacy decision is recorded — bootstrap deferred opening
+            // it while consent was pending.
+            if (!latestPersistedConfigRef.current.onboardingCompleted) {
+              setSettingsWelcome(true);
+              setSettingsOpen(true);
+            }
           }}
           onDecline={() => {
             void handleConfigPersist({
@@ -730,6 +744,10 @@ export function App() {
               installationId: null,
               telemetry: { metrics: false, content: false, artifactManifest: false },
             });
+            if (!latestPersistedConfigRef.current.onboardingCompleted) {
+              setSettingsWelcome(true);
+              setSettingsOpen(true);
+            }
           }}
         />
       ) : null}
