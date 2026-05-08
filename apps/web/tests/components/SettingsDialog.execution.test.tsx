@@ -727,7 +727,7 @@ describe('SettingsDialog media providers interactions', () => {
     );
   });
 
-  it('keeps media provider API keys hidden until the visibility toggle is used', () => {
+  it('re-masks a replacement media provider API key until reveal is used again', () => {
     renderSettingsDialog(
       {
         mode: 'daemon',
@@ -745,8 +745,14 @@ describe('SettingsDialog media providers interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'OpenAI Show key' }));
     expect(apiKeyInput.type).toBe('text');
 
-    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Hide key' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear' })[0]!);
     expect(apiKeyInput.type).toBe('password');
+
+    fireEvent.change(apiKeyInput, { target: { value: 'sk-replacement' } });
+    expect(apiKeyInput.type).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Show key' }));
+    expect(apiKeyInput.type).toBe('text');
   });
 
   it('supports providers with a custom model override field', () => {

@@ -1886,6 +1886,16 @@ function MediaProvidersSection({
   const [visibleApiKeys, setVisibleApiKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  useEffect(() => {
+    setVisibleApiKeys((current) => {
+      const next = new Set<string>();
+      for (const providerId of current) {
+        const apiKey = cfg.mediaProviders?.[providerId]?.apiKey ?? '';
+        if (apiKey.trim()) next.add(providerId);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [cfg.mediaProviders]);
   const providers = MEDIA_PROVIDERS
     .filter((p) => p.settingsVisible !== false)
     .slice()
