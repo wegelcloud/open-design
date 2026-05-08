@@ -100,22 +100,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Compute mac tools-pack cache key
-        id: mac_tools_pack_cache_key
-        run: |
-          set -euo pipefail
-          echo "epoch=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore mac tools-pack cache
-        id: mac_tools_pack_cache_restore
-        uses: actions/cache/restore@v5
-        continue-on-error: true
-        with:
-          path: ${{ runner.temp }}/tools-pack-cache
-          key: tools-pack-mac-v1-${{ runner.os }}-${{ steps.mac_tools_pack_cache_key.outputs.epoch }}-${{ github.sha }}
-          restore-keys: |
-            tools-pack-mac-v1-${{ runner.os }}-${{ steps.mac_tools_pack_cache_key.outputs.epoch }}-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -145,14 +129,13 @@ jobs:
         run: |
           set -euo pipefail
           tools_pack_dir="$RUNNER_TEMP/tools-pack"
-          cache_dir="$RUNNER_TEMP/tools-pack-cache"
           build_json_path="$RUNNER_TEMP/mac-tools-pack-build.json"
           build_log_path="$RUNNER_TEMP/mac-tools-pack-build.log"
+          rm -rf "$tools_pack_dir"
           : > "$build_log_path"
           build_args=(
             exec tools-pack mac build
             --dir "$tools_pack_dir"
-            --cache-dir "$cache_dir"
             --namespace release-beta
             --portable
             --mac-compression maximum
@@ -163,27 +146,9 @@ jobs:
           if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$build_log_path" >&2))"; then
             printf '%s\n' "$build_output" | tee "$build_json_path"
           else
-            cached_status=$?
+            build_status=$?
             printf '%s\n' "$build_output"
-            echo "mac tools-pack cached build failed with exit code $cached_status; removing cache and retrying without cache" >&2
-            rm -rf "$cache_dir"
-            fallback_args=(
-              exec tools-pack mac build
-              --dir "$tools_pack_dir"
-              --namespace release-beta
-              --portable
-              --mac-compression maximum
-              --to dmg
-              --json
-              --signed
-            )
-            if fallback_output="$(pnpm "${fallback_args[@]}" 2> >(tee -a "$build_log_path" >&2))"; then
-              printf '%s\n' "$fallback_output" | tee "$build_json_path"
-            else
-              fallback_status=$?
-              printf '%s\n' "$fallback_output"
-              exit "$fallback_status"
-            fi
+            exit "$build_status"
           fi
 
       - name: Upload mac build diagnostics
@@ -229,18 +194,6 @@ jobs:
           name: open-design-beta-mac-e2e-report
           path: ${{ runner.temp }}/release-report/mac
           if-no-files-found: warn
-
-      - name: Prune mac tools-pack cache
-        continue-on-error: true
-        run: bash .github/scripts/release/cache/mac.sh
-
-      - name: Save mac tools-pack cache
-        if: ${{ success() && steps.mac_tools_pack_cache_restore.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v5
-        continue-on-error: true
-        with:
-          path: ${{ runner.temp }}/tools-pack-cache
-          key: tools-pack-mac-v1-${{ runner.os }}-${{ steps.mac_tools_pack_cache_key.outputs.epoch }}-${{ github.sha }}
 
       - name: Prepare beta assets
         id: assets
