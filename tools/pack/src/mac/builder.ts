@@ -1,5 +1,5 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, posix } from "node:path";
 
 import type { ToolPackConfig } from "../config.js";
 import { macResources } from "../resources.js";
@@ -17,10 +17,34 @@ import { readPackagedVersion } from "./manifest.js";
 import { sanitizeNamespace } from "./paths.js";
 import type { ElectronBuilderTarget, MacBuildOutput, MacPaths } from "./types.js";
 
-export const MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE = [
+export const MAC_FRAMEWORK_TOP_LEVEL_SIGN_IGNORE = [
+  String.raw`/Contents/Frameworks/[^/]+\.framework$`,
   String.raw`/Contents/Frameworks/[^/]+\.framework/[^/]+$`,
   String.raw`/Contents/Frameworks/[^/]+\.framework/Versions/Current/[^/]+$`,
 ] as const;
+
+export async function resolveElectronFrameworkVersionSignTargets(electronDistPath: string): Promise<string[]> {
+  const frameworksRoot = join(electronDistPath, "Electron.app", "Contents", "Frameworks");
+  let entries;
+  try {
+    entries = await readdir(frameworksRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const targets: string[] = [];
+  for (const entry of entries) {
+    if (!entry.name.endsWith(".framework")) continue;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+
+    const versionPath = join(frameworksRoot, entry.name, "Versions", "A");
+    if (await pathExists(versionPath)) {
+      targets.push(posix.join("Contents", "Frameworks", entry.name, "Versions", "A"));
+    }
+  }
+
+  return targets.sort();
+}
 
 async function assertWebStandaloneOutput(config: ToolPackConfig): Promise<void> {
   const webRoot = join(config.workspaceRoot, "apps", "web");
@@ -86,6 +110,9 @@ export async function runElectronBuilder(
 ): Promise<void> {
   const namespaceToken = sanitizeNamespace(config.namespace);
   const packagedVersion = await readPackagedVersion(config);
+  const frameworkVersionSignTargets = config.signed
+    ? await resolveElectronFrameworkVersionSignTargets(config.electronDistPath)
+    : [];
   const webStandaloneHookConfigPath = config.webOutputMode === "standalone"
     ? await writeWebStandaloneHookConfig(config, paths)
     : null;
@@ -121,6 +148,7 @@ export async function runElectronBuilder(
     files: [...ELECTRON_BUILDER_FILE_PATTERNS],
     mac: {
       category: "public.app-category.developer-tools",
+      binaries: frameworkVersionSignTargets.length === 0 ? undefined : frameworkVersionSignTargets,
       electronLanguages: MAC_ELECTRON_LANGUAGES,
       entitlements: config.signed ? macResources.entitlements : undefined,
       entitlementsInherit: config.signed ? macResources.entitlementsInherit : undefined,
@@ -129,7 +157,7 @@ export async function runElectronBuilder(
       icon: macResources.icon,
       identity: config.signed ? undefined : null,
       notarize: false,
-      signIgnore: config.signed ? [...MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE] : undefined,
+      signIgnore: config.signed ? [...MAC_FRAMEWORK_TOP_LEVEL_SIGN_IGNORE] : undefined,
       target: targets,
     },
     nodeGypRebuild: false,
