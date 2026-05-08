@@ -11,6 +11,7 @@ done
 node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
 const env = process.env;
 const enabled = (name) => env[name] === "true";
+const macArtifactMode = env.MAC_ARTIFACT_MODE ?? "dmg-and-zip";
 const optional = (name) => {
   const value = env[name];
   return value == null || value.length === 0 ? null : value;
@@ -41,9 +42,11 @@ const platforms = {
 if (platforms.mac.enabled) {
   platforms.mac.artifacts = {
     dmg: optional("R2_MAC_DMG_URL"),
-    zip: optional("R2_MAC_ZIP_URL"),
   };
-  platforms.mac.feed = optional("R2_MAC_FEED_URL");
+  if (macArtifactMode !== "dmg-only") {
+    platforms.mac.artifacts.zip = optional("R2_MAC_ZIP_URL");
+  }
+  platforms.mac.feed = macArtifactMode === "dmg-only" ? null : optional("R2_MAC_FEED_URL");
   platforms.mac.e2e = platformReport("mac");
 }
 if (platforms.win.enabled) {

@@ -3,11 +3,6 @@ name: release-beta
 on:
   workflow_dispatch:
     inputs:
-      signed:
-        description: "Build signed/notarized mac artifacts. Disable only for explicit unsigned validation releases."
-        required: true
-        type: boolean
-        default: true
       enable_mac:
         description: "Build and publish mac arm64 beta artifacts."
         required: true
@@ -37,7 +32,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPEN_DESIGN_BETA_METADATA_URL: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}/beta/latest/metadata.json
-      OPEN_DESIGN_RELEASE_SIGNED: ${{ inputs.signed }}
     outputs:
       asset_version_suffix: ${{ steps.beta.outputs.asset_version_suffix }}
       base_version: ${{ steps.beta.outputs.base_version }}
@@ -45,7 +39,6 @@ jobs:
       branch: ${{ steps.beta.outputs.branch }}
       commit: ${{ steps.beta.outputs.commit }}
       release_name: ${{ steps.beta.outputs.release_name }}
-      signed: ${{ steps.beta.outputs.signed }}
       state_source: ${{ steps.beta.outputs.state_source }}
     steps:
       - name: Checkout
@@ -129,7 +122,6 @@ jobs:
         run: npm pkg set "version=${{ needs.metadata.outputs.beta_version }}" --prefix apps/packaged
 
       - name: Prepare Apple signing certificate
-        if: ${{ inputs.signed }}
         env:
           APPLE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_BASE64 }}
           APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
@@ -163,12 +155,10 @@ jobs:
             --namespace release-beta
             --portable
             --mac-compression maximum
-            --to all
+            --to dmg
             --json
+            --signed
           )
-          if [ "${{ inputs.signed }}" = "true" ]; then
-            build_args+=(--signed)
-          fi
           if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$build_log_path" >&2))"; then
             printf '%s\n' "$build_output" | tee "$build_json_path"
           else
@@ -182,12 +172,10 @@ jobs:
               --namespace release-beta
               --portable
               --mac-compression maximum
-              --to all
+              --to dmg
               --json
+              --signed
             )
-            if [ "${{ inputs.signed }}" = "true" ]; then
-              fallback_args+=(--signed)
-            fi
             if fallback_output="$(pnpm "${fallback_args[@]}" 2> >(tee -a "$build_log_path" >&2))"; then
               printf '%s\n' "$fallback_output" | tee "$build_json_path"
             else
@@ -263,6 +251,7 @@ jobs:
         env:
           ASSET_VERSION_SUFFIX: ${{ needs.metadata.outputs.asset_version_suffix }}
           CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
+          MAC_ARTIFACT_MODE: dmg-only
           RELEASE_CHANNEL: beta
           RELEASE_NOTES: Open Design beta ${{ needs.metadata.outputs.beta_version }}${{ needs.metadata.outputs.asset_version_suffix }}
           RELEASE_VERSION: ${{ needs.metadata.outputs.beta_version }}
@@ -532,9 +521,10 @@ jobs:
       ENABLE_WIN: ${{ inputs.enable_win }}
       GITHUB_RELEASE_ENABLED: "false"
       LINUX_ASSET_SUFFIX: .unsigned
+      MAC_ARTIFACT_MODE: dmg-only
       RELEASE_CHANNEL: beta
       RELEASE_VERSION: ${{ needs.metadata.outputs.beta_version }}
-      RELEASE_SIGNED: ${{ needs.metadata.outputs.signed }}
+      RELEASE_SIGNED: "true"
       STATE_SOURCE: ${{ needs.metadata.outputs.state_source }}
       WIN_ASSET_SUFFIX: .unsigned
     steps:

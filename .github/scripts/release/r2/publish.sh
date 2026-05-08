@@ -11,11 +11,20 @@ done
 asset_version_suffix="${ASSET_VERSION_SUFFIX:-}"
 win_asset_suffix="${WIN_ASSET_SUFFIX:-$asset_version_suffix}"
 linux_asset_suffix="${LINUX_ASSET_SUFFIX:-$asset_version_suffix}"
+mac_artifact_mode="${MAC_ARTIFACT_MODE:-dmg-and-zip}"
 release_root="${RELEASE_ROOT:-$RUNNER_TEMP/release-assets}"
 report_root="${REPORT_ROOT:-$RUNNER_TEMP/release-report}"
 public_origin="${CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN%/}"
 version_prefix="${RELEASE_VERSION_PREFIX:-$RELEASE_CHANNEL/versions/$RELEASE_VERSION$asset_version_suffix}"
 latest_prefix="${RELEASE_CHANNEL}/latest"
+
+case "$mac_artifact_mode" in
+  dmg-only | dmg-and-zip) ;;
+  *)
+    echo "unsupported MAC_ARTIFACT_MODE: $mac_artifact_mode" >&2
+    exit 1
+    ;;
+esac
 
 upload() {
   local file_path="$1"
@@ -70,16 +79,20 @@ metadata_path="$release_root/metadata.json"
 
 if [ "$ENABLE_MAC" = "true" ]; then
   upload "$release_root/mac/$mac_dmg" "$version_prefix/$mac_dmg" "application/x-apple-diskimage" "public, max-age=31536000, immutable"
-  upload "$release_root/mac/$mac_zip" "$version_prefix/$mac_zip" "application/zip" "public, max-age=31536000, immutable"
   upload "$release_root/mac/$mac_dmg.sha256" "$version_prefix/$mac_dmg.sha256" "text/plain; charset=utf-8" "public, max-age=31536000, immutable"
-  upload "$release_root/mac/$mac_zip.sha256" "$version_prefix/$mac_zip.sha256" "text/plain; charset=utf-8" "public, max-age=31536000, immutable"
-  upload "$release_root/mac/latest-mac.yml" "$version_prefix/latest-mac.yml" "application/x-yaml; charset=utf-8" "public, max-age=31536000, immutable"
-  upload "$release_root/mac/latest-mac.yml" "$latest_prefix/latest-mac.yml" "application/x-yaml; charset=utf-8" "public, max-age=60, must-revalidate"
   {
     echo "mac_dmg_url=$public_origin/$version_prefix/$mac_dmg"
-    echo "mac_zip_url=$public_origin/$version_prefix/$mac_zip"
-    echo "mac_feed_url=$public_origin/$latest_prefix/latest-mac.yml"
   } >> "$GITHUB_OUTPUT"
+  if [ "$mac_artifact_mode" != "dmg-only" ]; then
+    upload "$release_root/mac/$mac_zip" "$version_prefix/$mac_zip" "application/zip" "public, max-age=31536000, immutable"
+    upload "$release_root/mac/$mac_zip.sha256" "$version_prefix/$mac_zip.sha256" "text/plain; charset=utf-8" "public, max-age=31536000, immutable"
+    upload "$release_root/mac/latest-mac.yml" "$version_prefix/latest-mac.yml" "application/x-yaml; charset=utf-8" "public, max-age=31536000, immutable"
+    upload "$release_root/mac/latest-mac.yml" "$latest_prefix/latest-mac.yml" "application/x-yaml; charset=utf-8" "public, max-age=60, must-revalidate"
+    {
+      echo "mac_zip_url=$public_origin/$version_prefix/$mac_zip"
+      echo "mac_feed_url=$public_origin/$latest_prefix/latest-mac.yml"
+    } >> "$GITHUB_OUTPUT"
+  fi
 fi
 
 if [ "$ENABLE_WIN" = "true" ]; then
@@ -111,6 +124,7 @@ MAC_DMG="$mac_dmg" \
 MAC_ZIP="$mac_zip" \
 WIN_INSTALLER="$win_installer" \
 LINUX_APPIMAGE="$linux_appimage" \
+MAC_ARTIFACT_MODE="$mac_artifact_mode" \
 METADATA_PATH="$metadata_path" \
 node --input-type=module <<'NODE'
 import { existsSync, statSync, writeFileSync } from "node:fs";
@@ -140,19 +154,25 @@ const fileEntry = (directory, name, contentType) => {
 
 const platforms = {};
 if (enabled("ENABLE_MAC")) {
+  const artifacts = {
+    dmg: fileEntry("mac", env.MAC_DMG, "application/x-apple-diskimage"),
+  };
+  const feed = env.MAC_ARTIFACT_MODE === "dmg-only"
+    ? null
+    : {
+        latestUrl: url(latestPrefix, "latest-mac.yml"),
+        name: "latest-mac.yml",
+        url: url(versionPrefix, "latest-mac.yml"),
+      };
+  if (env.MAC_ARTIFACT_MODE !== "dmg-only") {
+    artifacts.zip = fileEntry("mac", env.MAC_ZIP, "application/zip");
+  }
   platforms.mac = {
     arch: "arm64",
     enabled: true,
-    feed: {
-      latestUrl: url(latestPrefix, "latest-mac.yml"),
-      name: "latest-mac.yml",
-      url: url(versionPrefix, "latest-mac.yml"),
-    },
+    feed,
     signed: env.RELEASE_SIGNED === "true",
-    artifacts: {
-      dmg: fileEntry("mac", env.MAC_DMG, "application/x-apple-diskimage"),
-      zip: fileEntry("mac", env.MAC_ZIP, "application/zip"),
-    },
+    artifacts,
   };
 }
 if (enabled("ENABLE_WIN")) {

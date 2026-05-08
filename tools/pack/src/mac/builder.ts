@@ -45,6 +45,7 @@ async function writeWebStandaloneHookConfig(config: ToolPackConfig, paths: MacPa
         pruneCopiedSharp: true,
         pruneRootNext: true,
         pruneRootSharp: true,
+        macAdhocBundleSign: !config.signed,
         resourceName: WEB_STANDALONE_RESOURCE_NAME,
         standaloneSourceRoot: join(webRoot, ".next", "standalone"),
         version: 1,
@@ -121,7 +122,7 @@ export async function runElectronBuilder(
       gatekeeperAssess: false,
       hardenedRuntime: config.signed,
       icon: macResources.icon,
-      identity: config.signed ? undefined : "-",
+      identity: config.signed ? undefined : null,
       notarize: false,
       target: targets,
     },
@@ -153,6 +154,7 @@ export async function runElectronBuilder(
     cwd: config.workspaceRoot,
     env: {
       ...process.env,
+      ...(config.signed ? {} : { CSC_IDENTITY_AUTO_DISCOVERY: "false" }),
       ...(webStandaloneHookConfigPath == null ? {} : { [WEB_STANDALONE_HOOK_CONFIG_ENV]: webStandaloneHookConfigPath }),
     },
   });

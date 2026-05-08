@@ -8,6 +8,15 @@ for name in ENABLE_LINUX ENABLE_MAC ENABLE_WIN R2_METADATA_URL RELEASE_CHANNEL R
   fi
 done
 
+mac_artifact_mode="${MAC_ARTIFACT_MODE:-dmg-and-zip}"
+case "$mac_artifact_mode" in
+  dmg-only | dmg-and-zip) ;;
+  *)
+    echo "unsupported MAC_ARTIFACT_MODE: $mac_artifact_mode" >&2
+    exit 1
+    ;;
+esac
+
 downloaded_metadata="$RUNNER_TEMP/metadata.json"
 curl -fsSL "$R2_METADATA_URL?run=${GITHUB_RUN_ID:-local}" -o "$downloaded_metadata"
 DOWNLOADED_METADATA="$downloaded_metadata" \
@@ -40,18 +49,26 @@ if (metadata.channel === "beta") {
 NODE
 
 if [ "$ENABLE_MAC" = "true" ]; then
-  for name in R2_MAC_DMG_URL R2_MAC_FEED_URL R2_MAC_ZIP_URL R2_REPORT_URL; do
+  for name in R2_MAC_DMG_URL R2_REPORT_URL; do
     if [ -z "${!name:-}" ]; then
       echo "$name is required when ENABLE_MAC=true" >&2
       exit 1
     fi
   done
-  downloaded_feed="$RUNNER_TEMP/latest-mac.yml"
-  curl -fsSL "$R2_MAC_FEED_URL?run=${GITHUB_RUN_ID:-local}" -o "$downloaded_feed"
-  grep -F "version: \"$RELEASE_VERSION\"" "$downloaded_feed"
-  grep -F "$R2_MAC_ZIP_URL" "$downloaded_feed"
-  curl -fsSI "$R2_MAC_ZIP_URL" >/dev/null
   curl -fsSI "$R2_MAC_DMG_URL" >/dev/null
+  if [ "$mac_artifact_mode" != "dmg-only" ]; then
+    for name in R2_MAC_FEED_URL R2_MAC_ZIP_URL; do
+      if [ -z "${!name:-}" ]; then
+        echo "$name is required when ENABLE_MAC=true and MAC_ARTIFACT_MODE=$mac_artifact_mode" >&2
+        exit 1
+      fi
+    done
+    downloaded_feed="$RUNNER_TEMP/latest-mac.yml"
+    curl -fsSL "$R2_MAC_FEED_URL?run=${GITHUB_RUN_ID:-local}" -o "$downloaded_feed"
+    grep -F "version: \"$RELEASE_VERSION\"" "$downloaded_feed"
+    grep -F "$R2_MAC_ZIP_URL" "$downloaded_feed"
+    curl -fsSI "$R2_MAC_ZIP_URL" >/dev/null
+  fi
   curl -fsSI "${R2_REPORT_URL}mac/manifest.json" >/dev/null
   curl -fsSI "${R2_REPORT_URL}mac/screenshots/open-design-mac-smoke.png" >/dev/null
   curl -fsSI "${R2_REPORT_URL}mac/vitest.log" >/dev/null

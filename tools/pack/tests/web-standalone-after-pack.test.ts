@@ -119,6 +119,7 @@ async function runFixture(options: {
     `${JSON.stringify(
       {
         auditReportPath,
+        macAdhocBundleSign: false,
         pruneCopiedSharp: false,
         pruneRootNext: false,
         pruneRootSharp: false,

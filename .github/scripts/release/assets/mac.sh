@@ -9,8 +9,17 @@ for name in CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN RELEASE_CHANNEL RELEASE_VERSION
 done
 
 asset_suffix="${ASSET_VERSION_SUFFIX:-}"
+mac_artifact_mode="${MAC_ARTIFACT_MODE:-dmg-and-zip}"
 release_dir="$RUNNER_TEMP/release-assets"
 mkdir -p "$release_dir"
+
+case "$mac_artifact_mode" in
+  dmg-only | dmg-and-zip) ;;
+  *)
+    echo "unsupported MAC_ARTIFACT_MODE: $mac_artifact_mode" >&2
+    exit 1
+    ;;
+esac
 
 source_dmg="$RUNNER_TEMP/tools-pack/out/mac/namespaces/$TOOLS_PACK_NAMESPACE/dmg/Open Design-$TOOLS_PACK_NAMESPACE.dmg"
 source_zip="$RUNNER_TEMP/tools-pack/out/mac/namespaces/$TOOLS_PACK_NAMESPACE/zip/Open Design-$TOOLS_PACK_NAMESPACE.zip"
@@ -18,7 +27,7 @@ if [ ! -f "$source_dmg" ]; then
   echo "expected dmg not found at $source_dmg" >&2
   exit 1
 fi
-if [ ! -f "$source_zip" ]; then
+if [ "$mac_artifact_mode" != "dmg-only" ] && [ ! -f "$source_zip" ]; then
   echo "expected zip not found at $source_zip" >&2
   exit 1
 fi
@@ -29,10 +38,18 @@ dmg_checksum_file="$versioned_dmg.sha256"
 zip_checksum_file="$versioned_zip.sha256"
 
 cp "$source_dmg" "$release_dir/$versioned_dmg"
-cp "$source_zip" "$release_dir/$versioned_zip"
 (
   cd "$release_dir"
   shasum -a 256 "$versioned_dmg" > "$dmg_checksum_file"
+)
+
+if [ "$mac_artifact_mode" = "dmg-only" ]; then
+  exit 0
+fi
+
+cp "$source_zip" "$release_dir/$versioned_zip"
+(
+  cd "$release_dir"
   shasum -a 256 "$versioned_zip" > "$zip_checksum_file"
 )
 
