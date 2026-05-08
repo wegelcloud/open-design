@@ -1,5 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { createQoderStreamHandler } from '../src/qoder-stream.js';
 
 type QoderEvent = Record<string, unknown>;
@@ -33,6 +34,26 @@ test('qoder stream parser maps system init to status', () => {
       sessionId: 'session-1',
       qodercliVersion: '0.2.6',
     },
+  ]);
+});
+
+test('qoder stream parser decodes stdout buffer chunks as utf8 JSONL', () => {
+  const events: QoderEvent[] = [];
+  const handler = createQoderStreamHandler((event) => events.push(event));
+
+  handler.feed(
+    Buffer.from(
+      `${JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Buffered output' }] },
+      })}\n`,
+      'utf8',
+    ),
+  );
+  handler.flush();
+
+  assert.deepEqual(events, [
+    { type: 'text_delta', delta: 'Buffered output' },
   ]);
 });
 

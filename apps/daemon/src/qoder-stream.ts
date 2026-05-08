@@ -5,6 +5,8 @@
  * fields, so keep this parser separate from Claude/Codex-compatible streams.
  */
 
+import { Buffer } from 'node:buffer';
+
 type JsonRecord = Record<string, unknown>;
 type QoderEvent = Record<string, unknown>;
 type QoderEventSink = (event: QoderEvent) => void;
@@ -15,6 +17,7 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function stringifyContent(value: unknown): string {
   if (typeof value === 'string') return value;
+  if (Buffer.isBuffer(value)) return value.toString('utf8');
   if (value == null) return '';
   try {
     return JSON.stringify(value);
