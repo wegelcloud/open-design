@@ -11,11 +11,6 @@ on:
           - stable
           - nightly
         default: stable
-      mac_signed:
-        description: "Build signed/notarized mac artifacts. Disable only for explicit unsigned validation releases."
-        required: true
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -39,7 +34,6 @@ jobs:
       channel: ${{ steps.stable.outputs.channel }}
       commit: ${{ steps.stable.outputs.commit }}
       github_release_enabled: ${{ steps.stable.outputs.github_release_enabled }}
-      mac_signed: ${{ inputs.mac_signed }}
       nightly_number: ${{ steps.stable.outputs.nightly_number }}
       previous_stable: ${{ steps.stable.outputs.previous_stable }}
       release_name: ${{ steps.stable.outputs.release_name }}
@@ -155,7 +149,6 @@ jobs:
         run: npm pkg set "version=${{ needs.metadata.outputs.release_version }}" --prefix apps/packaged
 
       - name: Prepare Apple signing certificate
-        if: ${{ inputs.mac_signed }}
         env:
           APPLE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_BASE64 }}
           APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
@@ -188,10 +181,8 @@ jobs:
             --mac-compression maximum
             --to all
             --json
+            --signed
           )
-          if [ "${{ inputs.mac_signed }}" = "true" ]; then
-            build_args+=(--signed)
-          fi
           if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$build_log_path" >&2))"; then
             printf '%s\n' "$build_output" | tee "$build_json_path"
           else
@@ -455,7 +446,7 @@ jobs:
       NIGHTLY_NUMBER: ${{ needs.metadata.outputs.nightly_number }}
       RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
       RELEASE_NAME: ${{ needs.metadata.outputs.release_name }}
-      RELEASE_SIGNED: ${{ needs.metadata.outputs.mac_signed }}
+      RELEASE_SIGNED: "true"
       RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
       STATE_SOURCE: ${{ needs.metadata.outputs.state_source }}
       VERSION_TAG: ${{ needs.metadata.outputs.version_tag }}
