@@ -727,6 +727,28 @@ describe('SettingsDialog media providers interactions', () => {
     );
   });
 
+  it('keeps media provider API keys hidden until the visibility toggle is used', () => {
+    renderSettingsDialog(
+      {
+        mode: 'daemon',
+        agentId: 'codex',
+        mediaProviders: {
+          openai: { apiKey: 'sk-media', baseUrl: 'https://api.openai.com/v1' },
+        },
+      },
+      { initialSection: 'media' },
+    );
+
+    const apiKeyInput = screen.getByLabelText('OpenAI API key') as HTMLInputElement;
+    expect(apiKeyInput.type).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Show key' }));
+    expect(apiKeyInput.type).toBe('text');
+
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Hide key' }));
+    expect(apiKeyInput.type).toBe('password');
+  });
+
   it('supports providers with a custom model override field', () => {
     const { onSave } = renderSettingsDialog(
       { mode: 'daemon', agentId: 'codex' },
