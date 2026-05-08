@@ -14,6 +14,7 @@ triggers:
   - "html shader"
   - "vfx-iphone-device"
   - "vfx-liquid-glass"
+  - "vfx-portal"
 od:
   mode: video
   surface: video
