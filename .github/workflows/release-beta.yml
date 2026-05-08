@@ -218,6 +218,8 @@ jobs:
             "commit": "$GITHUB_SHA"
           }
           EOF
+          cp "$RUNNER_TEMP/mac-tools-pack-build.json" "$report_dir/tools-pack.json"
+          cp "$RUNNER_TEMP/mac-tools-pack-build.log" "$report_dir/tools-pack.log"
           pnpm test specs/mac.spec.ts 2>&1 | tee "$report_dir/vitest.log"
 
       - name: Upload mac e2e spec report
@@ -231,13 +233,6 @@ jobs:
       - name: Prune mac tools-pack cache
         continue-on-error: true
         run: bash .github/scripts/release/cache/mac.sh
-
-      - name: Summarize mac tools-pack build
-        continue-on-error: true
-        env:
-          BUILD_JSON_PATH: ${{ runner.temp }}/mac-tools-pack-build.json
-          SUMMARY_TITLE: mac tools-pack build
-        run: bash .github/scripts/release/report/mac.sh
 
       - name: Save mac tools-pack cache
         if: ${{ success() && steps.mac_tools_pack_cache_restore.outputs.cache-hit != 'true' }}
@@ -377,6 +372,7 @@ jobs:
             githubRunAttempt = $env:GITHUB_RUN_ATTEMPT
             commit = $env:GITHUB_SHA
           } | ConvertTo-Json | Set-Content -Path (Join-Path $reportDir "manifest.json")
+          Copy-Item -Force -Path (Join-Path $env:RUNNER_TEMP "windows-tools-pack-build.json") -Destination (Join-Path $reportDir "tools-pack.json")
           pnpm test specs/win.spec.ts 2>&1 | Tee-Object -FilePath (Join-Path $reportDir "vitest.log")
           $testExitCode = $LASTEXITCODE
           if ($testExitCode -ne 0) {
@@ -395,14 +391,6 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: ./.github/scripts/release/cache/win.ps1
-
-      - name: Summarize Windows tools-pack build
-        shell: pwsh
-        continue-on-error: true
-        env:
-          BUILD_JSON_PATH: ${{ runner.temp }}/windows-tools-pack-build.json
-          SUMMARY_TITLE: Windows tools-pack build
-        run: ./.github/scripts/release/report/win.ps1
 
       - name: Save Windows tools-pack cache
         if: ${{ success() && steps.win_tools_pack_cache_restore.outputs.cache-hit != 'true' }}
@@ -527,6 +515,7 @@ jobs:
       RELEASE_CHANNEL: beta
       RELEASE_VERSION: ${{ needs.metadata.outputs.beta_version }}
       RELEASE_SIGNED: "true"
+      REPORT_MODE: zip
       STATE_SOURCE: ${{ needs.metadata.outputs.state_source }}
       WIN_ASSET_SUFFIX: .unsigned
     steps:
@@ -586,7 +575,7 @@ jobs:
           R2_MAC_FEED_URL: ${{ steps.r2.outputs.mac_feed_url }}
           R2_MAC_ZIP_URL: ${{ steps.r2.outputs.mac_zip_url }}
           R2_METADATA_URL: ${{ steps.r2.outputs.metadata_url }}
-          R2_REPORT_URL: ${{ steps.r2.outputs.report_url }}
+          R2_REPORT_ZIP_URL: ${{ steps.r2.outputs.report_zip_url }}
           R2_WIN_FEED_URL: ${{ steps.r2.outputs.win_feed_url }}
           R2_WIN_INSTALLER_URL: ${{ steps.r2.outputs.win_installer_url }}
         run: bash .github/scripts/release/r2/verify.sh
@@ -598,7 +587,7 @@ jobs:
           R2_MAC_FEED_URL: ${{ steps.r2.outputs.mac_feed_url }}
           R2_MAC_ZIP_URL: ${{ steps.r2.outputs.mac_zip_url }}
           R2_METADATA_URL: ${{ steps.r2.outputs.metadata_url }}
-          R2_REPORT_URL: ${{ steps.r2.outputs.report_url }}
+          R2_REPORT_ZIP_URL: ${{ steps.r2.outputs.report_zip_url }}
           R2_VERSION_METADATA_URL: ${{ steps.r2.outputs.version_metadata_url }}
           R2_VERSION_PREFIX: ${{ steps.r2.outputs.version_prefix }}
           R2_WIN_FEED_URL: ${{ steps.r2.outputs.win_feed_url }}

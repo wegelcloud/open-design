@@ -10,7 +10,7 @@
 
 {{PLATFORM_TABLE}}
 
-### E2E reports
+### Report
 
 {{REPORT_TABLE}}
 

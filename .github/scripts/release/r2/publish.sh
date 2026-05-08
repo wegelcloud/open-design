@@ -14,6 +14,8 @@ linux_asset_suffix="${LINUX_ASSET_SUFFIX:-$asset_version_suffix}"
 mac_artifact_mode="${MAC_ARTIFACT_MODE:-dmg-and-zip}"
 release_root="${RELEASE_ROOT:-$RUNNER_TEMP/release-assets}"
 report_root="${REPORT_ROOT:-$RUNNER_TEMP/release-report}"
+report_mode="${REPORT_MODE:-directory}"
+report_zip_path="${REPORT_ZIP_PATH:-$RUNNER_TEMP/release-report.zip}"
 public_origin="${CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN%/}"
 version_prefix="${RELEASE_VERSION_PREFIX:-$RELEASE_CHANNEL/versions/$RELEASE_VERSION$asset_version_suffix}"
 latest_prefix="${RELEASE_CHANNEL}/latest"
@@ -22,6 +24,14 @@ case "$mac_artifact_mode" in
   dmg-only | dmg-and-zip) ;;
   *)
     echo "unsupported MAC_ARTIFACT_MODE: $mac_artifact_mode" >&2
+    exit 1
+    ;;
+esac
+
+case "$report_mode" in
+  directory | zip) ;;
+  *)
+    echo "unsupported REPORT_MODE: $report_mode" >&2
     exit 1
     ;;
 esac
@@ -71,6 +81,28 @@ upload_report_tree() {
   echo "uploaded e2e spec report files: $uploaded_count"
 }
 
+upload_report_zip() {
+  local root="$1"
+  local zip_path="$2"
+  if ! command -v zip >/dev/null 2>&1; then
+    echo "zip is required to publish REPORT_MODE=zip" >&2
+    exit 1
+  fi
+
+  mkdir -p "$root"
+  if ! find "$root" -type f -print -quit | grep -q .; then
+    printf '%s\n' "No release report files were generated for this run." > "$root/README.txt"
+  fi
+
+  rm -f "$zip_path"
+  (
+    cd "$root"
+    zip -qr "$zip_path" .
+  )
+  upload "$zip_path" "$version_prefix/report.zip" "application/zip" "public, max-age=31536000, immutable"
+  echo "uploaded release report zip: $zip_path"
+}
+
 mac_dmg="open-design-$RELEASE_VERSION$asset_version_suffix-mac-arm64.dmg"
 mac_zip="open-design-$RELEASE_VERSION$asset_version_suffix-mac-arm64.zip"
 win_installer="open-design-$RELEASE_VERSION$win_asset_suffix-win-x64-setup.exe"
@@ -114,12 +146,18 @@ if [ "$ENABLE_LINUX" = "true" ]; then
   } >> "$GITHUB_OUTPUT"
 fi
 
-upload_report_tree "$report_root"
+if [ "$report_mode" = "zip" ]; then
+  upload_report_zip "$report_root" "$report_zip_path"
+else
+  upload_report_tree "$report_root"
+fi
 
 RELEASE_ROOT="$release_root" \
 PUBLIC_ORIGIN="$public_origin" \
 VERSION_PREFIX="$version_prefix" \
 LATEST_PREFIX="$latest_prefix" \
+REPORT_MODE="$report_mode" \
+REPORT_ZIP_PATH="$report_zip_path" \
 MAC_DMG="$mac_dmg" \
 MAC_ZIP="$mac_zip" \
 WIN_INSTALLER="$win_installer" \
@@ -141,6 +179,12 @@ const mustExist = (path) => {
   if (!existsSync(path)) throw new Error(`metadata source file missing: ${path}`);
   return statSync(path).size;
 };
+const fileEntryFromPath = (path, name, contentType) => ({
+  contentType,
+  name,
+  size: mustExist(path),
+  url: url(versionPrefix, name),
+});
 const fileEntry = (directory, name, contentType) => {
   const path = join(releaseRoot, directory, name);
   return {
@@ -218,7 +262,17 @@ const commonMetadata = {
     latestMetadataUrl: url(latestPrefix, "metadata.json"),
     latestPrefix,
     publicOrigin,
-    reportUrl: url(versionPrefix, "report/"),
+    report: env.REPORT_MODE === "zip"
+      ? {
+          type: "zip",
+          ...fileEntryFromPath(env.REPORT_ZIP_PATH, "report.zip", "application/zip"),
+        }
+      : {
+          type: "directory",
+          url: url(versionPrefix, "report/"),
+        },
+    reportUrl: env.REPORT_MODE === "directory" ? url(versionPrefix, "report/") : null,
+    reportZipUrl: env.REPORT_MODE === "zip" ? url(versionPrefix, "report.zip") : null,
     versionMetadataUrl: url(versionPrefix, "metadata.json"),
     versionPrefix,
   },
@@ -259,7 +313,11 @@ upload "$metadata_path" "$latest_prefix/metadata.json" "application/json; charse
 
 {
   echo "metadata_url=$public_origin/$latest_prefix/metadata.json"
-  echo "report_url=$public_origin/$version_prefix/report/"
   echo "version_metadata_url=$public_origin/$version_prefix/metadata.json"
   echo "version_prefix=$version_prefix"
+  if [ "$report_mode" = "zip" ]; then
+    echo "report_zip_url=$public_origin/$version_prefix/report.zip"
+  else
+    echo "report_url=$public_origin/$version_prefix/report/"
+  fi
 } >> "$GITHUB_OUTPUT"

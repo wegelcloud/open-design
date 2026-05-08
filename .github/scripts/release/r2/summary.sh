@@ -26,6 +26,7 @@ const joinUrl = (base, path) => {
 };
 
 const reportUrl = optional("R2_REPORT_URL");
+const reportZipUrl = optional("R2_REPORT_ZIP_URL");
 const platformReport = (platform) => reportUrl == null ? null : {
   manifest: joinUrl(reportUrl, `${platform}/manifest.json`),
   screenshot: joinUrl(reportUrl, `${platform}/screenshots/open-design-${platform}-smoke.png`),
@@ -113,7 +114,6 @@ const overviewTable = [
 const releaseLinks = [
   ["Latest metadata", optional("R2_METADATA_URL")],
   ["Version metadata", optional("R2_VERSION_METADATA_URL")],
-  ["Report root", reportUrl],
 ]
   .filter(([, url]) => url != null)
   .map(([label, url]) => `- ${link(label, url)}`);
@@ -148,30 +148,32 @@ const platformTable = [
   ...platformRows.map((row) => `| ${row.map(md).join(" | ")} |`),
 ].join("\n");
 
-const reportRows = [
-  [
-    "macOS arm64",
-    platforms.mac.enabled ? "Published" : "Skipped",
-    linkList([
-      { label: "manifest", url: platforms.mac.e2e?.manifest },
-      { label: "screenshot", url: platforms.mac.e2e?.screenshot },
-      { label: "vitest.log", url: platforms.mac.e2e?.vitestLog },
-    ]),
-  ],
-  [
-    "Windows x64",
-    platforms.win.enabled ? "Published" : "Skipped",
-    linkList([
-      { label: "manifest", url: platforms.win.e2e?.manifest },
-      { label: "screenshot", url: platforms.win.e2e?.screenshot },
-      { label: "vitest.log", url: platforms.win.e2e?.vitestLog },
-    ]),
-  ],
-  ["Linux x64", platforms.linux.enabled ? "Not collected" : "Skipped", "-"],
-];
+const reportRows = reportZipUrl == null
+  ? [
+      [
+        "macOS arm64",
+        platforms.mac.enabled ? "Published" : "Skipped",
+        linkList([
+          { label: "manifest", url: platforms.mac.e2e?.manifest },
+          { label: "screenshot", url: platforms.mac.e2e?.screenshot },
+          { label: "vitest.log", url: platforms.mac.e2e?.vitestLog },
+        ]),
+      ],
+      [
+        "Windows x64",
+        platforms.win.enabled ? "Published" : "Skipped",
+        linkList([
+          { label: "manifest", url: platforms.win.e2e?.manifest },
+          { label: "screenshot", url: platforms.win.e2e?.screenshot },
+          { label: "vitest.log", url: platforms.win.e2e?.vitestLog },
+        ]),
+      ],
+      ["Linux x64", platforms.linux.enabled ? "Not collected" : "Skipped", "-"],
+    ]
+  : [["report.zip", "Published", link("download", reportZipUrl)]];
 
 const reportTable = [
-  "| Platform | Status | Links |",
+  reportZipUrl == null ? "| Platform | Status | Links |" : "| Bundle | Status | Link |",
   "| --- | --- | --- |",
   ...reportRows.map((row) => `| ${row.map(md).join(" | ")} |`),
 ].join("\n");
