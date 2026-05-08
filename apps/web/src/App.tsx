@@ -709,10 +709,12 @@ export function App() {
       ) : null}
       {/* First-run privacy consent banner. Stays mounted in the bottom-right
           until the user picks Share or Don't share (gating on
-          `installationId === undefined`). Hidden when Settings is already
-          open, since the Privacy section there shows the same consent card
-          and double-rendering would be confusing. */}
-      {config.installationId === undefined && !settingsOpen ? (
+          `installationId === undefined`). The banner sits above the
+          Settings welcome modal — first-run users on a fresh install
+          would otherwise see the welcome modal pop on top of the banner
+          and have no way to read or interact with the consent decision
+          until they closed Settings. */}
+      {config.installationId === undefined ? (
         <PrivacyConsentModal
           onShare={() => {
             const installationId = generateInstallationIdSafe();

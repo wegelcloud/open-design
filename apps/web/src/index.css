@@ -13826,7 +13826,11 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 90;
+  /* Above .modal-backdrop (z-index: 100). On first run the Settings
+     welcome modal mounts at the same time as this banner; without a
+     higher z-index the banner would render behind the modal and be
+     unreachable until the user closed Settings. */
+  z-index: 200;
   width: 380px;
   max-width: calc(100vw - 32px);
   display: flex;
