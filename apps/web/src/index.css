@@ -6789,6 +6789,21 @@ button.connector-action.is-loading {
   max-width: 320px;
 }
 .ws-tab:hover { background: var(--bg-subtle); color: var(--text); }
+.ws-tab.draggable { cursor: grab; }
+.ws-tab.dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+.ws-tab.drag-over-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.ws-tab.drag-over-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+  background: var(--bg-subtle);
+  color: var(--text);
+}
 .ws-tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -8290,7 +8305,8 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
   color: var(--red);
   font-size: 11px;
 }
-.inspect-empty-hint {
+
+.inspect-empty-hint-container {
   position: absolute;
   top: 14px;
   right: 14px;
@@ -8301,8 +8317,18 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
   background: var(--bg-panel);
   color: var(--text-muted);
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   pointer-events: none;
 }
+
+.inspect-empty-hint-container button,
+.inspect-empty-hint-container .close-button {
+  pointer-events: auto;
+}
+
 .inspect-empty-hint code {
   padding: 1px 5px;
   border-radius: 3px;
