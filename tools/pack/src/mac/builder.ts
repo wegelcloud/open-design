@@ -17,6 +17,11 @@ import { readPackagedVersion } from "./manifest.js";
 import { sanitizeNamespace } from "./paths.js";
 import type { ElectronBuilderTarget, MacBuildOutput, MacPaths } from "./types.js";
 
+export const MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE = [
+  String.raw`/Contents/Frameworks/[^/]+\.framework/[^/]+$`,
+  String.raw`/Contents/Frameworks/[^/]+\.framework/Versions/Current/[^/]+$`,
+] as const;
+
 async function assertWebStandaloneOutput(config: ToolPackConfig): Promise<void> {
   const webRoot = join(config.workspaceRoot, "apps", "web");
   const standaloneSourceRoot = join(webRoot, ".next", "standalone");
@@ -124,6 +129,7 @@ export async function runElectronBuilder(
       icon: macResources.icon,
       identity: config.signed ? undefined : null,
       notarize: false,
+      signIgnore: config.signed ? [...MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE] : undefined,
       target: targets,
     },
     nodeGypRebuild: false,

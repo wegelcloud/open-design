@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE } from "../src/mac/builder.js";
 import type { ToolPackConfig } from "../src/config.js";
 import { resolveSeededAppConfigPaths, seedPackagedAppConfig, writeLaunchPackagedConfig } from "../src/mac/index.js";
 
@@ -173,5 +174,33 @@ describe("writeLaunchPackagedConfig", () => {
     } finally {
       await rm(root, { force: true, recursive: true });
     }
+  });
+});
+
+describe("MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE", () => {
+  const isIgnored = (filePath: string): boolean => (
+    MAC_FRAMEWORK_BINARY_SYMLINK_SIGN_IGNORE.some((pattern) => new RegExp(pattern).test(filePath))
+  );
+
+  it("skips framework binary symlink paths", () => {
+    expect(
+      isIgnored("/tmp/Open Design.app/Contents/Frameworks/Electron Framework.framework/Electron Framework"),
+    ).toBe(true);
+    expect(
+      isIgnored(
+        "/tmp/Open Design.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/Electron Framework",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the concrete framework version and bundle paths signable", () => {
+    expect(
+      isIgnored(
+        "/tmp/Open Design.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+      ),
+    ).toBe(false);
+    expect(
+      isIgnored("/tmp/Open Design.app/Contents/Frameworks/Electron Framework.framework"),
+    ).toBe(false);
   });
 });
