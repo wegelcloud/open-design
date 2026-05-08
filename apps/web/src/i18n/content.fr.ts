@@ -309,6 +309,7 @@ export const FR_DESIGN_SYSTEM_CATEGORIES: Record<string, string> = {
   'Editorial · Studio': 'Éditorial · Studio',
   'Retro & Nostalgic': 'Rétro & nostalgique',
   'Themed & Unique': 'Thématique & unique',
+  'Editorial / Personal / Publication': 'Éditorial / Personnel / Publication',
   Uncategorized: 'Non catégorisé',
 };
 
@@ -413,6 +414,7 @@ export const FR_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'luxury',
   'material',
   'minimal',
+  'mission-control',
   'modern',
   'mono',
   'neobrutalism',
@@ -435,6 +437,7 @@ export const FR_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'storytelling',
   'totality-festival',
   'tetris',
+  'urdu',
   'vibrant',
   'vintage',
 ] as const;
