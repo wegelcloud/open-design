@@ -18,6 +18,8 @@ export interface AgentsResponse {
   agents: AgentInfo[];
 }
 
+export type SkillSource = 'built-in' | 'user';
+
 export interface SkillSummary {
   id: string;
   name: string;
@@ -34,6 +36,11 @@ export interface SkillSummary {
   surface?: 'web' | 'image' | 'video' | 'audio';
   platform?: 'desktop' | 'mobile' | null;
   scenario?: string | null;
+  // Origin of the skill: 'built-in' lives under the repo's `skills/`
+  // directory and cannot be deleted from the UI; 'user' lives under
+  // `<runtimeData>/user-skills/` and is fully owned by the user (delete
+  // / re-import allowed). New `import` endpoint always tags `user`.
+  source?: SkillSource;
   previewType: string;
   designSystemRequired: boolean;
   defaultFor: string[];
@@ -45,6 +52,20 @@ export interface SkillSummary {
   craftRequires?: string[];
   hasBody: boolean;
   examplePrompt: string;
+}
+
+// Body shape for POST /api/skills/import. The daemon turns this into a
+// SKILL.md under `<runtimeData>/user-skills/<slug>/` and surfaces the
+// freshly-listed summary in the response.
+export interface SkillImportRequest {
+  name: string;
+  description?: string;
+  body: string;
+  triggers?: string[];
+}
+
+export interface SkillImportResponse {
+  skill: SkillSummary;
 }
 
 export interface SkillDetail extends SkillSummary {

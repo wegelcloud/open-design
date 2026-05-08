@@ -29,7 +29,13 @@ import {
   spawnEnvForAgent,
 } from './agents.js';
 import { migrateLegacyDataDirSync } from './legacy-data-migrator.js';
-import { findSkillById, listSkills } from './skills.js';
+import {
+  SkillImportError,
+  deleteUserSkill,
+  findSkillById,
+  importUserSkill,
+  listSkills,
+} from './skills.js';
 import { validateLinkedDirs } from './linked-dirs.js';
 import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './native-folder-dialog.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
@@ -733,6 +739,13 @@ migrateLegacyDataDirSync({
 const ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'artifacts');
 const PROJECTS_DIR = path.join(RUNTIME_DATA_DIR, 'projects');
 fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+// User-imported skills land here. Kept out of the repo's `skills/` so a
+// `git status` is never noisy after an import. listSkills() scans this
+// root first so a user-imported skill can shadow a built-in by the same
+// name without erasing the bundled copy.
+const USER_SKILLS_DIR = path.join(RUNTIME_DATA_DIR, 'user-skills');
+fs.mkdirSync(USER_SKILLS_DIR, { recursive: true });
+const SKILL_ROOTS = [USER_SKILLS_DIR, SKILLS_DIR];
 
 const activeChatAgentEventSinks = new Map();
 const activeProjectEventSinks = new Map();
@@ -2363,7 +2376,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
 
   app.get('/api/skills', async (_req, res) => {
     try {
-      const skills = await listSkills(SKILLS_DIR);
+      const skills = await listSkills(SKILL_ROOTS);
       // Strip full body + on-disk dir from the listing — frontend fetches the
       // body via /api/skills/:id when needed (keeps the listing payload small).
       res.json({
@@ -2379,13 +2392,73 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
 
   app.get('/api/skills/:id', async (req, res) => {
     try {
-      const skills = await listSkills(SKILLS_DIR);
+      const skills = await listSkills(SKILL_ROOTS);
       const skill = findSkillById(skills, req.params.id);
       if (!skill) return res.status(404).json({ error: 'skill not found' });
       const { dir: _dir, ...serializable } = skill;
       res.json(serializable);
     } catch (err) {
       res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Import a user-authored skill. Body: { name, description?, body, triggers? }.
+  // Writes a SKILL.md under USER_SKILLS_DIR; the next /api/skills request
+  // will surface it. Mirrors the validation layer in skills.ts, returning
+  // structured error codes the web UI maps to friendly strings.
+  app.post('/api/skills/import', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const result = await importUserSkill(USER_SKILLS_DIR, body);
+      const skills = await listSkills(SKILL_ROOTS);
+      const skill = findSkillById(skills, result.id);
+      if (!skill) {
+        return res
+          .status(500)
+          .json({ error: { code: 'INTERNAL_ERROR', message: 'imported skill could not be re-read' } });
+      }
+      const { dir: _dir, body: _body, ...summary } = skill;
+      res.json({
+        skill: {
+          ...summary,
+          hasBody: typeof skill.body === 'string' && skill.body.length > 0,
+        },
+      });
+    } catch (err) {
+      if (err instanceof SkillImportError) {
+        const status = err.code === 'CONFLICT' ? 409
+          : err.code === 'BAD_REQUEST' ? 400
+          : err.code === 'NOT_FOUND' ? 404
+          : 500;
+        return res.status(status).json({ error: { code: err.code, message: err.message } });
+      }
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: String(err) } });
+    }
+  });
+
+  // Delete a user-imported skill. Built-in skills (under SKILLS_DIR) are
+  // refused — we only allow removal of folders the daemon itself wrote
+  // under USER_SKILLS_DIR.
+  app.delete('/api/skills/:id', async (req, res) => {
+    try {
+      const skills = await listSkills(SKILL_ROOTS);
+      const skill = findSkillById(skills, req.params.id);
+      if (!skill) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'skill not found' } });
+      }
+      if (skill.source !== 'user') {
+        return res.status(400).json({
+          error: { code: 'BAD_REQUEST', message: 'cannot delete a built-in skill' },
+        });
+      }
+      await deleteUserSkill(USER_SKILLS_DIR, skill.id);
+      res.json({ ok: true });
+    } catch (err) {
+      if (err instanceof SkillImportError) {
+        const status = err.code === 'NOT_FOUND' ? 404 : err.code === 'BAD_REQUEST' ? 400 : 500;
+        return res.status(status).json({ error: { code: err.code, message: err.message } });
+      }
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: String(err) } });
     }
   });
 
@@ -2561,7 +2634,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   //   4. <skillDir>/assets/index.html — generic fallback
   app.get('/api/skills/:id/example', async (req, res) => {
     try {
-      const skills = await listSkills(SKILLS_DIR);
+      const skills = await listSkills(SKILL_ROOTS);
       const skill = findSkillById(skills, req.params.id);
       if (!skill) {
         return res.status(404).type('text/plain').send('skill not found');
@@ -2622,7 +2695,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   // contributors can preview `example.html` straight from disk.
   app.get('/api/skills/:id/assets/*', async (req, res) => {
     try {
-      const skills = await listSkills(SKILLS_DIR);
+      const skills = await listSkills(SKILL_ROOTS);
       const skill = findSkillById(skills, req.params.id);
       if (!skill) {
         return res.status(404).type('text/plain').send('skill not found');
@@ -3828,6 +3901,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     agentId,
     projectId,
     skillId,
+    skillIds,
     designSystemId,
     streamFormat,
   }) => {
@@ -3843,16 +3917,23 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         : project?.designSystemId;
     const metadata = project?.metadata;
 
+    // Per-turn skills picked via the composer's @-mention popover. They
+    // never persist on the project — we just append their bodies after the
+    // primary skill so the agent sees one combined block this turn.
+    const adHocSkillIds = Array.isArray(skillIds)
+      ? skillIds
+          .map((s) => (typeof s === 'string' ? s.trim() : ''))
+          .filter(Boolean)
+          .filter((id) => id !== effectiveSkillId)
+      : [];
+    const allSkills = await listSkills(SKILL_ROOTS);
     let skillBody;
     let skillName;
     let skillMode;
     let skillCraftRequires = [];
     let activeSkillDir = null;
     if (effectiveSkillId) {
-      const skill = findSkillById(
-        await listSkills(SKILLS_DIR),
-        effectiveSkillId,
-      );
+      const skill = findSkillById(allSkills, effectiveSkillId);
       if (skill) {
         skillBody = skill.body;
         skillName = skill.name;
@@ -3860,6 +3941,33 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         activeSkillDir = skill.dir;
         if (Array.isArray(skill.craftRequires))
           skillCraftRequires = skill.craftRequires;
+      }
+    }
+    if (adHocSkillIds.length > 0) {
+      const seen = new Set(effectiveSkillId ? [effectiveSkillId] : []);
+      const blocks = [];
+      const baseBody = skillBody && skillBody.trim().length > 0 ? skillBody : '';
+      for (const id of adHocSkillIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const extra = findSkillById(allSkills, id);
+        if (!extra) continue;
+        if (Array.isArray(extra.craftRequires)) {
+          for (const c of extra.craftRequires) {
+            if (!skillCraftRequires.includes(c)) skillCraftRequires.push(c);
+          }
+        }
+        blocks.push(
+          `\n\n---\n\n## Composed skill — ${extra.name || id}\n\n${(extra.body || '').trim()}`
+        );
+      }
+      if (blocks.length > 0) {
+        skillBody = baseBody + blocks.join('');
+        if (!skillName) {
+          skillName = adHocSkillIds.length === 1
+            ? findSkillById(allSkills, adHocSkillIds[0])?.name ?? null
+            : 'composed';
+        }
       }
     }
 
@@ -3972,6 +4080,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       assistantMessageId,
       clientRequestId,
       skillId,
+      skillIds,
       designSystemId,
       attachments = [],
       commentAttachments = [],
@@ -4114,6 +4223,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
         agentId,
         projectId,
         skillId,
+        skillIds,
         designSystemId,
         streamFormat: def?.streamFormat ?? 'plain',
       });

@@ -5,10 +5,12 @@ import { Icon } from './Icon';
 import type { AppConfig } from '../types';
 import type { SkillSummary, DesignSystemSummary } from '@open-design/contracts';
 import {
+  deleteSkill,
   fetchSkills,
   fetchDesignSystems,
   fetchSkill,
   fetchDesignSystem,
+  importSkill,
 } from '../providers/registry';
 
 type Tab = 'skills' | 'design-systems';
@@ -39,11 +41,28 @@ export function LibrarySection({ cfg, setCfg }: Props) {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewBody, setPreviewBody] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Inline "Import skill" form state. The form is intentionally minimal —
+  // `name` is the SKILL.md `name` (and the slug we write under user-skills/),
+  // `body` is everything below the front-matter. Triggers get auto-split
+  // on commas / newlines.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [importDescription, setImportDescription] = useState('');
+  const [importTriggers, setImportTriggers] = useState('');
+  const [importBody, setImportBody] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const refreshSkills = useCallback(async () => {
+    const list = await fetchSkills();
+    setSkills(list);
+    return list;
+  }, []);
 
   useEffect(() => {
-    fetchSkills().then(setSkills);
+    void refreshSkills();
     fetchDesignSystems().then(setDesignSystems);
-  }, []);
+  }, [refreshSkills]);
 
   const categories = useMemo(() => {
     const cats = new Set(designSystems.map((d) => d.category));
@@ -133,6 +152,70 @@ export function LibrarySection({ cfg, setCfg }: Props) {
     [previewId, tab],
   );
 
+  function resetImportForm() {
+    setImportName('');
+    setImportDescription('');
+    setImportTriggers('');
+    setImportBody('');
+    setImportError(null);
+  }
+
+  async function handleImportSubmit() {
+    if (importing) return;
+    const name = importName.trim();
+    const body = importBody.trim();
+    if (!name) {
+      setImportError('Skill name is required.');
+      return;
+    }
+    if (!body) {
+      setImportError('Skill body is required.');
+      return;
+    }
+    const triggers = importTriggers
+      .split(/[,\n]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    setImporting(true);
+    setImportError(null);
+    const result = await importSkill({
+      name,
+      description: importDescription.trim() || undefined,
+      body,
+      triggers,
+    });
+    setImporting(false);
+    if ('error' in result) {
+      setImportError(result.error.message);
+      return;
+    }
+    await refreshSkills();
+    resetImportForm();
+    setImportOpen(false);
+  }
+
+  async function handleDeleteSkill(id: string) {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(`Delete skill "${id}"? This cannot be undone.`);
+      if (!ok) return;
+    }
+    const result = await deleteSkill(id);
+    if ('error' in result) {
+      setImportError(result.error.message);
+      return;
+    }
+    await refreshSkills();
+    setCfg((c) => {
+      const set = new Set(c.disabledSkills ?? []);
+      set.delete(id);
+      return { ...c, disabledSkills: [...set] };
+    });
+    if (previewId === id) {
+      setPreviewId(null);
+      setPreviewBody(null);
+    }
+  }
+
   function toggleSkillDisabled(id: string, disabled: boolean) {
     setCfg((c) => {
       const set = new Set(c.disabledSkills ?? []);
@@ -206,6 +289,22 @@ export function LibrarySection({ cfg, setCfg }: Props) {
           onChange={(e) => setSearch(e.target.value)}
         />
         {tab === 'skills' ? (
+          <button
+            type="button"
+            className={`filter-pill library-import-toggle${importOpen ? ' active' : ''}`}
+            onClick={() => {
+              setImportOpen((open) => {
+                if (open) resetImportForm();
+                return !open;
+              });
+            }}
+            data-testid="library-import-toggle"
+          >
+            <Icon name="upload" size={12} />
+            <span>Import skill</span>
+          </button>
+        ) : null}
+        {tab === 'skills' ? (
           <div className="library-filters">
             <button
               type="button"
@@ -253,6 +352,75 @@ export function LibrarySection({ cfg, setCfg }: Props) {
         )}
       </div>
 
+      {tab === 'skills' && importOpen ? (
+        <div className="library-import-form" data-testid="library-import-form">
+          <div className="library-import-row">
+            <label>
+              <span>Name</span>
+              <input
+                type="text"
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                placeholder="my-skill"
+              />
+            </label>
+            <label>
+              <span>Triggers (comma- or newline-separated)</span>
+              <input
+                type="text"
+                value={importTriggers}
+                onChange={(e) => setImportTriggers(e.target.value)}
+                placeholder="search the web, summarize"
+              />
+            </label>
+          </div>
+          <label className="library-import-block">
+            <span>Description</span>
+            <textarea
+              rows={2}
+              value={importDescription}
+              onChange={(e) => setImportDescription(e.target.value)}
+              placeholder="What does this skill do? When should the agent reach for it?"
+            />
+          </label>
+          <label className="library-import-block">
+            <span>SKILL.md body</span>
+            <textarea
+              rows={8}
+              value={importBody}
+              onChange={(e) => setImportBody(e.target.value)}
+              placeholder="# My skill\n\n1. Explain the workflow.\n2. Describe the inputs and outputs."
+            />
+          </label>
+          {importError ? (
+            <div className="library-import-error" role="alert">
+              {importError}
+            </div>
+          ) : null}
+          <div className="library-import-actions">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => {
+                resetImportForm();
+                setImportOpen(false);
+              }}
+              disabled={importing}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => void handleImportSubmit()}
+              disabled={importing}
+            >
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="library-content">
         {tab === 'skills' ? (
           filteredSkills.length === 0 ? (
@@ -273,6 +441,14 @@ export function LibrarySection({ cfg, setCfg }: Props) {
                       <div className="library-card-title-row">
                         <span className="library-card-name">{skill.name}</span>
                         <span className="library-card-badge">{skill.previewType}</span>
+                        {skill.source === 'user' ? (
+                          <span
+                            className="library-card-badge library-card-badge-user"
+                            title="User-imported skill"
+                          >
+                            user
+                          </span>
+                        ) : null}
                       </div>
                       <div className="library-card-desc">{skill.description}</div>
                     </div>
@@ -287,6 +463,17 @@ export function LibrarySection({ cfg, setCfg }: Props) {
                         size={14}
                       />
                     </button>
+                    {skill.source === 'user' ? (
+                      <button
+                        type="button"
+                        className="library-card-delete"
+                        onClick={() => void handleDeleteSkill(skill.id)}
+                        title="Delete this user skill"
+                        aria-label={`Delete user skill ${skill.id}`}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                    ) : null}
                     <label className="toggle-switch" title={t('settings.libraryToggleLabel')}>
                       <input
                         type="checkbox"

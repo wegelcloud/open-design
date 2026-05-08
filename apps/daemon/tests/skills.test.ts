@@ -5,8 +5,15 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { rmSync } from 'node:fs';
+
 import { SKILLS_CWD_ALIAS } from '../src/cwd-aliases.js';
-import { listSkills } from '../src/skills.js';
+import {
+  deleteUserSkill,
+  importUserSkill,
+  listSkills,
+  slugifySkillName,
+} from '../src/skills.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -139,5 +146,117 @@ describe('listSkills preamble', () => {
     expect(skill.body).not.toContain(SKILLS_CWD_ALIAS);
     expect(skill.body).not.toContain('Skill root');
     expect(skill.body).toContain('Body without external files.');
+  });
+});
+
+describe('listSkills multi-root + source tagging', () => {
+  it('tags entries from the first root as "user" and the second as "built-in"', async () => {
+    const userRoot = fresh();
+    const builtInRoot = fresh();
+    writeSkill(userRoot, 'web-search', {
+      description: 'User-imported web search.',
+    });
+    writeSkill(builtInRoot, 'audio-jingle', {
+      description: 'Built-in jingle skill.',
+    });
+
+    const skills = await listSkills([userRoot, builtInRoot]);
+    expect(skills).toHaveLength(2);
+    const byId = new Map<string, { id: string; source: string }>(
+      skills.map((s: { id: string; source: string }) => [s.id, s]),
+    );
+    expect(byId.get('web-search')?.source).toBe('user');
+    expect(byId.get('audio-jingle')?.source).toBe('built-in');
+
+    rmSync(userRoot, { recursive: true, force: true });
+    rmSync(builtInRoot, { recursive: true, force: true });
+  });
+
+  it('lets a user skill shadow a built-in skill of the same id', async () => {
+    const userRoot = fresh();
+    const builtInRoot = fresh();
+    writeSkill(userRoot, 'shared-id', {
+      description: 'User override.',
+      body: '# Override body',
+    });
+    writeSkill(builtInRoot, 'shared-id', {
+      description: 'Original built-in.',
+      body: '# Built-in body',
+    });
+
+    const skills = await listSkills([userRoot, builtInRoot]);
+    expect(skills).toHaveLength(1);
+    expect(skills[0].source).toBe('user');
+    expect(skills[0].body).toContain('Override body');
+
+    rmSync(userRoot, { recursive: true, force: true });
+    rmSync(builtInRoot, { recursive: true, force: true });
+  });
+});
+
+describe('slugifySkillName', () => {
+  it('lowercases, normalises spaces, and strips reserved slugs', () => {
+    expect(slugifySkillName('Web Search')).toBe('web-search');
+    expect(slugifySkillName('  Multi   Word  Skill ')).toBe('multi-word-skill');
+    expect(slugifySkillName('   ')).toBe('');
+    expect(slugifySkillName('..')).toBe('');
+    expect(slugifySkillName('a/../b')).toBe('a-b');
+  });
+});
+
+describe('importUserSkill / deleteUserSkill', () => {
+  it('writes a SKILL.md and round-trips through listSkills', async () => {
+    const root = fresh();
+    try {
+      const result = await importUserSkill(root, {
+        name: 'Code Review',
+        description: 'Review the latest diff.',
+        body: '# Review\n\n1. Read.\n2. Comment.',
+        triggers: ['code review', 'review my diff'],
+      });
+      expect(result.id).toBe('Code Review');
+      expect(result.slug).toBe('code-review');
+      expect(result.dir).toBe(path.join(root, 'code-review'));
+
+      const skills = await listSkills(root);
+      expect(skills).toHaveLength(1);
+      expect(skills[0].id).toBe('Code Review');
+      expect(skills[0].triggers).toEqual(['code review', 'review my diff']);
+      // First (and only) root is treated as the user root.
+      expect(skills[0].source).toBe('user');
+
+      // Importing the same name again surfaces a CONFLICT error.
+      await expect(
+        importUserSkill(root, {
+          name: 'Code Review',
+          body: '# Different body',
+        }),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      await deleteUserSkill(root, 'Code Review');
+      const after = await listSkills(root);
+      expect(after).toHaveLength(0);
+
+      // Deleting an already-deleted skill returns NOT_FOUND.
+      await expect(deleteUserSkill(root, 'Code Review')).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects empty bodies and impossibly-named skills', async () => {
+    const root = fresh();
+    try {
+      await expect(
+        importUserSkill(root, { name: 'foo', body: '   ' }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+      await expect(
+        importUserSkill(root, { name: '..', body: '# body' }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -1,9 +1,13 @@
 // @ts-nocheck
-// Skill registry. Scans <projectRoot>/skills/* for SKILL.md files, parses
+// Skill registry. Scans one or more on-disk roots for SKILL.md files, parses
 // front-matter, returns listing. No watching in this MVP — re-scans on every
 // GET /api/skills, which is fine for dozens of skills.
+//
+// Roots are passed in priority order: the first one wins on `id` collisions
+// so user-imported skills under USER_SKILLS_DIR can shadow a built-in skill
+// of the same name without erasing the built-in copy.
 
-import { readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseFrontmatter } from "./frontmatter.js";
 import { SKILLS_CWD_ALIAS } from "./cwd-aliases.js";
@@ -38,60 +42,71 @@ export function findSkillById(skills, id) {
   return skills.find((s) => s.id === canonical);
 }
 
-export async function listSkills(skillsRoot) {
-  const out = [];
-  let entries = [];
-  try {
-    entries = await readdir(skillsRoot, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(skillsRoot, entry.name);
-    const skillPath = path.join(dir, "SKILL.md");
+// Accept either a single root or an array. The first root wins on id
+// collisions so user-imported skills can shadow a built-in by the same name.
+// Each surfaced summary carries a `source` ("built-in" | "user") so the UI
+// can render an origin pill and gate the delete control.
+export async function listSkills(skillsRoots: any): Promise<any[]> {
+  const roots = Array.isArray(skillsRoots) ? skillsRoots : [skillsRoots];
+  const out: any[] = [];
+  const seen: Set<string> = new Set();
+  for (let i = 0; i < roots.length; i += 1) {
+    const skillsRoot = roots[i];
+    if (!skillsRoot) continue;
+    const source = i === 0 ? "user" : "built-in";
+    let entries = [];
     try {
-      const stats = await stat(skillPath);
-      if (!stats.isFile()) continue;
-      const raw = await readFile(skillPath, "utf8");
-      const { data, body } = parseFrontmatter(raw);
-      const hasAttachments = await dirHasAttachments(dir);
-      const mode = data.od?.mode || inferMode(body, data.description);
-      const surface = normalizeSurface(data.od?.surface, mode);
-      out.push({
-        id: data.name || entry.name,
-        name: data.name || entry.name,
-        description: data.description || "",
-        triggers: Array.isArray(data.triggers) ? data.triggers : [],
-        mode,
-        surface,
-        craftRequires: normalizeCraftRequires(data.od?.craft?.requires),
-        platform: normalizePlatform(
-          data.od?.platform,
-          mode,
-          body,
-          data.description
-        ),
-        scenario: normalizeScenario(data.od?.scenario, body, data.description),
-        previewType: data.od?.preview?.type || "html",
-        designSystemRequired: data.od?.design_system?.requires ?? true,
-        defaultFor: normalizeDefaultFor(data.od?.default_for),
-        upstream:
-          typeof data.od?.upstream === "string" ? data.od.upstream : null,
-        featured: normalizeFeatured(data.od?.featured),
-        // Optional metadata hints used by 'Use this prompt' fast-create so
-        // the resulting project mirrors the shipped example.html. Each hint
-        // is only consumed when its kind matches the skill mode; missing
-        // hints fall back to the same defaults the new-project form uses.
-        fidelity: normalizeFidelity(data.od?.fidelity),
-        speakerNotes: normalizeBoolHint(data.od?.speaker_notes),
-        animations: normalizeBoolHint(data.od?.animations),
-        examplePrompt: derivePrompt(data),
-        body: hasAttachments ? withSkillRootPreamble(body, dir) : body,
-        dir,
-      });
+      entries = await readdir(skillsRoot, { withFileTypes: true });
     } catch {
-      // Skip unreadable entries — this is discovery, not validation.
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(skillsRoot, entry.name);
+      const skillPath = path.join(dir, "SKILL.md");
+      try {
+        const stats = await stat(skillPath);
+        if (!stats.isFile()) continue;
+        const raw = await readFile(skillPath, "utf8");
+        const { data, body } = parseFrontmatter(raw);
+        const id = data.name || entry.name;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const hasAttachments = await dirHasAttachments(dir);
+        const mode = data.od?.mode || inferMode(body, data.description);
+        const surface = normalizeSurface(data.od?.surface, mode);
+        out.push({
+          id,
+          name: data.name || entry.name,
+          description: data.description || "",
+          triggers: Array.isArray(data.triggers) ? data.triggers : [],
+          mode,
+          surface,
+          source,
+          craftRequires: normalizeCraftRequires(data.od?.craft?.requires),
+          platform: normalizePlatform(
+            data.od?.platform,
+            mode,
+            body,
+            data.description
+          ),
+          scenario: normalizeScenario(data.od?.scenario, body, data.description),
+          previewType: data.od?.preview?.type || "html",
+          designSystemRequired: data.od?.design_system?.requires ?? true,
+          defaultFor: normalizeDefaultFor(data.od?.default_for),
+          upstream:
+            typeof data.od?.upstream === "string" ? data.od.upstream : null,
+          featured: normalizeFeatured(data.od?.featured),
+          fidelity: normalizeFidelity(data.od?.fidelity),
+          speakerNotes: normalizeBoolHint(data.od?.speaker_notes),
+          animations: normalizeBoolHint(data.od?.animations),
+          examplePrompt: derivePrompt(data),
+          body: hasAttachments ? withSkillRootPreamble(body, dir) : body,
+          dir,
+        });
+      } catch {
+        // Skip unreadable entries — this is discovery, not validation.
+      }
     }
   }
   return out;
@@ -317,3 +332,134 @@ function normalizeScenario(value, body, description) {
 // Surface the vocabulary so callers (frontend filter UI) could mirror it
 // later if they want to. Not exported today, kept here for documentation.
 void KNOWN_SCENARIOS;
+
+// ---------------------------------------------------------------------------
+// User-skill import / delete primitives
+// ---------------------------------------------------------------------------
+// User-imported skills live under <runtimeData>/user-skills/<slug>/SKILL.md.
+// We treat that directory as fully owned by the daemon, so import/delete are
+// simple: write or rm the slug folder and let listSkills() pick the change up
+// on the next /api/skills request. The slug is derived from the user-supplied
+// `name` (alphanumeric + dash) and prefixed with `user-` only when an existing
+// built-in skill folder shares the same id, to avoid colliding with a
+// repo-shipped folder.
+
+export class SkillImportError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
+const RESERVED_SLUGS = new Set(["", ".", ".."]);
+
+export function slugifySkillName(name) {
+  if (typeof name !== "string") return "";
+  const lowered = name.trim().toLowerCase();
+  const cleaned = lowered
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+  if (!cleaned || RESERVED_SLUGS.has(cleaned)) return "";
+  return cleaned.slice(0, 64);
+}
+
+function escapeYamlString(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function buildSkillMarkdown({ name, description, body, triggers }) {
+  const lines = ["---", `name: ${escapeYamlString(name)}`];
+  if (description && description.trim().length > 0) {
+    lines.push("description: |");
+    for (const ln of description.trim().split(/\r?\n/)) {
+      lines.push(`  ${ln}`);
+    }
+  }
+  if (Array.isArray(triggers) && triggers.length > 0) {
+    lines.push("triggers:");
+    for (const t of triggers) {
+      if (typeof t !== "string") continue;
+      const trimmed = t.trim();
+      if (!trimmed) continue;
+      lines.push(`  - "${escapeYamlString(trimmed)}"`);
+    }
+  }
+  lines.push("---", "", body.trim(), "");
+  return lines.join("\n");
+}
+
+export async function importUserSkill(userSkillsRoot, input) {
+  const name =
+    typeof input?.name === "string" ? input.name.trim() : "";
+  const description =
+    typeof input?.description === "string" ? input.description : "";
+  const body = typeof input?.body === "string" ? input.body : "";
+  if (!name) {
+    throw new SkillImportError("BAD_REQUEST", "skill name required");
+  }
+  if (!body || body.trim().length === 0) {
+    throw new SkillImportError("BAD_REQUEST", "skill body required");
+  }
+  const slug = slugifySkillName(name);
+  if (!slug) {
+    throw new SkillImportError(
+      "BAD_REQUEST",
+      "skill name must produce a valid slug (a-z, 0-9, dash)"
+    );
+  }
+  const triggersRaw = Array.isArray(input?.triggers) ? input.triggers : [];
+  const triggers = triggersRaw
+    .map((t) => (typeof t === "string" ? t.trim() : ""))
+    .filter(Boolean);
+
+  await mkdir(userSkillsRoot, { recursive: true });
+  const dir = path.join(userSkillsRoot, slug);
+  // Refuse to overwrite an existing folder. The caller can DELETE first
+  // when intentionally replacing a skill.
+  try {
+    const existing = await stat(dir);
+    if (existing) {
+      throw new SkillImportError(
+        "CONFLICT",
+        `a user skill with slug "${slug}" already exists`
+      );
+    }
+  } catch (err) {
+    if (err instanceof SkillImportError) throw err;
+    if (err && err.code !== "ENOENT") {
+      throw new SkillImportError(
+        "INTERNAL_ERROR",
+        `could not check skill dir: ${err.message ?? err}`
+      );
+    }
+  }
+  await mkdir(dir, { recursive: true });
+  const md = buildSkillMarkdown({ name, description, body, triggers });
+  await writeFile(path.join(dir, "SKILL.md"), md, "utf8");
+  return { id: name, slug, dir };
+}
+
+export async function deleteUserSkill(userSkillsRoot, id) {
+  const slug = slugifySkillName(id);
+  if (!slug) {
+    throw new SkillImportError("BAD_REQUEST", "invalid skill id");
+  }
+  const dir = path.join(userSkillsRoot, slug);
+  const root = path.resolve(userSkillsRoot);
+  const target = path.resolve(dir);
+  if (target !== dir || !target.startsWith(root + path.sep)) {
+    // Defence-in-depth: refuse to delete anything outside the user-skills
+    // root. The slugify above already strips traversal characters.
+    throw new SkillImportError("BAD_REQUEST", "invalid skill path");
+  }
+  try {
+    await stat(target);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new SkillImportError("NOT_FOUND", "user skill not found");
+    }
+    throw err;
+  }
+  await rm(target, { recursive: true, force: true });
+}

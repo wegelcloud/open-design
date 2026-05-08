@@ -10,7 +10,7 @@ import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { projectRawUrl, uploadProjectFiles, openFolderDialog } from "../providers/registry";
 import { patchProject } from "../state/projects";
-import type { AppConfig, ChatAttachment, ChatCommentAttachment, ProjectFile, ProjectMetadata } from "../types";
+import type { AppConfig, ChatAttachment, ChatCommentAttachment, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
 import { Icon } from "./Icon";
 import { BUILT_IN_PETS, CUSTOM_PET_ID, resolveActivePet } from "./pet/pets";
 
@@ -44,7 +44,18 @@ interface Props {
   onEnsureProject: () => Promise<string | null>;
   commentAttachments?: ChatCommentAttachment[];
   onRemoveCommentAttachment?: (id: string) => void;
-  onSend: (prompt: string, attachments: ChatAttachment[], commentAttachments: ChatCommentAttachment[]) => void;
+  // Available skills the user can compose into a turn via @<skill>. The
+  // chat layer already filters out disabled skills before passing them in
+  // here, so the picker can render the list as-is. Keep this optional so
+  // the composer still works on surfaces that don't show a skills picker
+  // (e.g. tests, screenshot harnesses).
+  skills?: SkillSummary[];
+  onSend: (
+    prompt: string,
+    attachments: ChatAttachment[],
+    commentAttachments: ChatCommentAttachment[],
+    skillIds: string[],
+  ) => void;
   onStop: () => void;
   // Opens the global settings dialog (CLI / model / agent picker). The
   // composer's leading gear icon routes here so users can switch models
@@ -88,6 +99,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       onEnsureProject,
       commentAttachments = [],
       onRemoveCommentAttachment,
+      skills = [],
       onSend,
       onStop,
       onOpenSettings,
@@ -103,6 +115,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const t = useT();
     const [draft, setDraft] = useState(initialDraft ?? "");
     const [staged, setStaged] = useState<ChatAttachment[]>([]);
+    // Skills the user has @-mentioned for this turn. We dedupe on id and
+    // strip the chip when the user removes the corresponding `@<skill>`
+    // token from the draft, keeping draft and chips in sync.
+    const [stagedSkills, setStagedSkills] = useState<SkillSummary[]>([]);
     const [dragActive, setDragActive] = useState(false);
     const [mention, setMention] = useState<{
       q: string;
@@ -341,9 +357,46 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     function reset() {
       setDraft("");
       setStaged([]);
+      setStagedSkills([]);
       setUploadError(null);
       setMention(null);
       setSlash(null);
+    }
+
+    function insertSkillMention(skill: SkillSummary) {
+      if (!mention) return;
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const cursor = mention.cursor;
+      const before = draft.slice(0, cursor);
+      const after = draft.slice(cursor);
+      // Use the same `@<token>` prefix as file mentions so the visual
+      // grammar is consistent. The id is stable across renames; the
+      // displayed name is derived in render from stagedSkills.
+      const replaced = before.replace(/@([^\s@]*)$/, `@${skill.id} `);
+      const next = replaced + after;
+      setDraft(next);
+      setMention(null);
+      setStagedSkills((prev) =>
+        prev.some((s) => s.id === skill.id) ? prev : [...prev, skill],
+      );
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = replaced.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    }
+
+    function removeStagedSkill(id: string) {
+      setStagedSkills((prev) => prev.filter((s) => s.id !== id));
+      // Also strip the matching `@<id>` token from the draft so the chip
+      // and the textarea stay in sync. We allow trailing whitespace to be
+      // collapsed too.
+      setDraft((d) =>
+        d
+          .replace(new RegExp(`(^|\\s)@${escapeRegExp(id)}(\\s|$)`, 'g'), '$1$2')
+          .replace(/\s{2,}/g, ' '),
+      );
     }
 
     async function ensureProject(): Promise<string | null> {
@@ -489,12 +542,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       const hatched = expandHatchCommand(prompt);
       if (hatched) {
         if (streaming) return;
-        onSend(hatched, staged, commentAttachments);
+        onSend(hatched, staged, commentAttachments, stagedSkills.map((s) => s.id));
         reset();
         return;
       }
       if ((!prompt && commentAttachments.length === 0) || streaming) return;
-      onSend(prompt, staged, commentAttachments);
+      onSend(prompt, staged, commentAttachments, stagedSkills.map((s) => s.id));
       reset();
     }
 
@@ -511,6 +564,28 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           })
           .slice(0, 12)
       : [];
+    // Skills appear in the same @-popover so the user has one entry point
+    // for everything they want to attach to a turn. Already-staged skills
+    // drop out of the suggestion list so the popover keeps moving forward.
+    const stagedSkillIds = useMemo(
+      () => new Set(stagedSkills.map((s) => s.id)),
+      [stagedSkills],
+    );
+    const filteredSkills = useMemo(() => {
+      if (!mention) return [] as SkillSummary[];
+      const q = mention.q.toLowerCase();
+      return skills
+        .filter((s) => !stagedSkillIds.has(s.id))
+        .filter((s) => {
+          if (!q) return true;
+          return (
+            s.id.toLowerCase().includes(q) ||
+            s.name.toLowerCase().includes(q) ||
+            s.description.toLowerCase().includes(q)
+          );
+        })
+        .slice(0, 8);
+    }, [mention, skills, stagedSkillIds]);
 
     return (
       <div
@@ -524,6 +599,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         onDrop={handleDrop}
       >
         <div className="composer-shell">
+          {stagedSkills.length > 0 ? (
+            <StagedSkills
+              skills={stagedSkills}
+              onRemove={removeStagedSkill}
+              t={t}
+            />
+          ) : null}
           {staged.length > 0 ? (
             <StagedAttachments
               attachments={staged}
@@ -603,8 +685,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }}
             />
-            {mention && filteredFiles.length > 0 ? (
-              <MentionPopover files={filteredFiles} onPick={insertMention} />
+            {mention && (filteredFiles.length > 0 || filteredSkills.length > 0) ? (
+              <MentionPopover
+                files={filteredFiles}
+                skills={filteredSkills}
+                onPickFile={insertMention}
+                onPickSkill={insertSkillMention}
+              />
             ) : null}
             {slash && filteredSlash.length > 0 ? (
               <SlashPopover
@@ -859,6 +946,45 @@ function StagedAttachments({
   );
 }
 
+function StagedSkills({
+  skills,
+  onRemove,
+  t,
+}: {
+  skills: SkillSummary[];
+  onRemove: (id: string) => void;
+  t: TranslateFn;
+}) {
+  return (
+    <div
+      className="staged-row staged-skills-row"
+      data-testid="staged-skills"
+    >
+      {skills.map((s) => (
+        <div
+          key={s.id}
+          className={`staged-chip staged-skill staged-skill-${s.source ?? 'built-in'}`}
+        >
+          <span className="staged-icon" aria-hidden>
+            <Icon name="sparkles" size={12} />
+          </span>
+          <span className="staged-name" title={s.description || s.name}>
+            @{s.id}
+          </span>
+          <button
+            className="staged-remove"
+            onClick={() => onRemove(s.id)}
+            title={t('common.delete')}
+            aria-label={`Remove skill ${s.id}`}
+          >
+            <Icon name="close" size={11} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StagedCommentAttachments({
   attachments,
   onRemove,
@@ -985,34 +1111,75 @@ function SlashPopover({
 
 function MentionPopover({
   files,
-  onPick,
+  skills,
+  onPickFile,
+  onPickSkill,
 }: {
   files: ProjectFile[];
-  onPick: (path: string) => void;
+  skills: SkillSummary[];
+  onPickFile: (path: string) => void;
+  onPickSkill: (skill: SkillSummary) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = 0;
-  }, [files]);
+  }, [files, skills]);
   return (
     <div className="mention-popover" data-testid="mention-popover" ref={ref}>
-      {files.map((f) => {
-        const key = f.path ?? f.name;
-        return (
-          <button
-            key={key}
-            className="mention-item"
-            onClick={() => onPick(key)}
-          >
-            <code>{key}</code>
-            {f.size != null ? (
-              <span className="mention-meta">{prettySize(f.size)}</span>
-            ) : null}
-          </button>
-        );
-      })}
+      {skills.length > 0 ? (
+        <>
+          <div className="mention-section-head">Skills</div>
+          {skills.map((s) => (
+            <button
+              key={`skill-${s.id}`}
+              className="mention-item mention-skill-item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onPickSkill(s)}
+              data-testid={`mention-skill-${s.id}`}
+            >
+              <span className="mention-skill-row">
+                <Icon name="sparkles" size={12} />
+                <code>@{s.id}</code>
+                {s.source === 'user' ? (
+                  <span className="mention-skill-badge">user</span>
+                ) : null}
+              </span>
+              {s.description ? (
+                <span className="mention-skill-desc">{s.description}</span>
+              ) : null}
+            </button>
+          ))}
+        </>
+      ) : null}
+      {files.length > 0 ? (
+        <>
+          {skills.length > 0 ? (
+            <div className="mention-section-head">Files</div>
+          ) : null}
+          {files.map((f) => {
+            const key = f.path ?? f.name;
+            return (
+              <button
+                key={`file-${key}`}
+                className="mention-item"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onPickFile(key)}
+              >
+                <code>{key}</code>
+                {f.size != null ? (
+                  <span className="mention-meta">{prettySize(f.size)}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </>
+      ) : null}
     </div>
   );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function looksLikeImage(name: string): boolean {

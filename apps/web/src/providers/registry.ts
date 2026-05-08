@@ -146,6 +146,78 @@ export function codexPetSpritesheetUrl(pet: CodexPetSummary): string {
   return pet.spritesheetUrl;
 }
 
+// Body for POST /api/skills/import. Mirrors the contracts type but is
+// repeated here so the registry module is self-describing for callers.
+export interface SkillImportInput {
+  name: string;
+  description?: string;
+  body: string;
+  triggers?: string[];
+}
+
+export interface SkillImportError {
+  code?: string;
+  message: string;
+}
+
+export async function importSkill(
+  input: SkillImportInput,
+): Promise<{ skill: SkillSummary } | { error: SkillImportError }> {
+  try {
+    const resp = await fetch('/api/skills/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!resp.ok) {
+      const payload = (await resp.json().catch(() => null)) as
+        | { error?: SkillImportError }
+        | null;
+      return {
+        error: {
+          code: payload?.error?.code,
+          message: payload?.error?.message ?? `Import failed (${resp.status}).`,
+        },
+      };
+    }
+    return (await resp.json()) as { skill: SkillSummary };
+  } catch (err) {
+    return {
+      error: {
+        message: err instanceof Error ? err.message : 'Import request failed.',
+      },
+    };
+  }
+}
+
+export async function deleteSkill(
+  id: string,
+): Promise<{ ok: true } | { error: SkillImportError }> {
+  try {
+    const resp = await fetch(`/api/skills/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!resp.ok) {
+      const payload = (await resp.json().catch(() => null)) as
+        | { error?: SkillImportError }
+        | null;
+      return {
+        error: {
+          code: payload?.error?.code,
+          message: payload?.error?.message ?? `Delete failed (${resp.status}).`,
+        },
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      error: {
+        message: err instanceof Error ? err.message : 'Delete request failed.',
+      },
+    };
+  }
+}
+
 export async function fetchSkill(id: string): Promise<SkillDetail | null> {
   try {
     const resp = await fetch(`/api/skills/${encodeURIComponent(id)}`);

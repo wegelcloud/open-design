@@ -972,6 +972,7 @@ export function ProjectView({
       prompt: string,
       attachments: ChatAttachment[],
       commentAttachments: ChatCommentAttachment[] = commentsToAttachments(attachedComments),
+      skillIds: string[] = [],
     ) => {
       if (!activeConversationId) return;
       if (streaming) return;
@@ -1258,6 +1259,7 @@ export function ProjectView({
           assistantMessageId: assistantId,
           clientRequestId: crypto.randomUUID(),
           skillId: project.skillId ?? null,
+          skillIds: Array.isArray(skillIds) ? skillIds : [],
           designSystemId: project.designSystemId ?? null,
           attachments: attachments.map((a) => a.path),
           commentAttachments,
@@ -1816,6 +1818,7 @@ export function ProjectView({
               projectId={project.id}
               projectFiles={projectFiles}
               projectFileNames={projectFileNames}
+              skills={skills}
               onEnsureProject={handleEnsureProject}
               previewComments={previewComments}
               attachedComments={attachedComments}
