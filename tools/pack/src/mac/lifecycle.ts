@@ -1,6 +1,6 @@
 import { execFile, type ChildProcess } from "node:child_process";
 import { mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -267,6 +267,18 @@ function formatExit(exit: ProcessExit): string {
   return `code=${exit.code ?? "null"} signal=${exit.signal ?? "null"}`;
 }
 
+function nonEmptyLines(value: string): string[] {
+  return value.split(/\r?\n/).map((line) => line.trimEnd()).filter((line) => line.length > 0);
+}
+
+function tailLines(lines: string[], maxLines: number): string[] {
+  return lines.slice(Math.max(0, lines.length - maxLines));
+}
+
+function truncateLine(line: string, maxLength = 260): string {
+  return line.length <= maxLength ? line : `${line.slice(0, maxLength - 3)}...`;
+}
+
 async function collectLaunchAssessment(appPath: string): Promise<string[]> {
   const commands: Array<{ args: string[]; label: string }> = [
     { args: ["--verify", "--deep", "--strict", "--verbose=2", appPath], label: "codesign" },
@@ -297,6 +309,106 @@ async function collectLaunchAssessment(appPath: string): Promise<string[]> {
   return lines;
 }
 
+async function collectLaunchXattrSummary(appPath: string): Promise<string[]> {
+  try {
+    const result = await execFileAsync("xattr", ["-lr", appPath], { maxBuffer: 2 * 1024 * 1024 });
+    const lines = nonEmptyLines(result.stdout);
+    const quarantine = lines.filter((line) => line.includes("com.apple.quarantine"));
+    const provenance = lines.filter((line) => line.includes("com.apple.provenance"));
+    const matched = [...quarantine, ...provenance];
+    return [
+      `quarantine entries: ${quarantine.length}`,
+      `provenance entries: ${provenance.length}`,
+      ...(matched.length === 0 ? [] : tailLines(matched, 8).map((line) => truncateLine(line))),
+    ];
+  } catch (error) {
+    if (isRecord(error) && typeof error.stdout === "string") {
+      const lines = nonEmptyLines(error.stdout);
+      if (lines.length > 0) return tailLines(lines, 40);
+    }
+    return [error instanceof Error ? error.message : String(error)];
+  }
+}
+
+function isRelevantSystemPolicyLine(line: string): boolean {
+  return [
+    "Malware rejection",
+    "lack of matching active rule",
+    "notarization daemon",
+    "code signature",
+    "Gatekeeper",
+    "proc_exit",
+  ].some((keyword) => line.includes(keyword)) || /\b(crash|exited|exit|fault|killed|terminated|termination)\b/i.test(line);
+}
+
+function compactSystemPolicyLines(lines: string[]): string[] {
+  const relevant = lines.filter(isRelevantSystemPolicyLine);
+  if (relevant.length === 0) return tailLines(lines, 24).map((line) => truncateLine(line));
+
+  const malware = relevant.filter((line) => line.includes("Malware rejection"));
+  const missingRule = relevant.filter((line) => line.includes("lack of matching active rule"));
+  const notarization = relevant.filter((line) => line.includes("notarization daemon"));
+  const other = relevant.filter((line) =>
+    !line.includes("Malware rejection") &&
+    !line.includes("lack of matching active rule") &&
+    !line.includes("notarization daemon")
+  );
+  const samples = [
+    ...tailLines(malware, 5),
+    ...tailLines(notarization, 5),
+    ...tailLines(missingRule, 5),
+    ...tailLines(other, 8),
+  ];
+
+  return [
+    `matching entries: ${relevant.length}`,
+    `malware rejection entries: ${malware.length}`,
+    `missing active rule entries: ${missingRule.length}`,
+    `notarization daemon entries: ${notarization.length}`,
+    ...[...new Set(samples)].map((line) => truncateLine(line)),
+  ];
+}
+
+async function collectSystemPolicyLog(target: { appPath: string; executablePath: string }): Promise<string[]> {
+  const appName = basename(target.appPath, ".app");
+  const executableName = basename(target.executablePath);
+  const predicate = [...new Set([
+    `process == "${appName}"`,
+    `process == "${executableName}"`,
+    `process == "amfid"`,
+    `eventMessage CONTAINS[c] "${appName}"`,
+    `eventMessage CONTAINS[c] "${executableName}"`,
+    'eventMessage CONTAINS[c] "Malware rejection"',
+    'eventMessage CONTAINS[c] "lack of matching active rule"',
+    'eventMessage CONTAINS[c] "notarization daemon"',
+    'eventMessage CONTAINS[c] "code signature"',
+    'eventMessage CONTAINS[c] "Gatekeeper"',
+  ])].join(" OR ");
+
+  try {
+    const result = await execFileAsync("/usr/bin/log", [
+      "show",
+      "--style",
+      "compact",
+      "--last",
+      "3m",
+      "--predicate",
+      predicate,
+    ], { maxBuffer: 2 * 1024 * 1024 });
+    const lines = nonEmptyLines([result.stdout, result.stderr].join("\n"));
+    return compactSystemPolicyLines(lines);
+  } catch (error) {
+    const lines = [
+      ...(isRecord(error) && typeof error.stdout === "string" ? nonEmptyLines(error.stdout) : []),
+      ...(isRecord(error) && typeof error.stderr === "string" ? nonEmptyLines(error.stderr) : []),
+    ];
+    if (lines.length > 0) {
+      return compactSystemPolicyLines(lines);
+    }
+    return [error instanceof Error ? error.message : String(error)];
+  }
+}
+
 async function createLaunchFailureMessage(
   config: ToolPackConfig,
   target: { appPath: string; executablePath: string; source: MacStartSource },
@@ -305,6 +417,8 @@ async function createLaunchFailureMessage(
   const logPath = desktopLogPath(config);
   const logLines = await readLogTail(logPath, 80).catch(() => []);
   const assessment = await collectLaunchAssessment(target.appPath);
+  const xattrs = await collectLaunchXattrSummary(target.appPath);
+  const systemPolicyLog = await collectSystemPolicyLog(target);
   return [
     `mac desktop failed to become healthy (${details.reason})`,
     `namespace: ${config.namespace}`,
@@ -315,6 +429,10 @@ async function createLaunchFailureMessage(
     `logPath: ${logPath}`,
     "launch assessment:",
     ...(assessment.length === 0 ? ["(no assessment output)"] : assessment),
+    "launch xattrs:",
+    ...(xattrs.length === 0 ? ["(no xattr output)"] : xattrs),
+    "macOS system policy log:",
+    ...(systemPolicyLog.length === 0 ? ["(no matching system log lines)"] : systemPolicyLog),
     "desktop log tail:",
     ...(logLines.length === 0 ? ["(no log lines)"] : logLines),
   ].join("\n");
