@@ -595,8 +595,7 @@ export const fa: Dict = {
   'designFiles.upload': 'آپلود فایل‌ها',
   'designFiles.pasteText': 'چسباندن به عنوان فایل متنی',
   'designFiles.newSketch': 'طرح جدید',
-  'designFiles.empty':
-    'هنوز هیچ چیزی اینجا نیست. فایل‌ها را رها کنید، یا یک طرح ایجاد کنید / متن بچسبانید.',
+  'designFiles.empty': 'آفرینش‌ها اینجا نمایش داده می‌شوند',
   'designFiles.refresh': 'بازنشانی',
   'designFiles.delete': 'حذف',
   'designFiles.searchPlaceholder': 'جستجوی فایل‌ها…',

@@ -478,8 +478,7 @@ export const esES: Dict = {
   'designFiles.upload': 'Subir archivos',
   'designFiles.pasteText': 'Pegar como archivo de texto',
   'designFiles.newSketch': 'Nuevo boceto',
-  'designFiles.empty':
-    'Aquí no hay nada todavía. Suelta archivos abajo, o crea un boceto / pega texto.',
+  'designFiles.empty': 'Las creaciones aparecerán aquí',
   'designFiles.refresh': 'Actualizar',
   'designFiles.delete': 'Eliminar',
   'designFiles.searchPlaceholder': 'Buscar archivos…',

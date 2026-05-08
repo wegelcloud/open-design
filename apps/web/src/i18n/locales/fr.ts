@@ -584,8 +584,7 @@ export const fr: Dict = {
   'designFiles.upload': 'Téléverser des fichiers',
   'designFiles.pasteText': 'Coller comme fichier texte',
   'designFiles.newSketch': 'Nouveau croquis',
-  'designFiles.empty':
-    'Rien ici pour l\'instant. Déposez des fichiers ci-dessous, ou créez un croquis / collez du texte.',
+  'designFiles.empty': 'Les créations apparaîtront ici',
   'designFiles.refresh': 'Actualiser',
   'designFiles.delete': 'Supprimer',
   'designFiles.searchPlaceholder': 'Rechercher des fichiers…',

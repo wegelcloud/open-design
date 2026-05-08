@@ -584,8 +584,7 @@ export const pl: Dict = {
   'designFiles.upload': 'Prześlij pliki',
   'designFiles.pasteText': 'Wklej jako plik tekstowy',
   'designFiles.newSketch': 'Nowy szkic',
-  'designFiles.empty':
-      'Nic tu jeszcze nie ma. Przeciągnij pliki poniżej lub utwórz szkic / wklej tekst.',
+  'designFiles.empty': 'Twoje kreacje pojawią się tutaj',
   'designFiles.refresh': 'Odśwież',
   'designFiles.delete': 'Usuń',
   'designFiles.searchPlaceholder': 'Szukaj plików…',

@@ -584,8 +584,7 @@ export const ar: Dict = {
   'designFiles.upload': 'رفع ملفات',
   'designFiles.pasteText': 'لصق كملف نصي',
   'designFiles.newSketch': 'رسم جديد',
-  'designFiles.empty':
-    'لا يوجد شيء هنا بعد. اسحب الملفات أدناه، أو أنشئ رسماً / الصق نصاً.',
+  'designFiles.empty': 'ستظهر الإبداعات هنا',
   'designFiles.refresh': 'تحديث',
   'designFiles.delete': 'حذف',
   'designFiles.searchPlaceholder': 'بحث في الملفات...',

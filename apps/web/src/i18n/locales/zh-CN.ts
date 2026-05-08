@@ -586,7 +586,7 @@ export const zhCN: Dict = {
   'designFiles.upload': '上传文件',
   'designFiles.pasteText': '粘贴为文本文件',
   'designFiles.newSketch': '新建草图',
-  'designFiles.empty': '这里还没有文件。可以拖拽下方区域，或新建草图、粘贴文本。',
+  'designFiles.empty': '生成的设计会出现在这里',
   'designFiles.refresh': '刷新',
   'designFiles.delete': '删除',
   'designFiles.searchPlaceholder': '搜索文件…',

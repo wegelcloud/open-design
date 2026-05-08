@@ -476,8 +476,7 @@ export const ja: Dict = {
   'designFiles.upload': 'ファイルをアップロード',
   'designFiles.pasteText': 'テキストファイルとして貼り付け',
   'designFiles.newSketch': '新しいスケッチ',
-  'designFiles.empty':
-    'まだ何もありません。以下にファイルをドロップするか、スケッチを作成するかテキストを貼り付けてください。',
+  'designFiles.empty': 'ここに作品が表示されます',
   'designFiles.refresh': '更新',
   'designFiles.delete': '削除',
   'designFiles.searchPlaceholder': 'ファイルを検索…',

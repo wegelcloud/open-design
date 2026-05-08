@@ -575,8 +575,7 @@ export const tr: Dict = {
   'designFiles.upload': 'Dosyaları yükle',
   'designFiles.pasteText': 'Metin dosyası olarak yapıştır',
   'designFiles.newSketch': 'Yeni taslak',
-  'designFiles.empty':
-    'Burada henüz bir şey yok. Dosyaları aşağı sürükleyin, veya bir taslak oluşturun / metin yapıştırın.',
+  'designFiles.empty': 'Eserler burada görünecek',
   'designFiles.refresh': 'Yenile',
   'designFiles.delete': 'Sil',
   'designFiles.searchPlaceholder': 'Dosyaları ara…',

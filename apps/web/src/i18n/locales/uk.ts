@@ -595,8 +595,7 @@ export const uk: Dict = {
   'designFiles.upload': 'Завантажити файли',
   'designFiles.pasteText': 'Вставити як текстовий файл',
   'designFiles.newSketch': 'Новий ескіз',
-  'designFiles.empty':
-    'Тут нічого немає. Перенесіть файли нижче, або створіть ескіз / вставте текст.',
+  'designFiles.empty': 'Тут з\'являться ваші роботи',
   'designFiles.refresh': 'Оновити',
   'designFiles.delete': 'Видалити',
   'designFiles.searchPlaceholder': 'Пошук файлів…',

@@ -594,8 +594,7 @@ export const ptBR: Dict = {
   'designFiles.upload': 'Enviar arquivos',
   'designFiles.pasteText': 'Colar como arquivo de texto',
   'designFiles.newSketch': 'Novo esboço',
-  'designFiles.empty':
-    'Nada aqui ainda. Arraste arquivos abaixo, crie um esboço ou cole texto.',
+  'designFiles.empty': 'As criações aparecerão aqui',
   'designFiles.refresh': 'Atualizar',
   'designFiles.delete': 'Excluir',
   'designFiles.searchPlaceholder': 'Buscar arquivos…',

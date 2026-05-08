@@ -584,8 +584,7 @@ export const hu: Dict = {
   'designFiles.upload': 'Fájlok feltöltése',
   'designFiles.pasteText': 'Beillesztés szövegfájlként',
   'designFiles.newSketch': 'Új vázlat',
-  'designFiles.empty':
-    'Még nincs itt semmi. Húzz be fájlokat, vagy hozz létre vázlatot / illessz be szöveget.',
+  'designFiles.empty': 'A kreációk itt jelennek meg',
   'designFiles.refresh': 'Frissítés',
   'designFiles.delete': 'Törlés',
   'designFiles.searchPlaceholder': 'Fájlok keresése…',

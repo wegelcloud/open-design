@@ -595,8 +595,7 @@ export const en: Dict = {
   'designFiles.upload': 'Upload files',
   'designFiles.pasteText': 'Paste as text file',
   'designFiles.newSketch': 'New sketch',
-  'designFiles.empty':
-    'Nothing here yet. Drop files below, or create a sketch / paste text.',
+  'designFiles.empty': 'Creations will appear here',
   'designFiles.refresh': 'Refresh',
   'designFiles.delete': 'Delete',
   'designFiles.searchPlaceholder': 'Search files…',

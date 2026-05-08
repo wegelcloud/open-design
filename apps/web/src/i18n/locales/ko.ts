@@ -584,8 +584,7 @@ export const ko: Dict = {
   'designFiles.upload': '파일 업로드',
   'designFiles.pasteText': '텍스트 파일로 붙여넣기',
   'designFiles.newSketch': '새 스케치',
-  'designFiles.empty':
-    '아직 파일이 없습니다. 여기에 파일을 끌어다 놓거나, 스케치를 생성하거나, 텍스트를 붙여넣으세요.',
+  'designFiles.empty': '여기에 작업물이 표시됩니다',
   'designFiles.refresh': '새로고침',
   'designFiles.delete': '삭제',
   'designFiles.searchPlaceholder': '파일 검색…',

@@ -477,8 +477,7 @@ export const de: Dict = {
   'designFiles.upload': 'Dateien hochladen',
   'designFiles.pasteText': 'Als Textdatei einfügen',
   'designFiles.newSketch': 'Neuer Sketch',
-  'designFiles.empty':
-    'Noch nichts hier. Legen Sie unten Dateien ab oder erstellen Sie einen Sketch / fügen Sie Text ein.',
+  'designFiles.empty': 'Kreationen erscheinen hier',
   'designFiles.refresh': 'Aktualisieren',
   'designFiles.delete': 'Löschen',
   'designFiles.searchPlaceholder': 'Dateien suchen…',

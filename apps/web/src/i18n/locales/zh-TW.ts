@@ -586,7 +586,7 @@ export const zhTW: Dict = {
   'designFiles.upload': '上傳圖片',
   'designFiles.pasteText': '貼上為文字檔案',
   'designFiles.newSketch': '新建草圖',
-  'designFiles.empty': '這裡還沒有檔案。可以拖曳下方區域，或新建草圖、貼上文字。',
+  'designFiles.empty': '生成的設計會出現在這裡',
   'designFiles.refresh': '重新整理',
   'designFiles.delete': '刪除',
   'designFiles.searchPlaceholder': '搜尋檔案…',

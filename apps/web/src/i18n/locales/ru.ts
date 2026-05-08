@@ -594,8 +594,7 @@ export const ru: Dict = {
   'designFiles.upload': 'Загрузить файлы',
   'designFiles.pasteText': 'Вставить как текстовый файл',
   'designFiles.newSketch': 'Новый эскиз',
-  'designFiles.empty':
-    'Здесь пока ничего нет. Перетащите файлы ниже или создайте эскиз / вставьте текст.',
+  'designFiles.empty': 'Здесь появятся ваши работы',
   'designFiles.refresh': 'Обновить',
   'designFiles.delete': 'Удалить',
   'designFiles.searchPlaceholder': 'Поиск файлов…',
