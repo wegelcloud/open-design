@@ -126,4 +126,10 @@ export interface ChatMessage {
   attachments?: ChatAttachment[];
   commentAttachments?: ChatCommentAttachment[];
   producedFiles?: ProjectFile[];
+  /**
+   * Request-only marker for the final assistant-message persistence pass.
+   * The daemon does not store or return this field; it only uses it to
+   * avoid telemetry reads before content and producedFiles are finalized.
+   */
+  telemetryFinalized?: boolean;
 }

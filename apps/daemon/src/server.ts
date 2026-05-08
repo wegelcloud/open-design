@@ -1046,6 +1046,18 @@ function sendApiError(res, status, code, message, init = {}) {
     .json(createCompatApiErrorResponse(code, message, init));
 }
 
+const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
+
+export function shouldReportRunCompletedFromMessage(saved, body = {}) {
+  return Boolean(
+    saved &&
+      saved.runId &&
+      typeof saved.runStatus === 'string' &&
+      TERMINAL_RUN_STATUSES.has(saved.runStatus) &&
+      body?.telemetryFinalized === true,
+  );
+}
+
 const CLOUDFLARE_PAGES_PROJECT_METADATA_KEY = 'cloudflarePagesProjectName';
 
 function cloudflarePagesDeploymentMetadata(projectName) {
@@ -2697,17 +2709,12 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     });
     // Bump the parent project's updatedAt so the project list re-orders.
     updateProject(db, req.params.id, {});
-    // Forward to Langfuse only after the message has been persisted in its
-    // terminal shape (web sets runStatus + producedFiles in onDone /
-    // onError / cancel before calling PUT). Tying the trigger to the
-    // persistence path — instead of the daemon-internal run-close hook —
-    // guarantees the SQLite read inside the bridge sees the final
-    // assistant content and produced-file manifest.
+    // Forward to Langfuse only on the explicit final message write. The web
+    // stream can persist a terminal runStatus before onDone has flushed the
+    // final assistant content and produced-file manifest; telemetryFinalized
+    // marks the later PUT that is safe for the bridge's SQLite read.
     if (
-      saved &&
-      saved.runId &&
-      typeof saved.runStatus === 'string' &&
-      TERMINAL_RUN_STATUSES.has(saved.runStatus) &&
+      shouldReportRunCompletedFromMessage(saved, m) &&
       !reportedRuns.has(saved.runId)
     ) {
       const run = design.runs.get(saved.runId);
@@ -4638,7 +4645,6 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   // one trace per run. Entries are scrubbed when the run's TTL window
   // expires (30 min, mirrors runs.ts).
   const reportedRuns = new Set();
-  const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
 
   // App-version snapshot read once at server start. Used as static metadata
   // on every Langfuse trace so we can correlate behaviour with releases

@@ -172,6 +172,8 @@ export function App() {
   // {active:false} if this hasn't run.
   const activeProjectId = route.kind === 'project' ? route.projectId : null;
   const activeFileName = route.kind === 'project' ? route.fileName : null;
+  const showPrivacyConsent =
+    daemonConfigLoaded && config.privacyDecisionAt == null && !settingsOpen;
   useEffect(() => {
     const body = activeProjectId
       ? { projectId: activeProjectId, fileName: activeFileName }
@@ -788,14 +790,11 @@ export function App() {
           onRefreshAgents={refreshAgents}
         />
       ) : null}
-      {/* First-run privacy consent banner. Stays mounted in the bottom-right
-          until the user picks Share or Don't share (gating on
-          `privacyDecisionAt`). The banner sits above the
-          Settings welcome modal — first-run users on a fresh install
-          would otherwise see the welcome modal pop on top of the banner
-          and have no way to read or interact with the consent decision
-          until they closed Settings. */}
-      {config.privacyDecisionAt == null ? (
+      {/* First-run privacy consent banner. It waits for daemon config
+          hydration because privacyDecisionAt is daemon-owned and stripped
+          from localStorage. It also yields while Settings is open so the
+          floating banner never intercepts modal interactions. */}
+      {showPrivacyConsent ? (
         <PrivacyConsentModal
           onShare={() => {
             const installationId = generateInstallationIdSafe();
