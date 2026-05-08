@@ -563,7 +563,6 @@ export function Launchpad({
                 canSend={canSend}
                 inputRef={promptRef}
                 placeholder={t('launchpad.placeholder')}
-                hintText={t('launchpad.inputHint')}
                 attachLabel={t('launchpad.attach')}
                 importLabel={t('launchpad.import')}
                 createLabel={t('launchpad.create')}
@@ -649,7 +648,6 @@ interface PromptBarProps {
   canSend: boolean;
   inputRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   placeholder: string;
-  hintText: string;
   attachLabel: string;
   importLabel: string;
   createLabel: string;
@@ -673,7 +671,6 @@ function PromptBar({
   canSend,
   inputRef,
   placeholder,
-  hintText,
   attachLabel,
   importLabel,
   createLabel,
@@ -775,7 +772,6 @@ function PromptBar({
         </button>
       </div>
       <p className="launchpad-prompt-hint" aria-hidden>
-        <span className="launchpad-prompt-hint-prose">{hintText}</span>
         <span className="launchpad-prompt-hint-formats">{formatLabel}</span>
       </p>
     </div>
