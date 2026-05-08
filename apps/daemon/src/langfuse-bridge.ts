@@ -8,7 +8,10 @@
 //
 // See: specs/change/20260507-langfuse-telemetry/spec.md
 
+import os from 'node:os';
+
 import { readAppConfig } from './app-config.js';
+import type { AppVersionInfo } from './app-version.js';
 import { listMessages } from './db.js';
 import {
   reportRunCompleted,
@@ -16,6 +19,8 @@ import {
   type EventsSummary,
   type MessageSummary,
   type ReportContext,
+  type RuntimeInfo,
+  type TurnInfo,
 } from './langfuse-trace.js';
 
 interface DaemonRunRecord {
@@ -28,16 +33,55 @@ interface DaemonRunRecord {
   createdAt: number;
   updatedAt: number;
   events: Array<{ id: number; event: string; data: unknown }>;
-  // Stashed by startChatRun on entry so the hook can retrieve the original
-  // user prompt without re-parsing the request.
+  // The fields below are stashed by `startChatRun` (and the POST /api/runs
+  // handler) at entry time so the report path doesn't need to reach back
+  // into chatBody / req across the createChatRunService boundary.
   userPrompt?: string;
+  model?: string;
+  reasoning?: string;
+  skillId?: string;
+  designSystemId?: string;
+  clientType?: 'desktop' | 'web' | 'unknown';
 }
 
 export interface ReportRunCompletedFromDaemonOpts {
   db: unknown;
   dataDir: string;
   run: DaemonRunRecord;
+  /** App version info — collected once at daemon startup and reused. */
+  appVersion?: AppVersionInfo | null;
   fetchImpl?: typeof fetch;
+}
+
+/**
+ * Returns the host/runtime info that doesn't change inside one daemon
+ * process. Cheap to call repeatedly — cached at module level.
+ */
+let cachedRuntime: RuntimeInfo | undefined;
+function getRuntimeInfo(appVersion?: AppVersionInfo | null): RuntimeInfo {
+  if (cachedRuntime && !appVersion) return cachedRuntime;
+  const info: RuntimeInfo = {
+    nodeVersion: process.version,
+    os: os.platform(),
+    osRelease: os.release(),
+    arch: os.arch(),
+  };
+  if (appVersion) {
+    info.appVersion = appVersion.version;
+    info.appChannel = appVersion.channel;
+    info.packaged = appVersion.packaged;
+  }
+  cachedRuntime = info;
+  return info;
+}
+
+function turnInfoFromRun(run: DaemonRunRecord): TurnInfo | undefined {
+  const turn: TurnInfo = {};
+  if (run.model) turn.model = run.model;
+  if (run.reasoning) turn.reasoning = run.reasoning;
+  if (run.skillId) turn.skillId = run.skillId;
+  if (run.designSystemId) turn.designSystemId = run.designSystemId;
+  return Object.keys(turn).length > 0 ? turn : undefined;
 }
 
 function summarizeEvents(
@@ -178,6 +222,11 @@ export async function reportRunCompletedFromDaemon(
 
     const usage = findUsage(run.events);
     const error = pickRunError(run, status);
+    const turn = turnInfoFromRun(run);
+    const runtime: RuntimeInfo = {
+      ...getRuntimeInfo(opts.appVersion ?? null),
+      ...(run.clientType ? { clientType: run.clientType } : {}),
+    };
     const ctx: ReportContext = {
       installationId,
       projectId: run.projectId ?? '',
@@ -199,6 +248,8 @@ export async function reportRunCompletedFromDaemon(
       artifacts: summarizeProducedFiles(producedFilesRaw),
       eventsSummary: summarizeEvents(run.events, durationMs),
       prefs,
+      ...(turn ? { turn } : {}),
+      runtime,
     };
 
     await reportRunCompleted(

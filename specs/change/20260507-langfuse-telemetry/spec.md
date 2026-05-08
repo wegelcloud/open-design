@@ -452,6 +452,79 @@ mock fetch); they need answers before later steps.
   Add a tripwire test that asserts `docs/privacy.md` retention number
   and the actual Langfuse org retention setting agree.
 
+## Telemetry Fields Catalog
+
+What lands in Langfuse for every reported turn. Future eval / dataset
+work keys off these names — keep them stable. Everything here is
+governed by `prefs.metrics === true` (master gate). The two
+content-bearing fields (`trace.input` / `trace.output` and the artifact
+manifest) are gated separately.
+
+### Identity & shape
+
+| Field | Source | Purpose |
+|---|---|---|
+| `trace.id` | `run.id` (uuid) | One trace per turn. |
+| `trace.userId` | `installationId` (random uuid; `null` if declined) | Anonymous cohort key. |
+| `trace.sessionId` | `conversationId` | Groups all turns of one conversation in Langfuse Sessions. |
+| `trace.name` | constant `open-design-turn` | Trace category. |
+| `trace.input` | `chatBody.message` (truncated 8 KB UTF-8) | **`prefs.content` gate.** |
+| `trace.output` | persisted assistant message (truncated 16 KB UTF-8) | **`prefs.content` gate.** |
+| `trace.timestamp` | `run.createdAt` | Turn start. |
+
+### Tags (cheap filters / Langfuse list view)
+
+`open-design`, `project:<projectId>`, `agent:<agentId>`,
+`model:<model>` (when known), `skill:<skillId>` (when set),
+`ds:<designSystemId>` (when set), `os:<platform>`,
+`client:<desktop|web>`.
+
+### Trace metadata (queryable JSON, exportable to datasets)
+
+Per-turn: `agent`, `model`, `reasoning`, `skillId`, `designSystemId`,
+`projectId`, `success`, `status`, `error`, `eventsSummary`
+(`{toolCalls, errors, durationMs}`), `tokens` (`{input, output, total}`).
+
+Per-process / build (constant within a daemon run):
+`appVersion`, `appChannel`, `packaged`, `nodeVersion`, `os`,
+`osRelease`, `arch`, `clientType`.
+
+Optional manifest: `artifacts: [{slug, type, sizeBytes}]` and
+`artifactsTruncated` — **`prefs.artifactManifest` gate.** File contents
+themselves are never sent.
+
+### Generation (Langfuse first-class fields)
+
+| Field | Source | Notes |
+|---|---|---|
+| `generation.id` | `${run.id}-gen` | Single generation per turn. |
+| `generation.traceId` | `run.id` | Parent trace. |
+| `generation.model` | `chatBody.model` | Drives Langfuse cost lookup + model grouping. |
+| `generation.modelParameters` | `{ reasoning }` if set | Shown in the UI's Model Parameters card. |
+| `generation.usage` | `{input, output, total, unit: 'TOKENS'}` | Pulled from the agent stream's `usage` event. |
+| `generation.startTime` / `endTime` | run start/end | For duration metrics. |
+| `generation.level` | `'DEFAULT'` / `'ERROR'` | Set on terminal status. |
+| `generation.input` / `output` | same as trace | **`prefs.content` gate.** |
+| `generation.metadata` | `{ durationMs }` | Light — heavy fields go on the trace metadata. |
+
+### Client carrier detection
+
+The daemon receives `X-OD-Client: desktop|web` from the web layer
+(`apps/web/src/providers/daemon.ts:detectClientType()`); it falls back
+to a `User-Agent` sniff (`Electron/` ⇒ desktop) so third-party callers
+still get a useful tag without changing their client. Stored as
+`run.clientType` and shipped in both `trace.tags` (`client:desktop|web`)
+and `trace.metadata.clientType`.
+
+### Not collected (intentional)
+
+- Operating system **build** number (only family + release).
+- BYOK vs. managed key distinction — daemon receives all chat through
+  the same path; api-mode (web → LLM provider direct) bypasses the
+  daemon entirely and emits no trace by design.
+- IP address, hostname, user account — `installationId` is the only
+  per-install handle.
+
 ## References
 
 - Open Design: cited inline by `path:line` (this repo).

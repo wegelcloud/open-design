@@ -23,6 +23,23 @@ import type {
   SseErrorPayload,
 } from '@open-design/contracts';
 import type { StreamHandlers } from './anthropic';
+
+/**
+ * Returns the front-end carrier that's about to send this request:
+ * - 'desktop' when running inside the Electron shell
+ * - 'web' when running in a regular browser
+ * - 'unknown' in non-browser test environments (jsdom without a UA)
+ *
+ * The daemon uses this to label telemetry traces. Cheap, called once per
+ * run so caching isn't worth the complexity.
+ */
+function detectClientType(): 'desktop' | 'web' | 'unknown' {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const ua = navigator.userAgent ?? '';
+  if (ua.includes('Electron/')) return 'desktop';
+  if (ua) return 'web';
+  return 'unknown';
+}
 import { parseSseFrame } from './sse';
 
 export interface DaemonStreamHandlers extends StreamHandlers {
@@ -123,7 +140,14 @@ export async function streamViaDaemon({
   try {
     const createResp = await fetch('/api/runs', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Tells the daemon which front-end carrier started the run so the
+        // telemetry trace can be tagged 'client:desktop' vs 'client:web'.
+        // The daemon falls back to a User-Agent sniff when this header is
+        // absent (e.g. third-party clients), so omitting it in tests is OK.
+        'X-OD-Client': detectClientType(),
+      },
       body,
     });
 

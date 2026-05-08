@@ -132,11 +132,14 @@ describe('langfuse-bridge.reportRunCompletedFromDaemon', () => {
     expect(trace.sessionId).toBe('conv-1');
     expect(trace.input).toBe('design a coffee landing page');
     expect(trace.output).toBe('Here is a draft …');
-    expect(trace.tags).toEqual([
-      'open-design',
-      'project:proj-1',
-      'agent:claude',
-    ]);
+    // Core tags must be present. The bridge also tacks on an `os:<...>`
+    // tag derived from the host (`darwin` / `linux` / `win32`), which is
+    // useful telemetry but varies between dev / CI environments — assert
+    // its presence by prefix rather than pinning a value.
+    expect(trace.tags).toEqual(
+      expect.arrayContaining(['open-design', 'project:proj-1', 'agent:claude']),
+    );
+    expect((trace.tags as string[]).some((t) => t.startsWith('os:'))).toBe(true);
     expect(trace.metadata.eventsSummary.toolCalls).toBe(2);
     expect(trace.metadata.eventsSummary.errors).toBe(0);
     expect(trace.metadata.tokens).toEqual({
@@ -149,6 +152,73 @@ describe('langfuse-bridge.reportRunCompletedFromDaemon', () => {
       { slug: 'style.css', type: 'code', sizeBytes: 800 },
     ]);
     expect(trace.metadata.success).toBe(true);
+  });
+
+  it('attaches turn-level config (model / reasoning / skill / DS) to trace + generation', async () => {
+    await writeAppCfg({
+      installationId: 'install-uuid-1',
+      telemetry: { metrics: true, content: false, artifactManifest: false },
+    });
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(new Response('{}', { status: 207 }));
+    process.env.LANGFUSE_PUBLIC_KEY = 'pk';
+    process.env.LANGFUSE_SECRET_KEY = 'sk';
+    try {
+      await reportRunCompletedFromDaemon({
+        db: makeDbWithListMessages({ 'conv-1': [] }),
+        dataDir,
+        run: makeRun({
+          model: 'claude-sonnet-4-5',
+          reasoning: 'high',
+          skillId: 'landing-page',
+          designSystemId: 'mission-control',
+          clientType: 'desktop',
+        }) as any,
+        appVersion: {
+          version: '0.5.0',
+          channel: 'beta',
+          packaged: true,
+          platform: 'darwin',
+          arch: 'arm64',
+        },
+        fetchImpl: fetchSpy as any,
+      });
+    } finally {
+      delete process.env.LANGFUSE_PUBLIC_KEY;
+      delete process.env.LANGFUSE_SECRET_KEY;
+    }
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    const batch = JSON.parse(init.body as string).batch as any[];
+    const trace = batch[0].body;
+    const generation = batch[1].body;
+
+    // Turn-level: trace metadata + tags carry it for filtering / grouping.
+    expect(trace.metadata.model).toBe('claude-sonnet-4-5');
+    expect(trace.metadata.reasoning).toBe('high');
+    expect(trace.metadata.skillId).toBe('landing-page');
+    expect(trace.metadata.designSystemId).toBe('mission-control');
+    expect(trace.tags).toEqual(
+      expect.arrayContaining([
+        'model:claude-sonnet-4-5',
+        'skill:landing-page',
+        'ds:mission-control',
+        'client:desktop',
+      ]),
+    );
+
+    // Runtime / build info on every trace.
+    expect(trace.metadata.appVersion).toBe('0.5.0');
+    expect(trace.metadata.appChannel).toBe('beta');
+    expect(trace.metadata.packaged).toBe(true);
+    expect(trace.metadata.clientType).toBe('desktop');
+    expect(typeof trace.metadata.os).toBe('string');
+    expect(typeof trace.metadata.nodeVersion).toBe('string');
+
+    // Generation: model is a first-class Langfuse field (not just metadata),
+    // and reasoning lands on modelParameters where Langfuse expects it.
+    expect(generation.model).toBe('claude-sonnet-4-5');
+    expect(generation.modelParameters).toEqual({ reasoning: 'high' });
   });
 
   it('omits content + artifacts when those gates are off', async () => {

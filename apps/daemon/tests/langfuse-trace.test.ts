@@ -232,14 +232,93 @@ describe('buildTracePayload', () => {
 
   it('builds tag list with project + agent + extras', () => {
     const batch = buildTracePayload(
-      makeCtx({ extraTags: ['skill:landing-page'] }),
+      makeCtx({ extraTags: ['legacy:tag'] }),
     );
     expect((batch[0] as any).body.tags).toEqual([
       'open-design',
       'project:proj-1',
       'agent:claude',
-      'skill:landing-page',
+      'legacy:tag',
     ]);
+  });
+
+  it('adds turn-level tags (model / skill / DS) and runtime tags (os / client)', () => {
+    const batch = buildTracePayload(
+      makeCtx({
+        turn: {
+          model: 'gpt-4o',
+          reasoning: 'high',
+          skillId: 'landing-page',
+          designSystemId: 'mission-control',
+        },
+        runtime: {
+          os: 'darwin',
+          arch: 'arm64',
+          nodeVersion: 'v22.22.0',
+          appVersion: '0.5.0',
+          clientType: 'desktop',
+        },
+      }),
+    );
+    expect((batch[0] as any).body.tags).toEqual([
+      'open-design',
+      'project:proj-1',
+      'agent:claude',
+      'model:gpt-4o',
+      'skill:landing-page',
+      'ds:mission-control',
+      'os:darwin',
+      'client:desktop',
+    ]);
+  });
+
+  it('promotes model + reasoning to first-class generation fields', () => {
+    const batch = buildTracePayload(
+      makeCtx({
+        turn: { model: 'claude-sonnet-4-5', reasoning: 'high' },
+      }),
+    );
+    const gen = (batch[1] as any).body;
+    expect(gen.model).toBe('claude-sonnet-4-5');
+    expect(gen.modelParameters).toEqual({ reasoning: 'high' });
+  });
+
+  it('omits modelParameters entirely when reasoning is unset', () => {
+    const batch = buildTracePayload(
+      makeCtx({ turn: { model: 'gpt-4o' } }),
+    );
+    const gen = (batch[1] as any).body;
+    expect(gen.model).toBe('gpt-4o');
+    expect(gen.modelParameters).toBeUndefined();
+  });
+
+  it('mirrors runtime + turn fields into trace metadata for query / export', () => {
+    const batch = buildTracePayload(
+      makeCtx({
+        turn: { model: 'claude-sonnet-4-5', skillId: 'landing-page' },
+        runtime: {
+          os: 'linux',
+          arch: 'x64',
+          nodeVersion: 'v22.22.0',
+          appVersion: '0.5.0',
+          appChannel: 'beta',
+          packaged: true,
+          clientType: 'web',
+        },
+      }),
+    );
+    const m = (batch[0] as any).body.metadata;
+    expect(m.model).toBe('claude-sonnet-4-5');
+    expect(m.skillId).toBe('landing-page');
+    expect(m.os).toBe('linux');
+    expect(m.arch).toBe('x64');
+    expect(m.nodeVersion).toBe('v22.22.0');
+    expect(m.appVersion).toBe('0.5.0');
+    expect(m.appChannel).toBe('beta');
+    expect(m.packaged).toBe(true);
+    expect(m.clientType).toBe('web');
+    expect(m.projectId).toBe('proj-1');
+    expect(m.agent).toBe('claude');
   });
 
   it('marks generation.level=ERROR when run failed', () => {

@@ -69,6 +69,36 @@ export interface EventsSummary {
   durationMs: number;
 }
 
+export interface RuntimeInfo {
+  /** Node.js runtime version (`process.version`, e.g. 'v22.22.0'). */
+  nodeVersion?: string;
+  /** OS family (`os.platform()`, e.g. 'darwin' | 'win32' | 'linux'). */
+  os?: string;
+  /** OS kernel/release version (`os.release()`). */
+  osRelease?: string;
+  /** CPU architecture (`os.arch()`, e.g. 'arm64' | 'x64'). */
+  arch?: string;
+  /** Open Design app version reported by the daemon. */
+  appVersion?: string;
+  /** Build channel (development / nightly / beta / stable). */
+  appChannel?: string;
+  /** Whether the daemon is running inside a packaged build. */
+  packaged?: boolean;
+  /** Front-end carrier — `desktop` (Electron), `web` (browser), or unknown. */
+  clientType?: 'desktop' | 'web' | 'unknown';
+}
+
+export interface TurnInfo {
+  /** Model id at the time of this turn (e.g. 'claude-sonnet-4-5'). */
+  model?: string;
+  /** Reasoning level / effort knob if the agent supports it. */
+  reasoning?: string;
+  /** Skill id selected for this turn (if any). */
+  skillId?: string;
+  /** Design system id selected for this turn (if any). */
+  designSystemId?: string;
+}
+
 export interface ReportContext {
   installationId: string | null;
   projectId: string;
@@ -79,6 +109,10 @@ export interface ReportContext {
   artifacts: ArtifactSummary[];
   eventsSummary: EventsSummary;
   prefs: TelemetryPrefs;
+  /** Per-turn config (model + skill + DS). May vary turn-to-turn within a session. */
+  turn?: TurnInfo;
+  /** Process- / build-level info collected once per daemon process. */
+  runtime?: RuntimeInfo;
   extraTags?: string[];
 }
 
@@ -123,6 +157,13 @@ function truncate(value: string | undefined, maxBytes: number): string | undefin
 function buildTagList(ctx: ReportContext): string[] {
   const tags = ['open-design', `project:${ctx.projectId}`];
   if (ctx.agentId) tags.push(`agent:${ctx.agentId}`);
+  if (ctx.turn?.model) tags.push(`model:${ctx.turn.model}`);
+  if (ctx.turn?.skillId) tags.push(`skill:${ctx.turn.skillId}`);
+  if (ctx.turn?.designSystemId) tags.push(`ds:${ctx.turn.designSystemId}`);
+  if (ctx.runtime?.os) tags.push(`os:${ctx.runtime.os}`);
+  if (ctx.runtime?.clientType && ctx.runtime.clientType !== 'unknown') {
+    tags.push(`client:${ctx.runtime.clientType}`);
+  }
   if (ctx.extraTags?.length) tags.push(...ctx.extraTags);
   return tags;
 }
@@ -174,6 +215,39 @@ export function buildTracePayload(ctx: ReportContext): unknown[] {
   const traceId = ctx.run.runId;
   const generationId = `${ctx.run.runId}-gen`;
 
+  // Trace metadata is the queryable + exportable fact-sheet for each turn.
+  // Anything we want to slice on for evals or dataset construction lives
+  // here. Fields are flat (Langfuse stores it as JSON but indexes shallow
+  // keys best). All entries are anonymous — no PII, no credentials.
+  const traceMetadata: Record<string, unknown> = {
+    success,
+    status: ctx.run.status,
+    error: ctx.run.error ?? undefined,
+    eventsSummary: ctx.eventsSummary,
+    tokens,
+    artifacts: artifactsList,
+    artifactsTruncated,
+    projectId: ctx.projectId || undefined,
+    agent: ctx.agentId,
+    model: ctx.turn?.model,
+    reasoning: ctx.turn?.reasoning,
+    skillId: ctx.turn?.skillId,
+    designSystemId: ctx.turn?.designSystemId,
+    appVersion: ctx.runtime?.appVersion,
+    appChannel: ctx.runtime?.appChannel,
+    packaged: ctx.runtime?.packaged,
+    nodeVersion: ctx.runtime?.nodeVersion,
+    os: ctx.runtime?.os,
+    osRelease: ctx.runtime?.osRelease,
+    arch: ctx.runtime?.arch,
+    clientType: ctx.runtime?.clientType,
+  };
+
+  // Generation-level model parameters mirror the Langfuse schema so the UI
+  // shows them in the dedicated Model Parameters card and filters work.
+  const modelParameters: Record<string, unknown> | undefined =
+    ctx.turn?.reasoning ? { reasoning: ctx.turn.reasoning } : undefined;
+
   return [
     {
       id: randomUUID(),
@@ -187,15 +261,7 @@ export function buildTracePayload(ctx: ReportContext): unknown[] {
         tags: buildTagList(ctx),
         input: inputText,
         output: outputText,
-        metadata: {
-          success,
-          status: ctx.run.status,
-          error: ctx.run.error ?? undefined,
-          eventsSummary: ctx.eventsSummary,
-          tokens,
-          artifacts: artifactsList,
-          artifactsTruncated,
-        },
+        metadata: traceMetadata,
         timestamp: startTimeIso,
       },
     },
@@ -207,6 +273,11 @@ export function buildTracePayload(ctx: ReportContext): unknown[] {
         id: generationId,
         traceId,
         name: 'llm',
+        // model / modelParameters are first-class on Langfuse generations
+        // (used for token-cost lookup, UI grouping, eval filters), so set
+        // them at the body level instead of stuffing them into metadata.
+        model: ctx.turn?.model,
+        modelParameters,
         startTime: startTimeIso,
         endTime: endTimeIso,
         input: inputText,

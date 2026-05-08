@@ -2312,6 +2312,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
           db,
           dataDir: RUNTIME_DATA_DIR,
           run,
+          appVersion: cachedAppVersion,
         });
       }
     }
@@ -4065,6 +4066,20 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
   const reportedRuns = new Set();
   const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
 
+  // App-version snapshot read once at server start. Used as static metadata
+  // on every Langfuse trace so we can correlate behaviour with releases
+  // without paying the package.json read cost per turn. Updates require a
+  // daemon restart, which is fine — version doesn't change in-process.
+  let cachedAppVersion = null;
+  void (async () => {
+    try {
+      cachedAppVersion = await readCurrentAppVersionInfo();
+    } catch {
+      // Telemetry is best-effort; running with appVersion === null just
+      // omits the field from the trace.
+    }
+  })();
+
   const composeDaemonSystemPrompt = async ({
     agentId,
     projectId,
@@ -4228,10 +4243,16 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     if (typeof clientRequestId === 'string' && clientRequestId)
       run.clientRequestId = clientRequestId;
     if (typeof agentId === 'string' && agentId) run.agentId = agentId;
-    // Stash the original user prompt so the langfuse-bridge onTerminate hook
-    // can include it in the trace without needing to reach back into
-    // chatBody (which it cannot see across the createChatRunService boundary).
+    // Stash the original user prompt + per-turn config so the
+    // langfuse-bridge report path can include them without reaching back
+    // into chatBody across the createChatRunService boundary. Each field
+    // is optional and only set when the chat body actually carried it.
     if (typeof message === 'string' && message) run.userPrompt = message;
+    if (typeof model === 'string' && model) run.model = model;
+    if (typeof reasoning === 'string' && reasoning) run.reasoning = reasoning;
+    if (typeof skillId === 'string' && skillId) run.skillId = skillId;
+    if (typeof designSystemId === 'string' && designSystemId)
+      run.designSystemId = designSystemId;
     const def = getAgentDef(agentId);
     if (!def)
       return design.runs.fail(
@@ -5198,6 +5219,16 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
 
   app.post('/api/runs', (req, res) => {
     const run = design.runs.create(req.body || {});
+    // Capture which front-end carrier started the run (Electron desktop
+    // shell vs. plain browser). Web sets this header explicitly; falls
+    // back to a UA sniff if header is absent. Used as a telemetry tag.
+    const declared = String(req.get('x-od-client') ?? '').toLowerCase();
+    if (declared === 'desktop' || declared === 'web') {
+      run.clientType = declared;
+    } else {
+      const ua = String(req.get('user-agent') ?? '');
+      run.clientType = ua.includes('Electron/') ? 'desktop' : 'web';
+    }
     /** @type {import('@open-design/contracts').ChatRunCreateResponse} */
     const body = { runId: run.id };
     res.status(202).json(body);
