@@ -227,28 +227,44 @@ async function waitForDesktopStatus(config: ToolPackConfig, timeoutMs = 45_000):
   return null;
 }
 
-async function waitForEarlyExit(
-  child: ChildProcess,
-  timeoutMs: number,
-): Promise<{ code: number | null; signal: NodeJS.Signals | null } | null> {
-  return await new Promise((resolveWait) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.off("exit", onExit);
-      resolveWait(null);
-    }, timeoutMs);
+type ProcessExit = { code: number | null; signal: NodeJS.Signals | null };
 
-    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolveWait({ code, signal });
-    };
+function watchProcessExit(child: ChildProcess): {
+  current(): ProcessExit | null;
+  wait(timeoutMs: number): Promise<ProcessExit | null>;
+} {
+  let exit: ProcessExit | null = null;
+  const waiters = new Set<(value: ProcessExit) => void>();
 
-    child.once("exit", onExit);
+  child.once("exit", (code, signal) => {
+    exit = { code, signal };
+    for (const resolveWait of waiters) resolveWait(exit);
+    waiters.clear();
   });
+
+  return {
+    current() {
+      return exit;
+    },
+    async wait(timeoutMs: number): Promise<ProcessExit | null> {
+      if (exit != null) return exit;
+      return await new Promise((resolveWait) => {
+        const timer = setTimeout(() => {
+          waiters.delete(onExit);
+          resolveWait(null);
+        }, timeoutMs);
+        const onExit = (value: ProcessExit) => {
+          clearTimeout(timer);
+          resolveWait(value);
+        };
+        waiters.add(onExit);
+      });
+    },
+  };
+}
+
+function formatExit(exit: ProcessExit): string {
+  return `code=${exit.code ?? "null"} signal=${exit.signal ?? "null"}`;
 }
 
 async function collectLaunchAssessment(appPath: string): Promise<string[]> {
@@ -409,20 +425,28 @@ export async function startPackedMacApp(config: ToolPackConfig): Promise<MacStar
     await logHandle.close().catch(() => undefined);
   }
   const pid = child.pid ?? 0;
-  const earlyExit = await waitForEarlyExit(child, 1500);
+  const exit = watchProcessExit(child);
+  const earlyExit = await exit.wait(1500);
   child.unref();
   if (earlyExit != null) {
     throw new Error(await createLaunchFailureMessage(config, target, {
       pid,
-      reason: `process exited early code=${earlyExit.code ?? "null"} signal=${earlyExit.signal ?? "null"}`,
+      reason: `process exited early ${formatExit(earlyExit)}`,
     }));
   }
 
   const status = await waitForDesktopStatus(config);
+  const delayedExit = exit.current();
+  if (status == null && delayedExit != null) {
+    throw new Error(await createLaunchFailureMessage(config, target, {
+      pid,
+      reason: `process exited before desktop IPC was available ${formatExit(delayedExit)}`,
+    }));
+  }
   if (status == null && !isProcessAlive(pid)) {
     throw new Error(await createLaunchFailureMessage(config, target, {
       pid,
-      reason: "process exited before desktop IPC was available",
+      reason: "process exited before desktop IPC was available without an observed exit event",
     }));
   }
   return {

@@ -116,10 +116,10 @@ export async function runElectronBuilder(
     mac: {
       category: "public.app-category.developer-tools",
       electronLanguages: MAC_ELECTRON_LANGUAGES,
-      entitlements: macResources.entitlements,
-      entitlementsInherit: macResources.entitlementsInherit,
+      entitlements: config.signed ? macResources.entitlements : undefined,
+      entitlementsInherit: config.signed ? macResources.entitlementsInherit : undefined,
       gatekeeperAssess: false,
-      hardenedRuntime: true,
+      hardenedRuntime: config.signed,
       icon: macResources.icon,
       identity: config.signed ? undefined : "-",
       notarize: false,
