@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
+import { en } from './en';
 
 export const ptBR: Dict = {
+  ...en,
   'common.cancel': 'Cancelar',
   'common.save': 'Salvar',
   'common.close': 'Fechar',
@@ -146,6 +148,10 @@ export const ptBR: Dict = {
   'settings.mediaProviderClearConfirm': 'Remover as configurações salvas de {name}? Você precisará inseri-las novamente para usar {name}.',
   'settings.mediaProviderPlaceholder': 'Cole a API key',
   'settings.mediaProviderBaseUrlPlaceholder': 'Sobrescrever Base URL padrão',
+  'settings.mediaProviderReload': 'Recarregar do daemon',
+  'settings.mediaProviderReloadError': 'Não foi possível recarregar as configurações dos provedores de mídia do daemon local.',
+  'settings.mediaProviderReloadSuccess': 'As configurações dos provedores de mídia foram recarregadas do daemon local.',
+  'settings.mediaProviderLoadError': 'Não foi possível carregar as configurações dos provedores de mídia do daemon local. Usando por enquanto as configurações salvas no navegador.',
   'settings.privacy': 'Privacy',
   'settings.privacyHint': 'What data is shared with the Open Design team',
   'settings.privacyConsentKicker': 'Help us improve Open Design',
@@ -469,6 +475,8 @@ export const ptBR: Dict = {
   'examples.previewModalTitle': 'Abrir prévia completa (modal)',
   'examples.shareTitle': 'Compartilhar este exemplo',
   'examples.shareLoadFirst': 'Passe o cursor para carregar a prévia primeiro',
+  'examples.unavailablePlaceholder': 'Sem prévia {kind} incluída — abra para saber mais',
+  'examples.shareUnavailable': 'Sem prévia {kind} incluída para compartilhar',
   'examples.shareMenu': 'Compartilhar ▾',
   'examples.exportPdfAllSlides': 'Exportar como PDF (todos os slides)',
   'examples.exportPptxLocked': 'Exportar como PPTX… (abra o template primeiro)',
@@ -601,6 +609,8 @@ export const ptBR: Dict = {
   'preview.errorTitle': 'Não foi possível carregar este exemplo.',
   'preview.errorBody': 'A obtenção do HTML do exemplo falhou. Verifique se o Open Design está em execução e tente novamente.',
   'preview.retry': 'Tentar novamente',
+  'preview.unavailableTitle': 'Nenhuma prévia incluída para esta skill.',
+  'preview.unavailableBody': 'Esta skill produz um resultado {kind} — execute o prompt no chat para gerar um.',
   'preview.showSidebar': 'Mostrar {label}',
   'preview.hideSidebar': 'Ocultar {label}',
 

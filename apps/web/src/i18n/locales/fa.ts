@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
+import { en } from './en';
 
 export const fa: Dict = {
+  ...en,
   'common.cancel': 'لغو',
   'common.save': 'ذخیره',
   'common.close': 'بستن',
@@ -147,6 +149,10 @@ export const fa: Dict = {
   'settings.mediaProviderClearConfirm': 'پاک کردن تنظیمات ذخیره‌شده‌ی {name}؟ برای استفاده از {name} باید آن‌ها را دوباره وارد کنید.',
   'settings.mediaProviderPlaceholder': 'کلید API را وارد کنید',
   'settings.mediaProviderBaseUrlPlaceholder': 'بازنویسی آدرس پایه پیش‌فرض',
+  'settings.mediaProviderReload': 'بارگذاری دوباره از دیمن محلی',
+  'settings.mediaProviderReloadError': 'بارگذاری دوبارهٔ تنظیمات ارائه‌دهنده‌های رسانه از دیمن محلی ممکن نشد.',
+  'settings.mediaProviderReloadSuccess': 'تنظیمات ارائه‌دهنده‌های رسانه از دیمن محلی دوباره بارگذاری شد.',
+  'settings.mediaProviderLoadError': 'بارگذاری تنظیمات ارائه‌دهنده‌های رسانه از دیمن محلی ممکن نشد. فعلاً از تنظیمات ذخیره‌شده در مرورگر استفاده می‌شود.',
   'settings.privacy': 'Privacy',
   'settings.privacyHint': 'What data is shared with the Open Design team',
   'settings.privacyConsentKicker': 'Help us improve Open Design',
@@ -470,6 +476,8 @@ export const fa: Dict = {
   'examples.previewModalTitle': 'باز کردن پیش‌نمایش کامل (modal)',
   'examples.shareTitle': 'اشتراک‌گذاری این نمونه',
   'examples.shareLoadFirst': 'ابتدا برای بارگذاری پیش‌نمایش هاور کنید',
+  'examples.unavailablePlaceholder': 'پیش‌نمایش {kind} همراه ندارد — برای جزئیات باز کنید',
+  'examples.shareUnavailable': 'پیش‌نمایش {kind} برای اشتراک‌گذاری همراه ندارد',
   'examples.shareMenu': 'اشتراک‌گذاری ▾',
   'examples.exportPdfAllSlides': 'صادرکردن به PDF (همه اسلایدها)',
   'examples.exportPptxLocked': 'صادرکردن به PPTX… (ابتدا قالب را باز کنید)',
@@ -602,6 +610,8 @@ export const fa: Dict = {
   'preview.errorTitle': 'بارگیری این نمونه ممکن نشد.',
   'preview.errorBody': 'دریافت HTML نمونه با خطا مواجه شد. مطمئن شوید Open Design در حال اجراست و دوباره تلاش کنید.',
   'preview.retry': 'تلاش دوباره',
+  'preview.unavailableTitle': 'برای این مهارت پیش‌نمایش همراهی وجود ندارد.',
+  'preview.unavailableBody': 'این مهارت خروجی {kind} تولید می‌کند — برای ساخت یکی، پرامپت را در گفتگو اجرا کنید.',
   'preview.showSidebar': 'نمایش {label}',
   'preview.hideSidebar': 'پنهان کردن {label}',
 

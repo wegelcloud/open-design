@@ -27,6 +27,8 @@ import type {
   LiveArtifactStatus,
   LiveArtifactSummary,
   MediaAspect,
+  OrbitRunSummary,
+  OrbitStatusResponse,
   ProjectDeploymentsResponse,
   ProviderTestRequest,
   PersistedAgentEvent,
@@ -43,6 +45,7 @@ import type {
   ProjectKind,
   ProjectMetadata,
   ProjectTemplate,
+  RenameProjectFileResponse,
   CodexPetSummary,
   CodexPetsResponse,
   SyncCommunityPetsRequest,
@@ -56,12 +59,14 @@ export type {
   CloudflarePagesDeploySelection,
   CloudflarePagesDeploymentInfo,
   CloudflarePagesZonesResponse,
+  OrbitRunSummary,
+  OrbitStatusResponse,
   PreviewCommentMember,
   PreviewCommentSelectionKind,
 } from '@open-design/contracts';
 
 export type ExecMode = 'daemon' | 'api';
-export type ApiProtocol = 'anthropic' | 'openai' | 'azure' | 'google';
+export type ApiProtocol = 'anthropic' | 'openai' | 'azure' | 'google' | 'ollama';
 
 export type LiveArtifactTabId = `live:${string}`;
 export type ProjectWorkspaceTabId = string | LiveArtifactTabId;
@@ -140,6 +145,8 @@ export interface MediaProviderCredentials {
   apiKey: string;
   baseUrl: string;
   model?: string;
+  apiKeyConfigured?: boolean;
+  apiKeyTail?: string;
 }
 
 export interface ApiProtocolConfig {
@@ -419,6 +426,7 @@ export type {
   ProjectKind,
   ProjectMetadata,
   ProjectTemplate,
+  RenameProjectFileResponse,
   ProviderTestRequest,
   CodexPetSummary,
   CodexPetsResponse,
