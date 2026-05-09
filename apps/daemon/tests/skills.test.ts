@@ -359,6 +359,30 @@ describe('importUserSkill / deleteUserSkill', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  // Names like '123', 'true', or 'null' are valid skill ids but YAML coerces
+  // unquoted scalars to non-strings, which broke the importUserSkill ->
+  // listSkills round-trip prior to PR #955 review feedback. The frontmatter
+  // emitter now always quotes `name`, so listSkills should round-trip the
+  // exact string id we wrote.
+  it('round-trips numeric- and boolean-shaped names through listSkills', async () => {
+    const cases = ['123', 'true', 'false', 'null', '0'];
+    for (const name of cases) {
+      const root = fresh();
+      try {
+        const result = await importUserSkill(root, {
+          name,
+          body: `# ${name} body`,
+        });
+        expect(result.id).toBe(name);
+        const skills = await listSkills(root);
+        expect(skills).toHaveLength(1);
+        expect(skills[0]?.id).toBe(name);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 describe('updateUserSkill', () => {

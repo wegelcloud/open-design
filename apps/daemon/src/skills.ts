@@ -664,7 +664,12 @@ function buildSkillMarkdown({
   body,
   triggers,
 }: BuildSkillMarkdownInput): string {
-  const lines: string[] = ["---", `name: ${escapeYamlString(name)}`];
+  // Always emit `name` as a quoted scalar so YAML never coerces it to a
+  // number / boolean / null. Without the quotes, parseYamlSubset() would
+  // re-read names like '123', 'true', or 'null' as non-string literals,
+  // and importUserSkill()'s round-trip ("imported skill could not be
+  // re-read") would fail for those ids. See PR #955 review feedback.
+  const lines: string[] = ["---", `name: "${escapeYamlString(name)}"`];
   if (description && description.trim().length > 0) {
     lines.push("description: |");
     for (const ln of description.trim().split(/\r?\n/)) {
