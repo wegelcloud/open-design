@@ -3385,6 +3385,103 @@ export async function startServer({
     }
   });
 
+  // Plan §3.B4 / spec §6: marketplace registry minimum verbs.
+  // Phase 3 layers in `od plugin install <name>` resolution + the trust
+  // UI on top; this route set is the storage half.
+  app.get('/api/marketplaces', async (_req, res) => {
+    try {
+      const { listMarketplaces } = await import('./plugins/marketplaces.js');
+      res.json({ marketplaces: listMarketplaces(db) });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/marketplaces', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const url = typeof body.url === 'string' ? body.url : '';
+      if (!url) return res.status(400).json({ error: 'url is required' });
+      const trust = body.trust === 'trusted' || body.trust === 'official' ? body.trust : 'restricted';
+      const { addMarketplace } = await import('./plugins/marketplaces.js');
+      const result = await addMarketplace(db, { url, trust });
+      if (!result.ok) {
+        return res.status(result.status).json({
+          error: { code: 'marketplace-add-failed', message: result.message, data: { errors: result.errors ?? [] } },
+        });
+      }
+      res.status(201).json(result.row);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/marketplaces/:id', async (req, res) => {
+    try {
+      const { getMarketplace } = await import('./plugins/marketplaces.js');
+      const row = getMarketplace(db, req.params.id);
+      if (!row) return res.status(404).json({ error: 'marketplace not found' });
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete('/api/marketplaces/:id', async (req, res) => {
+    try {
+      const { removeMarketplace } = await import('./plugins/marketplaces.js');
+      const ok = removeMarketplace(db, req.params.id);
+      if (!ok) return res.status(404).json({ error: 'marketplace not found' });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/marketplaces/:id/refresh', async (req, res) => {
+    try {
+      const { refreshMarketplace } = await import('./plugins/marketplaces.js');
+      const result = await refreshMarketplace(db, req.params.id);
+      if (!result.ok) {
+        return res.status(result.status).json({
+          error: { code: 'marketplace-refresh-failed', message: result.message, data: { errors: result.errors ?? [] } },
+        });
+      }
+      res.json(result.row);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/marketplaces/:id/trust', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const trust = body.trust === 'trusted' || body.trust === 'restricted' || body.trust === 'official'
+        ? body.trust
+        : null;
+      if (!trust) {
+        return res.status(400).json({ error: 'trust must be one of: trusted, restricted, official' });
+      }
+      const { setMarketplaceTrust } = await import('./plugins/marketplaces.js');
+      const row = setMarketplaceTrust(db, req.params.id, trust);
+      if (!row) return res.status(404).json({ error: 'marketplace not found' });
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/marketplaces/:id/plugins', async (req, res) => {
+    try {
+      const { getMarketplace } = await import('./plugins/marketplaces.js');
+      const row = getMarketplace(db, req.params.id);
+      if (!row) return res.status(404).json({ error: 'marketplace not found' });
+      res.json({ plugins: row.manifest.plugins ?? [] });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // Plan §3.A5: list all applied snapshots; useful for `od plugin
   // snapshots list` and the audit dashboard.
   app.get('/api/applied-plugins', (_req, res) => {

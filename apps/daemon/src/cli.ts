@@ -78,6 +78,7 @@ const PLUGIN_STRING_FLAGS = new Set([
   'capabilities',
   'grant-caps',
   'before',
+  'trust',
 ]);
 const PLUGIN_BOOLEAN_FLAGS = new Set([
   'help',
@@ -111,6 +112,7 @@ const SUBCOMMAND_MAP = {
   research: runResearch,
   plugin: runPlugin,
   ui: runUi,
+  marketplace: runMarketplace,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
@@ -818,6 +820,108 @@ async function runPlugin(args) {
     default:
       console.error(`unknown subcommand: od plugin ${sub}`);
       printPluginHelp();
+      process.exit(2);
+  }
+}
+
+// Plan §3.B4 / spec §6: `od marketplace …` minimum verbs. Add / list /
+// refresh / remove / trust. The Phase 3 follow-up wires
+// `od plugin install <name>` resolution through these catalogs.
+async function runMarketplace(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od marketplace add     <url> [--trust trusted|restricted]   Register a federated catalog.
+  od marketplace list                                         List registered marketplaces.
+  od marketplace info    <id>                                 Inspect one marketplace + cached manifest.
+  od marketplace refresh <id>                                 Re-fetch the manifest.
+  od marketplace remove  <id>                                 Forget a marketplace.
+  od marketplace trust   <id> [--trust trusted|restricted|official]
+                                                              Update the marketplace trust tier.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL or http://127.0.0.1:7456).
+  --json               Emit raw JSON (suitable for scripts).`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const base = pluginDaemonUrl(flags).replace(/\/$/, '');
+  switch (sub) {
+    case 'list': {
+      const resp = await fetch(`${base}/api/marketplaces`);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) return structuredHttpFailure(resp);
+      if (flags.json) {
+        process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+        return;
+      }
+      const rows = data?.marketplaces ?? [];
+      if (rows.length === 0) {
+        console.log('No marketplaces registered. Run `od marketplace add <url>`.');
+        return;
+      }
+      for (const m of rows) {
+        console.log(`${m.id}  trust=${m.trust}  url=${m.url}`);
+      }
+      return;
+    }
+    case 'add': {
+      const url = rest.find((a) => !a.startsWith('-'));
+      if (!url) {
+        console.error('Usage: od marketplace add <url> [--trust trusted|restricted]');
+        process.exit(2);
+      }
+      const trust = flags.trust ?? 'restricted';
+      const resp = await fetch(`${base}/api/marketplaces`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url, trust }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`add failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      console.log(`[marketplace] added ${data.id} (${data.url}) trust=${data.trust}`);
+      return;
+    }
+    case 'info':
+    case 'refresh':
+    case 'remove':
+    case 'trust': {
+      const id = rest.find((a) => !a.startsWith('-')
+        && a !== flags.trust);
+      if (!id) {
+        console.error(`Usage: od marketplace ${sub} <id>`);
+        process.exit(2);
+      }
+      let url;
+      let method = 'GET';
+      let body;
+      if (sub === 'info')         url = `${base}/api/marketplaces/${encodeURIComponent(id)}`;
+      else if (sub === 'refresh') { url = `${base}/api/marketplaces/${encodeURIComponent(id)}/refresh`; method = 'POST'; }
+      else if (sub === 'remove')  { url = `${base}/api/marketplaces/${encodeURIComponent(id)}`; method = 'DELETE'; }
+      else if (sub === 'trust') {
+        const trust = flags.trust ?? 'trusted';
+        url = `${base}/api/marketplaces/${encodeURIComponent(id)}/trust`;
+        method = 'POST';
+        body = JSON.stringify({ trust });
+      }
+      const resp = await fetch(url, {
+        method,
+        ...(body ? { headers: { 'content-type': 'application/json' }, body } : {}),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`${sub} failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od marketplace ${sub}`);
       process.exit(2);
   }
 }

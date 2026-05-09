@@ -7,6 +7,7 @@ export * from './connector-gate.js';
 export * from './doctor.js';
 export * from './installer.js';
 export * from './persistence.js';
+export * from './marketplaces.js';
 export * from './pipeline.js';
 export * from './pipeline-runner.js';
 export * from './registry.js';
