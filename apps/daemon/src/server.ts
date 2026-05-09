@@ -3430,6 +3430,68 @@ export async function startServer({
     res.json({ atoms: FIRST_PARTY_ATOMS.map((a) => ({ ...a, taskKinds: a.taskKinds.slice() })) });
   });
 
+  // Plan §3.H2 / spec §12.2 — craft list endpoint.
+  // Mirrors the daemon's existing /api/skills + /api/design-systems
+  // discovery surface so `od craft list` is a thin wrapper over a
+  // single HTTP call. Each entry returns a slug + size + first
+  // markdown header so a code agent can browse without a separate
+  // /api/craft/:id read.
+  app.get('/api/craft', async (_req, res) => {
+    try {
+      const fsp = await import('node:fs/promises');
+      let entries;
+      try {
+        entries = await fsp.readdir(CRAFT_DIR, { withFileTypes: true });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          return res.json({ craft: [] });
+        }
+        throw err;
+      }
+      const out = [];
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+        const slug = entry.name.replace(/\.md$/, '');
+        try {
+          const fullPath = `${CRAFT_DIR}/${entry.name}`;
+          const text = await fsp.readFile(fullPath, 'utf8');
+          const heading = text.split('\n').find((line) => line.startsWith('# '));
+          out.push({
+            id:     slug,
+            label:  heading ? heading.replace(/^#+\s*/, '').trim() : slug,
+            bytes:  Buffer.byteLength(text, 'utf8'),
+          });
+        } catch {
+          // Skip unreadable files; surface what we can.
+        }
+      }
+      res.json({ craft: out });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/craft/:id', async (req, res) => {
+    try {
+      const slug = req.params.id;
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+        return res.status(400).json({ error: 'invalid craft id' });
+      }
+      const fsp = await import('node:fs/promises');
+      try {
+        const text = await fsp.readFile(`${CRAFT_DIR}/${slug}.md`, 'utf8');
+        res.json({ id: slug, body: text });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          return res.status(404).json({ error: 'craft section not found' });
+        }
+        throw err;
+      }
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   app.get('/api/applied-plugins/:snapshotId', (req, res) => {
     try {
       const snap = getSnapshot(db, req.params.snapshotId);

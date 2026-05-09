@@ -79,6 +79,7 @@ const PLUGIN_STRING_FLAGS = new Set([
   'grant-caps',
   'before',
   'trust',
+  'tag',
 ]);
 const PLUGIN_BOOLEAN_FLAGS = new Set([
   'help',
@@ -118,6 +119,12 @@ const SUBCOMMAND_MAP = {
   files: runFiles,
   conversation: runConversation,
   daemon: runDaemon,
+  atoms: runAtoms,
+  skills: runSkills,
+  'design-systems': runDesignSystems,
+  craft: runCraft,
+  status: runStatus,
+  version: runVersion,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
@@ -986,6 +993,53 @@ Common options:
       }
       for (const m of rows) {
         console.log(`${m.id}  trust=${m.trust}  url=${m.url}`);
+      }
+      return;
+    }
+    case 'search': {
+      // Plan §3.H4 / spec §12 — marketplace catalog query. Walks
+      // every configured marketplace's plugins[] entry and matches
+      // by substring on name + description + tags.
+      const query = (rest.find((a) => !a.startsWith('-')) ?? '').toLowerCase();
+      if (!query) {
+        console.error('Usage: od marketplace search "<query>" [--tag <tag>]');
+        process.exit(2);
+      }
+      const tag = typeof flags.tag === 'string' ? flags.tag.toLowerCase() : null;
+      const resp = await fetch(`${base}/api/marketplaces`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      const matches = [];
+      for (const mp of data?.marketplaces ?? []) {
+        const plugins = mp.manifest?.plugins ?? [];
+        for (const p of plugins) {
+          const haystack = [
+            p.name ?? '',
+            p.description ?? '',
+            ...(Array.isArray(p.tags) ? p.tags : []),
+          ].join(' ').toLowerCase();
+          if (!haystack.includes(query)) continue;
+          if (tag && !(Array.isArray(p.tags) && p.tags.map((t) => t.toLowerCase()).includes(tag))) continue;
+          matches.push({
+            marketplaceId:  mp.id,
+            marketplaceUrl: mp.url,
+            name:           p.name,
+            source:         p.source,
+            description:    p.description ?? '',
+            tags:           p.tags ?? [],
+          });
+        }
+      }
+      if (flags.json) {
+        process.stdout.write(JSON.stringify({ matches }, null, 2) + '\n');
+        return;
+      }
+      if (matches.length === 0) {
+        console.log(`No matches for "${query}"`);
+        return;
+      }
+      for (const m of matches) {
+        console.log(`${m.name}\t${m.source}\t${m.marketplaceId}\t${m.description}`);
       }
       return;
     }
@@ -2455,4 +2509,142 @@ async function runDaemonStop(flags) {
   }
   if (!resp.ok) return structuredHttpFailure(resp);
   console.log(`[daemon] shutdown scheduled`);
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od atoms / od skills / od design-systems / od craft / od status
+//
+// Plan §3.H2 / §3.H3 / spec §12.2 — design-library + status introspection
+// CLI parity. Every UI feature reachable via /api/* gets a CLI mirror
+// (the §11.7 "headless = canonical" invariant).
+// ---------------------------------------------------------------------------
+
+function libraryDaemonUrl(flags) {
+  return (flags && flags['daemon-url']) || process.env.OD_DAEMON_URL || 'http://127.0.0.1:7456';
+}
+
+const LIBRARY_STRING_FLAGS = new Set(['daemon-url', 'query', 'tag']);
+const LIBRARY_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
+async function runAtoms(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od atoms list             List first-party atoms (implemented + planned).
+  od atoms show <id>        Print one atom's metadata.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: LIBRARY_STRING_FLAGS, boolean: LIBRARY_BOOLEAN_FLAGS });
+  const base = libraryDaemonUrl(flags).replace(/\/$/, '');
+  switch (sub) {
+    case 'list': {
+      const resp = await fetch(`${base}/api/atoms`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const atoms = data?.atoms ?? [];
+      for (const a of atoms) {
+        console.log(`${a.id}\t${a.status}\t[${(a.taskKinds ?? []).join(', ')}]\t${a.label}`);
+      }
+      return;
+    }
+    case 'show': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od atoms show <id>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/atoms`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      const atom = (data?.atoms ?? []).find((a) => a.id === id);
+      if (!atom) {
+        console.error(`atom ${id} not found`);
+        process.exit(65);
+      }
+      process.stdout.write(JSON.stringify(atom, null, 2) + '\n');
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od atoms ${sub}`);
+      process.exit(2);
+  }
+}
+
+async function runLibraryList(name, args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od ${name} list           List ${name}.
+  od ${name} show <id>      Print one entry.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: LIBRARY_STRING_FLAGS, boolean: LIBRARY_BOOLEAN_FLAGS });
+  const base = libraryDaemonUrl(flags).replace(/\/$/, '');
+  const apiPath = name === 'design-systems' ? '/api/design-systems' : `/api/${name}`;
+  switch (sub) {
+    case 'list': {
+      const resp = await fetch(`${base}${apiPath}`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const rows = data?.[name === 'design-systems' ? 'designSystems' : name] ?? [];
+      for (const row of rows) {
+        const label = row.title ?? row.name ?? row.id ?? row.label;
+        console.log(`${row.id}\t${label}`);
+      }
+      return;
+    }
+    case 'show': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error(`Usage: od ${name} show <id>`);
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}${apiPath}/${encodeURIComponent(id)}`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od ${name} ${sub}`);
+      process.exit(2);
+  }
+}
+
+async function runSkills(args)        { return runLibraryList('skills', args); }
+async function runDesignSystems(args) { return runLibraryList('design-systems', args); }
+async function runCraft(args)         { return runLibraryList('craft', args); }
+
+async function runStatus(args) {
+  // Alias of `od daemon status`.
+  return runDaemon(['status', ...args]);
+}
+
+async function runVersion(args) {
+  const flags = parseFlags(args, { string: LIBRARY_STRING_FLAGS, boolean: LIBRARY_BOOLEAN_FLAGS });
+  const base = libraryDaemonUrl(flags).replace(/\/$/, '');
+  let resp;
+  try {
+    resp = await fetch(`${base}/api/version`);
+  } catch (err) {
+    return exitWithStructuredError({
+      code:    'daemon-not-running',
+      message: `Cannot reach daemon at ${base}: ${err?.message ?? err}`,
+    });
+  }
+  if (!resp.ok) return structuredHttpFailure(resp);
+  const data = await resp.json();
+  if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+  const version = typeof data?.version === 'string'
+    ? data.version
+    : (data?.version?.version ?? JSON.stringify(data));
+  console.log(version);
 }
