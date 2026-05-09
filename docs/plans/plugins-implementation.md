@@ -114,7 +114,13 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `apps/daemon/src/plugins/export.ts` | shipped | Phase 4 — `od plugin export <projectId> --as …` |
 | `apps/daemon/src/plugins/publish.ts` | shipped | Phase 4 — `od plugin publish --to <catalog>` URL builder |
 | `apps/daemon/src/plugins/bundled.ts` | shipped | Phase 4 (§23.3.5 entry slice) — boot walker for `plugins/_official/**` |
+| `apps/daemon/src/plugins/atom-bodies.ts` | shipped | Phase 4 (§23.3.2 entry slice) — bundled-atom SKILL.md body loader |
 | `plugins/_official/atoms/<atom>/{SKILL.md,open-design.json}` | shipped | Phase 4 (§23.3.2 entry slice) — bundled atom SKILL.md fragments |
+| `packages/agui-adapter/` | shipped | Phase 4 — pure-TS AG-UI canonical event encoder |
+| `packages/contracts/src/prompts/atom-block.ts` | shipped | Phase 4 — `renderActiveStageBlock(stageId, bodies)` pure renderer |
+| `tools/pack/docker-compose.yml` | shipped | Phase 5 entry slice — hosted-mode reference manifest |
+| `tools/pack/helm/open-design/{Chart,values,README}.yaml` | shipped | Phase 5 entry slice — Helm chart parameter surface (templates pending) |
+| `deploy/Dockerfile` plugins/_official COPY | shipped | Phase 5 — bundled atoms travel with the image |
 | `apps/daemon/src/plugins/trust.ts` | shipped | Phase 1 + Phase 2A — `validateCapabilityList`, `grantCapabilities`, `revokeCapabilities` |
 | `apps/daemon/src/plugins/doctor.ts` | shipped | Phase 1 (manifest + atom + ref checks) → expanded Phase 3 |
 | `apps/daemon/src/genui/registry.ts` | shipped | Phase 2A — F8 cross-conversation cache + lifecycle |
@@ -164,7 +170,7 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `POST /api/applied-plugins/prune` | shipped | Phase 5 (early) — operator escape hatch |
 | `GET /api/daemon/status` | shipped | Phase 1.5 |
 | `POST /api/daemon/shutdown` | shipped | Phase 1.5 — loopback-only |
-| `GET /api/runs/:runId/agui` | absent | Phase 4 |
+| `GET /api/runs/:runId/agui` | shipped | Phase 4 — pipes events through `@open-design/agui-adapter` |
 
 ### 3.5 CLI subcommands
 
@@ -445,7 +451,7 @@ Deliverables
 - [x] `od plugin publish --to anthropics-skills|awesome-agent-skills|clawhub|skills-sh` (PR template launcher) — `apps/daemon/src/plugins/publish.ts`.
 - [x] CLI parity remainder: `od skills/design-systems/craft/atoms list/show`, `od status`, `od version`, `od marketplace search`, `od doctor`, `od config get/set/list/unset`.
 - [x] Optional `plugins/_official/atoms/<atom>/SKILL.md` extraction (spec §23.3.2 patch 2) — entry slice ships four atom SKILL.md fragments + the bundled boot walker; the system.ts → SKILL.md prompt-composer rewiring stays open.
-- [ ] `@open-design/agui-adapter` package; `GET /api/runs/:runId/agui` SSE endpoint emits AG-UI canonical events.
+- [x] `@open-design/agui-adapter` package; `GET /api/runs/:runId/agui` SSE endpoint emits AG-UI canonical events.
 - [ ] Plugin manifest upgrade: `od.genui.surfaces[].component` (capability gate `genui:custom-component`).
 
 Validation
@@ -457,13 +463,13 @@ Validation
 
 Deliverables
 
-- [ ] `linux/amd64` + `linux/arm64` Dockerfile per spec §15.1 (`node:24-bookworm-slim` base, non-root uid 10001, bundled `ffmpeg` / `git` / `ripgrep`).
+- [x] `linux/amd64` + `linux/arm64` Dockerfile per spec §15.1 (`deploy/Dockerfile`; entry-slice base is `node:24-alpine` with `NODE_IMAGE` build-arg override → `node:24-bookworm-slim`; bundled atom plugins ship inside the image).
 - [ ] CI pushes `:edge` on main, `:<version>` on tag.
-- [ ] `tools/pack/docker-compose.yml`, `tools/pack/helm/`.
+- [x] `tools/pack/docker-compose.yml`, `tools/pack/helm/` (entry slice — values + Chart shipped; templates pending).
 - [ ] Bound-API-token guard: daemon refuses to bind `OD_BIND_HOST=0.0.0.0` without `OD_API_TOKEN`; bearer middleware on `/api/*` skipped only on loopback.
 - [ ] `ProjectStorage` adapter for S3-compatible blob stores.
 - [ ] `DaemonDb` adapter for Postgres.
-- [ ] **Snapshot retention enforcement job (PB2).** Periodic worker (default every 6 h, knob `OD_SNAPSHOT_GC_INTERVAL_MS`) deletes `applied_plugin_snapshots` rows where `expires_at IS NOT NULL AND expires_at <= now()`. When `OD_SNAPSHOT_RETENTION_DAYS` is set, the worker additionally retires referenced rows older than the window if and only if the referencing run/conversation/project is itself terminal. Audit log entry per deletion. CLI escape hatch: `od plugin snapshots prune --before <ts>` for forced cleanup. Plays alongside §15.7 hosted defaults.
+- [x] **Snapshot retention enforcement job (PB2).** Landed early (§3.A5): periodic worker (`OD_SNAPSHOT_GC_INTERVAL_MS`, default 6 h) deletes expired rows. Referenced-row TTL via `OD_SNAPSHOT_RETENTION_DAYS` stays opt-in. CLI escape hatch: `od plugin snapshots prune --before <ts>`.
 
 Validation
 
@@ -534,10 +540,10 @@ Plus repo-wide gates
 
 | Field | Value |
 | --- | --- |
-| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (scaffold + export + publish + atoms doc + library/status/version CLI + doctor + config + bundled atoms boot walker + pipeline-into-startChatRun) + early 5 |
-| Next planned PR | composeSystemPrompt() reads atom prompt fragments from `plugins/_official/atoms/<atom>/SKILL.md` instead of inline `system.ts` constants (spec §23.3.2 patch 2); `@open-design/agui-adapter` package + `GET /api/runs/:runId/agui` (Phase 4); `od.genui.surfaces[].component` plugin manifest upgrade (Phase 4); Phase 5 Docker image + Postgres / S3 adapters |
+| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (scaffold + export + publish + atoms doc + library/status/version CLI + doctor + config + bundled atoms + pipeline-into-startChatRun + AG-UI adapter + atom-block renderer) + 5 entry slice (docker-compose + Helm values + bundled-atom Dockerfile bake) |
+| Next planned PR | composeSystemPrompt() reads atom prompt fragments from `loadAtomBodies()` instead of inline `system.ts` constants (spec §23.3.2 patch 2 — substrate slice landed; the rewiring itself is the next PR); `od.genui.surfaces[].component` plugin manifest upgrade (Phase 4 / spec §10.3.5 Phase 4 column); CI: GitHub Actions push `:edge` / `:<version>` to ghcr.io; Phase 5 bound-API-token guard + Postgres + S3 adapters |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 4 doctor + config + bundled atoms + pipeline-into-startChatRun + e2e-3 full contract landing) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 4 AG-UI adapter + renderActiveStageBlock + atom body loader + Phase 5 docker-compose / Helm entry slice landing) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
