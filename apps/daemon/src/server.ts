@@ -3391,6 +3391,33 @@ export async function startServer({
       const changed = hasAssistant
         ? []
         : await extractFromMessage(RUNTIME_DATA_DIR, userMessage);
+      // BYOK chat config — only forwarded by the web app for API-mode
+      // chats. We strip the surface to the five fields pickProvider()
+      // actually consumes and validate the provider against the four
+      // shapes the extractor speaks; an unknown / missing provider
+      // means "let the legacy chain decide" so a malformed payload
+      // can't override the env / media-config fallbacks.
+      const rawChat = body.chatProvider;
+      let chatProvider = null;
+      if (rawChat && typeof rawChat === 'object') {
+        const provider = rawChat.provider;
+        if (
+          provider === 'anthropic'
+          || provider === 'openai'
+          || provider === 'azure'
+          || provider === 'google'
+          || provider === 'ollama'
+        ) {
+          chatProvider = {
+            provider,
+            apiKey: typeof rawChat.apiKey === 'string' ? rawChat.apiKey : '',
+            baseUrl: typeof rawChat.baseUrl === 'string' ? rawChat.baseUrl : '',
+            apiVersion:
+              typeof rawChat.apiVersion === 'string' ? rawChat.apiVersion : '',
+            model: typeof rawChat.model === 'string' ? rawChat.model : '',
+          };
+        }
+      }
       let attemptedLLM = false;
       if (userMessage.trim().length > 0 && hasAssistant) {
         attemptedLLM = true;
@@ -3399,7 +3426,11 @@ export async function startServer({
             extractWithLLM(
               RUNTIME_DATA_DIR,
               { userMessage, assistantMessage },
-              { projectRoot: PROJECT_ROOT, chatAgentId: null },
+              {
+                projectRoot: PROJECT_ROOT,
+                chatAgentId: null,
+                chatProvider,
+              },
             ),
           )
           .catch((err) =>

@@ -166,6 +166,35 @@ export interface ExtractMemoryRequest {
   assistantMessage?: string;
   projectId?: string | null;
   conversationId?: string | null;
+  /** BYOK chat config snapshot. The web app sends this with every
+   *  BYOK / API-mode extraction call so the daemon can run LLM
+   *  extraction against the *current* chat provider/key/baseUrl/
+   *  apiVersion when no explicit memory model override is set —
+   *  i.e. the picker is on "Same as chat". Without it the daemon's
+   *  `pickProvider()` falls back to env vars or the media-config
+   *  OpenAI key, which is wrong for BYOK chats whose creds the
+   *  daemon never persists.
+   *
+   *  When the user has set an explicit memory model (override
+   *  exists), the override always wins and this field is ignored.
+   *  CLI-mode extraction calls leave this empty — the agent-id
+   *  constrained branch in `pickProvider()` handles those.
+   *
+   *  An empty `apiKey` (or missing field) is treated as "no usable
+   *  BYOK config" and falls through to the legacy provider chain so
+   *  a half-configured BYOK form doesn't silently break extraction. */
+  chatProvider?: {
+    provider: MemoryExtractionProvider;
+    apiKey?: string;
+    baseUrl?: string;
+    /** Azure-only `?api-version=…` value. Ignored for other providers. */
+    apiVersion?: string;
+    /** Optional — the daemon prefers a fast/cheap default per protocol
+     *  (`claude-haiku-4-5` / `gpt-4o-mini` / etc.) over the chat model
+     *  the user is paying for. Pass this only when the caller
+     *  explicitly wants the same model used for both. */
+    model?: string;
+  };
 }
 
 export interface ExtractMemoryResponse {
@@ -287,8 +316,11 @@ export interface MemoryExtractionRecord {
     /** Where the credential came from. `'memory-config'` = the explicit
      *  override under Settings → Memory; `'env'` = ANTHROPIC_API_KEY /
      *  OPENAI_API_KEY in the daemon's environment; `'media-config'` =
-     *  the OpenAI key the user configured under Settings → Media providers. */
-    credentialSource: 'memory-config' | 'env' | 'media-config';
+     *  the OpenAI key the user configured under Settings → Media
+     *  providers; `'chat-byok'` = the live BYOK chat provider/key/
+     *  baseUrl threaded through `/api/memory/extract` for "Same as
+     *  chat" extraction in API mode. */
+    credentialSource: 'memory-config' | 'env' | 'media-config' | 'chat-byok';
   };
   /** First ~120 chars of the user's message for display in the list. */
   userMessagePreview: string;

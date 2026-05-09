@@ -203,20 +203,34 @@ function chatProtocolFromAgentId(agentId) {
 //      background" surprise — if the matching key isn't configured,
 //      we'd rather skip with 'no-provider' and surface that in the
 //      history than quietly run on a different vendor's key.
-//   2. (legacy fallback, only when we can't tell which CLI is in use)
+//   2. BYOK chat-config snapshot → for API-mode chats (the picker is
+//      on "Same as chat"), `/api/memory/extract` forwards the live
+//      chat provider/key/baseUrl/apiVersion as `chatProvider`. We use
+//      it directly with the per-protocol fast-model default so the
+//      default extractor follows the chat configuration instead of
+//      falling through to env / media-config which the daemon never
+//      saw the user configure. The model deliberately overrides the
+//      user-supplied `chatProvider.model` only when none was given —
+//      memory should default to a cheaper/faster model than the chat
+//      model the user is paying for.
+//   3. (legacy fallback, only when we can't tell which CLI is in use
+//      AND the caller didn't pass `chatProvider`)
 //      ANTHROPIC_API_KEY env → Claude Haiku 4.5
-//   3. (legacy fallback) OPENAI_API_KEY env → gpt-4o-mini
-//   4. (legacy fallback) media-config OpenAI BYOK → gpt-4o-mini
+//   4. (legacy fallback) OPENAI_API_KEY env → gpt-4o-mini
+//   5. (legacy fallback) media-config OpenAI BYOK → gpt-4o-mini
 //
 // The `OD_MEMORY_MODEL` env continues to override the model name across
-// (1)–(4) so power users don't lose that lever. It does NOT override the
+// (1)–(5) so power users don't lose that lever. It does NOT override the
 // memory-config provider since that one carries an explicit user choice.
 // `projectRoot` is required for the media-config path; `chatAgentId` is
 // optional but recommended — without it we fall through to the legacy
 // unconstrained chain, which is what the daemon used to do and what
 // pre-context callers (the HTTP /api/memory/extract endpoint) still
-// expect.
-async function pickProvider(projectRoot, dataDir, chatAgentId) {
+// expect. `chatProvider` is the BYOK chat-config snapshot threaded
+// through from the web app on a per-call basis (the daemon never
+// persists BYOK creds, so this is the only signal we have for that
+// mode).
+async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider) {
   let override = null;
   if (dataDir) {
     try {
@@ -340,6 +354,51 @@ async function pickProvider(projectRoot, dataDir, chatAgentId) {
     // out instead of wandering — recording 'skipped: no-provider' is
     // strictly more useful than silently running on a foreign vendor.
     return null;
+  }
+
+  // BYOK chat-config snapshot (path 2). The web app forwards the live
+  // chat provider/key/baseUrl/apiVersion on every API-mode extraction
+  // call so the daemon can run extraction against the same vendor the
+  // user is chatting with — even though the daemon never persists
+  // BYOK creds itself. Use the per-protocol fast-model default instead
+  // of the chat model the user is paying for, so a memory pass on a
+  // big chat model (gpt-4o, claude-sonnet-4-5) silently turns into a
+  // cheap haiku/mini call. The caller can opt into using the chat
+  // model verbatim by setting `chatProvider.model`.
+  if (
+    chatProvider
+    && chatProvider.provider
+    && PROVIDER_DEFAULTS[chatProvider.provider]
+  ) {
+    const apiKey =
+      typeof chatProvider.apiKey === 'string' ? chatProvider.apiKey.trim() : '';
+    if (apiKey) {
+      const defaults = PROVIDER_DEFAULTS[chatProvider.provider];
+      const baseUrl =
+        (typeof chatProvider.baseUrl === 'string' && chatProvider.baseUrl.trim())
+        || defaults.baseUrl;
+      // Azure with no resource URL is unrecoverable — same guard as
+      // the override path above.
+      if (chatProvider.provider !== 'azure' || baseUrl) {
+        const explicitModel =
+          typeof chatProvider.model === 'string' && chatProvider.model.trim()
+            ? chatProvider.model.trim()
+            : '';
+        return {
+          kind: chatProvider.provider,
+          apiKey,
+          model: envOverrideModel || explicitModel || defaults.model,
+          baseUrl,
+          apiVersion:
+            chatProvider.provider === 'azure'
+              ? (typeof chatProvider.apiVersion === 'string'
+                  && chatProvider.apiVersion.trim())
+                || PROVIDER_DEFAULTS.azure.apiVersion
+              : '',
+          credentialSource: 'chat-byok',
+        };
+      }
+    }
   }
 
   if (process.env.ANTHROPIC_API_KEY) {
@@ -678,6 +737,12 @@ function alreadyKnown(existing, candidate) {
 export async function extractWithLLM(dataDir, input, options) {
   const projectRoot = options?.projectRoot ?? null;
   const chatAgentId = options?.chatAgentId ?? null;
+  // BYOK chat-config snapshot — only present for API-mode calls
+  // forwarded through `/api/memory/extract`. The daemon doesn't
+  // persist BYOK creds, so this per-call signal is the *only* way
+  // pickProvider() can run "Same as chat" extraction against the
+  // user's actual chat provider.
+  const chatProvider = options?.chatProvider ?? null;
   const userMessage = String(input?.userMessage || '').trim();
 
   const cfg = await readMemoryConfig(dataDir);
@@ -690,7 +755,12 @@ export async function extractWithLLM(dataDir, input, options) {
     return [];
   }
 
-  const provider = await pickProvider(projectRoot, dataDir, chatAgentId);
+  const provider = await pickProvider(
+    projectRoot,
+    dataDir,
+    chatAgentId,
+    chatProvider,
+  );
   if (!provider) {
     recordSkip({ userMessage, reason: 'no-provider' });
     return [];

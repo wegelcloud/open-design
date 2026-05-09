@@ -1339,6 +1339,27 @@ export function ProjectView({
         // BYOK users even though the UI saves model + index + entries
         // for that mode.
         const userText = (userMsg.content ?? '').trim();
+        // Snapshot the live BYOK chat config so the daemon can run
+        // "Same as chat" memory extraction against the same vendor /
+        // key / baseUrl / apiVersion the user is chatting with. The
+        // daemon never persists BYOK creds itself, so this per-call
+        // signal is the only way `pickProvider()` can avoid falling
+        // through to env / media-config (which is wrong for BYOK)
+        // when no explicit memory model override is set. The picker
+        // re-syncs an *explicit* override when chat config drifts;
+        // this snapshot covers the implicit "Same as chat" default.
+        const byokChatProvider =
+          config.apiProtocol && config.apiKey
+            ? {
+                provider: config.apiProtocol,
+                apiKey: config.apiKey,
+                baseUrl: config.baseUrl,
+                apiVersion:
+                  config.apiProtocol === 'azure'
+                    ? config.apiVersion ?? ''
+                    : '',
+              }
+            : undefined;
         if (userText.length > 0) {
           try {
             await fetch('/api/memory/extract', {
@@ -1348,6 +1369,7 @@ export function ProjectView({
                 userMessage: userText,
                 projectId: project.id,
                 conversationId: activeConversationId,
+                chatProvider: byokChatProvider,
               }),
             });
           } catch {
@@ -1378,6 +1400,7 @@ export function ProjectView({
                 assistantMessage: accumulatedAssistantText,
                 projectId: project.id,
                 conversationId: activeConversationId,
+                chatProvider: byokChatProvider,
               }),
             }).catch(() => {
               // Best-effort: see comment above on the pre-turn call.
