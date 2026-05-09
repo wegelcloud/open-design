@@ -50,6 +50,7 @@ import type { MediaProvider } from '../media/models';
 import { PetSettings } from './pet/PetSettings';
 import { McpClientSection } from './McpClientSection';
 import { LibrarySection } from './LibrarySection';
+import { PrivacySection } from './PrivacySection';
 import { ConnectorsBrowser } from './ConnectorsBrowser';
 import { MemoryModelInline } from './MemoryModelInline';
 import { MemorySection } from './MemorySection';
@@ -79,6 +80,7 @@ export type SettingsSection =
   | 'pet'
   | 'memory'
   | 'library'
+  | 'privacy'
   | 'about';
 
 interface Props {
@@ -944,6 +946,7 @@ export function SettingsDialog({
     language: { title: t('settings.language'), subtitle: t('settings.languageHint') },
     appearance: { title: t('settings.appearance'), subtitle: t('settings.appearanceHint') },
     notifications: { title: t('settings.notifications'), subtitle: t('settings.notificationsHint') },
+    privacy: { title: t('settings.privacy'), subtitle: t('settings.privacyHint') },
     pet: { title: t('pet.title'), subtitle: t('pet.subtitle') },
     memory: { title: t('settings.memory'), subtitle: t('settings.memoryHint') },
     library: { title: t('settings.library'), subtitle: t('settings.libraryHint') },
@@ -1176,6 +1179,17 @@ export function SettingsDialog({
               <span>
                 <strong>{t('pet.navTitle')}</strong>
                 <small>{t('pet.navHint')}</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`settings-nav-item${activeSection === 'privacy' ? ' active' : ''}`}
+              onClick={() => setActiveSection('privacy')}
+            >
+              <Icon name="eye" size={18} />
+              <span>
+                <strong>{t('settings.privacy')}</strong>
+                <small>{t('settings.privacyHint')}</small>
               </span>
             </button>
             <button
@@ -1897,6 +1911,10 @@ export function SettingsDialog({
 
           {activeSection === 'library' ? (
             <LibrarySection cfg={cfg} setCfg={setCfg} />
+          ) : null}
+
+          {activeSection === 'privacy' ? (
+            <PrivacySection cfg={cfg} setCfg={setCfg} />
           ) : null}
 
           {activeSection === 'about' ? (
