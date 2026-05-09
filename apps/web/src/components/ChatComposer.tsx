@@ -603,6 +603,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       const value = e.target.value;
       const cursor = e.target.selectionStart;
       setDraft(value);
+      // Keep the staged-skill chips in sync with the draft. If the user
+      // hand-deletes an `@<id>` token from the textarea, the chip must
+      // disappear too — otherwise submit() would still forward that id in
+      // skillIds and the daemon would compose a skill the prompt no
+      // longer references. Mirror the removeStagedSkill() boundary
+      // (whitespace or string edge) so partial matches don't keep a chip
+      // alive accidentally. We do not run the same prune for `staged`
+      // file attachments because users frequently attach files via the
+      // upload button without leaving an `@<path>` token in the draft.
+      setStagedSkills((prev) =>
+        prev.filter((s) =>
+          new RegExp(`(^|\\s)@${escapeRegExp(s.id)}(\\s|$)`).test(value),
+        ),
+      );
       // Detect a fresh @ at start or after whitespace; capture the typed
       // query up to the cursor.
       const before = value.slice(0, cursor);
