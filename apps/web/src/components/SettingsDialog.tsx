@@ -11,6 +11,12 @@ import {
 import { DEFAULT_NOTIFICATIONS, KNOWN_PROVIDERS } from '../state/config';
 import type { KnownProvider } from '../state/config';
 import {
+  API_KEY_PLACEHOLDERS,
+  API_PROTOCOL_LABELS,
+  API_PROTOCOL_TABS,
+  SUGGESTED_MODELS_BY_PROTOCOL,
+} from '../state/apiProtocols';
+import {
   MAX_MAX_TOKENS,
   MIN_MAX_TOKENS,
   modelMaxTokensDefault,
@@ -30,6 +36,8 @@ import { MEDIA_PROVIDERS } from '../media/models';
 import type { MediaProvider } from '../media/models';
 import { PetSettings } from './pet/PetSettings';
 import { LibrarySection } from './LibrarySection';
+import { MemoryModelInline } from './MemoryModelInline';
+import { MemorySection } from './MemorySection';
 import {
   applyAppearanceToDocument,
   normalizeAccentColor,
@@ -52,6 +60,7 @@ export type SettingsSection =
   | 'appearance'
   | 'notifications'
   | 'pet'
+  | 'memory'
   | 'library'
   | 'about';
 
@@ -73,78 +82,6 @@ export interface AgentRefreshOptions {
   throwOnError?: boolean;
   agentCliEnv?: AppConfig['agentCliEnv'];
 }
-
-const SUGGESTED_MODELS_BY_PROTOCOL = {
-  anthropic: [
-    'claude-opus-4-5',
-    'claude-sonnet-4-5',
-    'claude-haiku-4-5',
-    'deepseek-chat',
-    'deepseek-reasoner',
-    'deepseek-v4-flash',
-    'deepseek-v4-pro',
-    'MiniMax-M2.7-highspeed',
-    'MiniMax-M2.7',
-    'MiniMax-M2.5-highspeed',
-    'MiniMax-M2.5',
-    'MiniMax-M2.1-highspeed',
-    'MiniMax-M2.1',
-    'MiniMax-M2',
-    'mimo-v2.5-pro',
-  ],
-  openai: [
-    'gpt-4o',
-    'gpt-4o-mini',
-    'o3',
-    'o4-mini',
-    'deepseek-chat',
-    'deepseek-reasoner',
-    'deepseek-v4-flash',
-    'deepseek-v4-pro',
-    'MiniMax-M2.7-highspeed',
-    'MiniMax-M2.7',
-    'MiniMax-M2.5-highspeed',
-    'MiniMax-M2.5',
-    'MiniMax-M2.1-highspeed',
-    'MiniMax-M2.1',
-    'MiniMax-M2',
-    'mimo-v2.5-pro',
-  ],
-  azure: [
-    'gpt-4o',
-    'gpt-4o-mini',
-  ],
-  google: [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
-  ],
-} as const;
-
-const API_PROTOCOL_TABS: Array<{
-  id: ApiProtocol;
-  title: string;
-}> = [
-  { id: 'anthropic', title: 'Anthropic' },
-  { id: 'openai', title: 'OpenAI' },
-  { id: 'azure', title: 'Azure OpenAI' },
-  { id: 'google', title: 'Google Gemini' },
-];
-
-const API_PROTOCOL_LABELS: Record<ApiProtocol, string> = {
-  anthropic: 'Anthropic API',
-  openai: 'OpenAI API',
-  azure: 'Azure OpenAI',
-  google: 'Google Gemini',
-};
-
-const API_KEY_PLACEHOLDERS: Record<ApiProtocol, string> = {
-  anthropic: 'sk-ant-...',
-  openai: 'sk-...',
-  azure: 'azure key',
-  google: 'AIza...',
-};
 
 type RescanNotice =
   | { kind: 'success'; count: number }
@@ -888,6 +825,28 @@ export function SettingsDialog({
             </button>
             <button
               type="button"
+              className={`settings-nav-item${activeSection === 'memory' ? ' active' : ''}`}
+              onClick={() => setActiveSection('memory')}
+            >
+              <Icon name="history" size={18} />
+              <span>
+                <strong>{t('settings.memory')}</strong>
+                <small>{t('settings.memoryHint')}</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`settings-nav-item${activeSection === 'library' ? ' active' : ''}`}
+              onClick={() => setActiveSection('library')}
+            >
+              <Icon name="grid" size={18} />
+              <span>
+                <strong>{t('settings.library')}</strong>
+                <small>{t('settings.libraryHint')}</small>
+              </span>
+            </button>
+            <button
+              type="button"
               className={`settings-nav-item${activeSection === 'media' ? ' active' : ''}`}
               onClick={() => setActiveSection('media')}
             >
@@ -961,17 +920,6 @@ export function SettingsDialog({
               <span>
                 <strong>{t('pet.navTitle')}</strong>
                 <small>{t('pet.navHint')}</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`settings-nav-item${activeSection === 'library' ? ' active' : ''}`}
-              onClick={() => setActiveSection('library')}
-            >
-              <Icon name="grid" size={18} />
-              <span>
-                <strong>{t('settings.library')}</strong>
-                <small>{t('settings.libraryHint')}</small>
               </span>
             </button>
             <button
@@ -1311,6 +1259,20 @@ export function SettingsDialog({
                         </select>
                       </label>
                     ) : null}
+                    <MemoryModelInline
+                      mode="daemon"
+                      apiProtocol={apiProtocol}
+                      chatApiKey={cfg.apiKey}
+                      chatBaseUrl={cfg.baseUrl}
+                      chatApiVersion={cfg.apiVersion ?? ''}
+                      chatModel={modelValue}
+                      cliAgentId={selected.id}
+                      cliModelOptions={
+                        hasModels
+                          ? selected.models!.map((m) => m.id)
+                          : []
+                      }
+                    />
                     <p className="hint">{t('settings.modelPickerHint')}</p>
                   </div>
                 );
@@ -1496,6 +1458,14 @@ export function SettingsDialog({
                   />
                 </label>
               ) : null}
+              <MemoryModelInline
+                mode="api"
+                apiProtocol={apiProtocol}
+                chatApiKey={cfg.apiKey}
+                chatBaseUrl={cfg.baseUrl}
+                chatApiVersion={cfg.apiVersion ?? ''}
+                chatModel={cfg.model}
+              />
               <label className="field">
                 <span className="field-label">{t('settings.baseUrl')}</span>
                 <input
@@ -1630,6 +1600,8 @@ export function SettingsDialog({
           {activeSection === 'pet' ? (
             <PetSettings cfg={cfg} setCfg={setCfg} />
           ) : null}
+
+          {activeSection === 'memory' ? <MemorySection /> : null}
 
           {activeSection === 'library' ? (
             <LibrarySection cfg={cfg} setCfg={setCfg} />

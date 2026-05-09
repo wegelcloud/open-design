@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { EntryView } from './components/EntryView';
 import type { CreateInput } from './components/NewProjectPanel';
+import { MemoryToast } from './components/MemoryToast';
 import { PetOverlay } from './components/pet/PetOverlay';
 import { migrateCustomPetAtlas } from './components/pet/pets';
 import { ProjectView } from './components/ProjectView';
@@ -613,6 +614,7 @@ export function App() {
           onRefreshAgents={refreshAgents}
         />
       ) : null}
+      <MemoryToast onOpenMemory={() => openSettings('memory')} />
     </>
   );
 }

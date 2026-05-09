@@ -35,6 +35,26 @@ import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './nati
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
 import { listDesignSystems, readDesignSystem } from './design-systems.js';
+import {
+  composeMemoryBody,
+  deleteMemoryEntry,
+  extractFromMessage,
+  listMemoryEntries,
+  maskMemoryExtractionConfig,
+  memoryDir,
+  memoryEvents,
+  readMemoryConfig,
+  readMemoryEntry,
+  readMemoryIndex,
+  upsertMemoryEntry,
+  writeMemoryConfig,
+  writeMemoryIndex,
+} from './memory.js';
+import {
+  clearExtractions as clearMemoryExtractions,
+  listExtractions as listMemoryExtractions,
+  removeExtraction as removeMemoryExtraction,
+} from './memory-extractions.js';
 import { attachAcpSession } from './acp.js';
 import { attachPiRpcSession } from './pi-rpc.js';
 import { createClaudeStreamHandler } from './claude-stream.js';
@@ -2511,6 +2531,216 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     }
   });
 
+  // ----- Memory store -----------------------------------------------------
+  // Markdown-on-disk memory under <dataDir>/memory/. The daemon folds these
+  // into every system prompt (gated by `enabled`) and the chat run loop
+  // calls `/api/memory/extract` after each turn to sediment new facts.
+  app.get('/api/memory', async (_req, res) => {
+    try {
+      const [config, index, entries] = await Promise.all([
+        readMemoryConfig(RUNTIME_DATA_DIR),
+        readMemoryIndex(RUNTIME_DATA_DIR),
+        listMemoryEntries(RUNTIME_DATA_DIR),
+      ]);
+      res.json({
+        enabled: config.enabled,
+        rootDir: memoryDir(RUNTIME_DATA_DIR),
+        index,
+        entries,
+        extraction: maskMemoryExtractionConfig(config.extraction),
+      });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Static sub-resources (`/index`, `/config`, `/extract`) registered
+  // BEFORE the `:id` catch-alls so an `index` / `config` / `extract` slug
+  // can't shadow the real handlers.
+  app.put('/api/memory/index', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const index = typeof body.index === 'string' ? body.index : '';
+      await writeMemoryIndex(RUNTIME_DATA_DIR, index);
+      res.json({ index });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  app.patch('/api/memory/config', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const patch = {};
+      if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
+      // Three-state extraction handling so the UI can: (a) leave the
+      // override alone (omit `extraction`), (b) clear it back to
+      // auto-pick (`extraction: null`), or (c) commit a custom override
+      // (`extraction: { provider, ... }`). Preserves the existing
+      // apiKey when the patch contains the same provider but no apiKey
+      // field — matches how the masked GET response surfaces an
+      // `apiKeyTail` without echoing the secret.
+      if (Object.prototype.hasOwnProperty.call(body, 'extraction')) {
+        if (body.extraction === null) {
+          patch.extraction = null;
+        } else if (body.extraction && typeof body.extraction === 'object') {
+          const incoming = body.extraction;
+          const current = await readMemoryConfig(RUNTIME_DATA_DIR);
+          const reuseKey =
+            current.extraction
+            && current.extraction.provider === incoming.provider
+            && (incoming.apiKey === undefined || incoming.apiKey === '')
+              ? current.extraction.apiKey
+              : '';
+          patch.extraction = {
+            provider: incoming.provider,
+            model:
+              typeof incoming.model === 'string' ? incoming.model : undefined,
+            baseUrl:
+              typeof incoming.baseUrl === 'string'
+                ? incoming.baseUrl
+                : undefined,
+            apiKey:
+              typeof incoming.apiKey === 'string' && incoming.apiKey
+                ? incoming.apiKey
+                : reuseKey,
+            // Azure-only; ignored by the validator for the other providers.
+            // We forward whatever the UI sent (or the previously-stored
+            // value when the UI omits the field) so re-saving an azure
+            // override without re-typing the api-version doesn't blank it.
+            apiVersion:
+              typeof incoming.apiVersion === 'string'
+                ? incoming.apiVersion
+                : current.extraction?.apiVersion,
+          };
+        }
+      }
+      const next = await writeMemoryConfig(RUNTIME_DATA_DIR, patch);
+      res.json({
+        enabled: next.enabled,
+        extraction: maskMemoryExtractionConfig(next.extraction),
+      });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  // SSE feed of memory mutations. The web settings panel subscribes to
+  // this and re-fetches on every event; toast UIs can listen for
+  // `kind === 'extract'` and surface a small "Memory updated (N new)"
+  // notification. Payload shape: MemoryChangeEvent (see ./memory.ts).
+  //
+  // The same connection also forwards `extraction` events — one per LLM
+  // extraction phase transition — so the settings panel can render a
+  // live "recent extractions" list. We multiplex on a single SSE stream
+  // so the browser opens one connection instead of two.
+  app.get('/api/memory/events', async (_req, res) => {
+    const sse = createSseResponse(res);
+    sse.send('connected', { at: Date.now() });
+    const onChange = (event) => {
+      sse.send('change', event);
+    };
+    const onExtraction = (event) => {
+      sse.send('extraction', event);
+    };
+    memoryEvents.on('change', onChange);
+    memoryEvents.on('extraction', onExtraction);
+    res.on('close', () => {
+      memoryEvents.off('change', onChange);
+      memoryEvents.off('extraction', onExtraction);
+    });
+  });
+
+  // Recent LLM-extraction attempts (newest first; capped server-side).
+  // Surfaces skip reasons, in-flight calls, success counts, and errors
+  // so the settings panel can show "why didn't memory update?" at a
+  // glance instead of leaving the user to guess.
+  app.get('/api/memory/extractions', async (_req, res) => {
+    try {
+      res.json({ extractions: listMemoryExtractions() });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Drop the entire extraction history. Registered BEFORE the `:id`
+  // catch-all so a literal "/api/memory/extractions" can still be
+  // cleared with `curl -X DELETE`.
+  app.delete('/api/memory/extractions', async (_req, res) => {
+    try {
+      const removed = clearMemoryExtractions();
+      res.json({ removed });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  app.delete('/api/memory/extractions/:id', async (req, res) => {
+    try {
+      const removed = removeMemoryExtraction(req.params.id);
+      res.json({ removed });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  // Imperative extract — `chat run` calls this internally after each user
+  // turn. Surfaced as HTTP so curl can exercise the regex pack independently
+  // of the chat path and a future settings UI can replay extraction.
+  app.post('/api/memory/extract', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const userMessage =
+        typeof body.userMessage === 'string' ? body.userMessage : '';
+      const changed = await extractFromMessage(RUNTIME_DATA_DIR, userMessage);
+      res.json({ changed });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  app.post('/api/memory', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const entry = await upsertMemoryEntry(RUNTIME_DATA_DIR, body);
+      res.json({ entry });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  app.get('/api/memory/:id', async (req, res) => {
+    try {
+      const entry = await readMemoryEntry(RUNTIME_DATA_DIR, req.params.id);
+      if (!entry) return res.status(404).json({ error: 'memory not found' });
+      res.json({ entry });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  app.put('/api/memory/:id', async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const entry = await upsertMemoryEntry(RUNTIME_DATA_DIR, {
+        ...body,
+        id: req.params.id,
+      });
+      res.json({ entry });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  app.delete('/api/memory/:id', async (req, res) => {
+    try {
+      await deleteMemoryEntry(RUNTIME_DATA_DIR, req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
   // Showcase HTML for a design system — palette swatches, typography
   // samples, sample components, and the full DESIGN.md rendered as prose.
   // Built at request time from the on-disk DESIGN.md so any update to the
@@ -3873,6 +4103,17 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       }
     }
 
+    // Personal-memory body is always recomputed at compose time so a
+    // memory the user just edited in settings shows up on the very next
+    // run. composeMemoryBody returns '' when memory is disabled or
+    // empty; the composer drops the block on a falsy value.
+    let memoryBody = '';
+    try {
+      memoryBody = await composeMemoryBody(RUNTIME_DATA_DIR);
+    } catch (err) {
+      console.warn('[memory] composeMemoryBody failed', err);
+    }
+
     let designSystemBody;
     let designSystemTitle;
     if (effectiveDesignSystemId) {
@@ -3944,6 +4185,7 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
       designSystemTitle,
       craftBody,
       craftSections,
+      memoryBody,
       metadata,
       template,
       critique: critiqueShouldRun ? critiqueCfg : undefined,
@@ -4005,6 +4247,21 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
     }
     if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
     const runId = run.id;
+
+    // Auto-memory hook. Pulls explicit "remember:" / "我是 X" / "I prefer Y"
+    // markers out of the just-arrived user message and writes them as MD
+    // files under <dataDir>/memory/. We await so the very next
+    // composeSystemPrompt() call (a few lines below) re-reads memory from
+    // disk and a marker inside this turn's message is reflected in this
+    // turn's prompt. Failures are swallowed — memory is best-effort and
+    // must never block the agent run.
+    if (typeof message === 'string' && message.trim().length > 0) {
+      try {
+        await extractFromMessage(RUNTIME_DATA_DIR, message);
+      } catch (err) {
+        console.warn('[memory] extractFromMessage failed', err);
+      }
+    }
 
     // Resolve the project working directory (creating the folder if it
     // doesn't exist yet). Without one we don't pass cwd to spawn — the
@@ -4446,6 +4703,51 @@ export async function startServer({ port = 7456, host = process.env.OD_BIND_HOST
 
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
+
+    // ---- Memory: assistant-reply buffer for LLM extraction --------------
+    // Capture up to 32 KiB of raw stdout. The LLM extractor (fired in the
+    // close handler) trims further; we only need enough to ground the
+    // model. Multiple `on('data')` listeners coexist — the wrapper-stream
+    // handlers below also subscribe and that's fine.
+    const MEMORY_BUFFER_CAP = 32 * 1024;
+    let memoryAssistantBuffer = '';
+    child.stdout.on('data', (chunk) => {
+      if (memoryAssistantBuffer.length >= MEMORY_BUFFER_CAP) return;
+      memoryAssistantBuffer += String(chunk);
+      if (memoryAssistantBuffer.length > MEMORY_BUFFER_CAP) {
+        memoryAssistantBuffer = memoryAssistantBuffer.slice(0, MEMORY_BUFFER_CAP);
+      }
+    });
+    child.on('close', () => {
+      // Fire-and-forget LLM extraction. Won't block the run completion
+      // path; failures are recorded as 'failed' attempts inside the
+      // extractor and surfaced via the /api/memory/extractions endpoint
+      // and SSE feed. We pass PROJECT_ROOT so the extractor can fall
+      // back to the OpenAI key configured under Settings → Media
+      // providers when no env-var key is available.
+      const captured = memoryAssistantBuffer;
+      const userMsg = typeof message === 'string' ? message : '';
+      // Forward the chat agent id so memory-llm.pickProvider can
+      // constrain its auto-pick to the chat protocol's family — keeps
+      // a Claude Code (anthropic) chat from triggering OpenAI/gpt-4o-
+      // mini extraction in the background just because the user has
+      // an OpenAI key parked in media-config.
+      void import('./memory-llm.js')
+        .then(({ extractWithLLM }) =>
+          extractWithLLM(
+            RUNTIME_DATA_DIR,
+            {
+              userMessage: userMsg,
+              assistantMessage: captured,
+            },
+            {
+              projectRoot: PROJECT_ROOT,
+              chatAgentId: typeof agentId === 'string' ? agentId : null,
+            },
+          ),
+        )
+        .catch((err) => console.warn('[memory-llm] background failed', err));
+    });
 
     // Critique Theater branch (M0 dark launch, default disabled).
     // Only plain-stream adapters are routed through runOrchestrator in v1.
