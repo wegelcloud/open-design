@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import { homedir } from 'node:os';
 import {
-  assert, chmodSync, detectAgents, join, minimalAgentDef, mkdirSync, mkdtempSync, resolveAgentExecutable, rmSync, spawnEnvForAgent, tmpdir, withPlatform, writeFileSync,
+  assert, chmodSync, detectAgents, join, minimalAgentDef, mkdirSync, mkdtempSync, resolveAgentExecutable, rmSync, spawnEnvForAgent, tmpdir, withEnvSnapshot, withPlatform, writeFileSync,
 } from './helpers/test-helpers.js';
 
 // Issue #398: Claude Code prefers ANTHROPIC_API_KEY over `claude login`
@@ -64,18 +64,20 @@ test('spawnEnvForAgent expands configured env home paths', () => {
 test('resolveAgentExecutable prefers a configured CODEX_BIN override over PATH resolution', () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-codex-bin-'));
   try {
-    const configured = join(dir, 'codex-custom');
-    writeFileSync(configured, '#!/bin/sh\nexit 0\n');
-    chmodSync(configured, 0o755);
-    process.env.PATH = '';
-    process.env.OD_AGENT_HOME = dir;
+    return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () => {
+      const configured = join(dir, 'codex-custom');
+      writeFileSync(configured, '#!/bin/sh\nexit 0\n');
+      chmodSync(configured, 0o755);
+      process.env.PATH = '';
+      process.env.OD_AGENT_HOME = dir;
 
-    const resolved = resolveAgentExecutable(
-      minimalAgentDef({ id: 'codex', bin: 'codex' }),
-      { CODEX_BIN: configured },
-    );
+      const resolved = resolveAgentExecutable(
+        minimalAgentDef({ id: 'codex', bin: 'codex' }),
+        { CODEX_BIN: configured },
+      );
 
-    assert.equal(resolved, configured);
+      assert.equal(resolved, configured);
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -94,21 +96,23 @@ test('resolveAgentExecutable supports configured binary overrides for non-Codex 
   ];
   const dir = mkdtempSync(join(tmpdir(), 'od-agent-bin-overrides-'));
   try {
-    process.env.PATH = '';
-    process.env.OD_AGENT_HOME = dir;
+    return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () => {
+      process.env.PATH = '';
+      process.env.OD_AGENT_HOME = dir;
 
-    for (const [id, binName, envKey] of cases) {
-      const configured = join(dir, `${binName}-custom`);
-      writeFileSync(configured, '#!/bin/sh\nexit 0\n');
-      chmodSync(configured, 0o755);
+      for (const [id, binName, envKey] of cases) {
+        const configured = join(dir, `${binName}-custom`);
+        writeFileSync(configured, '#!/bin/sh\nexit 0\n');
+        chmodSync(configured, 0o755);
 
-      const resolved = resolveAgentExecutable(
-        minimalAgentDef({ id, bin: binName }),
-        { [envKey]: configured },
-      );
+        const resolved = resolveAgentExecutable(
+          minimalAgentDef({ id, bin: binName }),
+          { [envKey]: configured },
+        );
 
-      assert.equal(resolved, configured, `expected ${id} to use ${envKey}`);
-    }
+        assert.equal(resolved, configured, `expected ${id} to use ${envKey}`);
+      }
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -118,19 +122,21 @@ test('resolveAgentExecutable ignores relative CODEX_BIN overrides', () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-codex-bin-rel-'));
   const oldCwd = process.cwd();
   try {
-    const configured = 'codex-custom';
-    writeFileSync(join(dir, configured), '#!/bin/sh\nexit 0\n');
-    chmodSync(join(dir, configured), 0o755);
-    process.chdir(dir);
-    process.env.PATH = '';
-    process.env.OD_AGENT_HOME = dir;
+    return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () => {
+      const configured = 'codex-custom';
+      writeFileSync(join(dir, configured), '#!/bin/sh\nexit 0\n');
+      chmodSync(join(dir, configured), 0o755);
+      process.chdir(dir);
+      process.env.PATH = '';
+      process.env.OD_AGENT_HOME = dir;
 
-    const resolved = resolveAgentExecutable(
-      minimalAgentDef({ id: 'codex', bin: 'codex' }),
-      { CODEX_BIN: configured },
-    );
+      const resolved = resolveAgentExecutable(
+        minimalAgentDef({ id: 'codex', bin: 'codex' }),
+        { CODEX_BIN: configured },
+      );
 
-    assert.equal(resolved, null);
+      assert.equal(resolved, null);
+    });
   } finally {
     process.chdir(oldCwd);
     rmSync(dir, { recursive: true, force: true });
@@ -140,24 +146,26 @@ test('resolveAgentExecutable ignores relative CODEX_BIN overrides', () => {
 test('resolveAgentExecutable ignores configured binary overrides that are not executable files', () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-agent-bin-invalid-'));
   try {
-    const directoryOverride = join(dir, 'as-directory');
-    mkdirSync(directoryOverride);
-    const fileOverride = join(dir, 'not-executable');
-    writeFileSync(fileOverride, '#!/bin/sh\nexit 0\n');
-    if (process.platform !== 'win32') chmodSync(fileOverride, 0o644);
-    process.env.PATH = '';
-    process.env.OD_AGENT_HOME = dir;
+    return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () => {
+      const directoryOverride = join(dir, 'as-directory');
+      mkdirSync(directoryOverride);
+      const fileOverride = join(dir, 'not-executable');
+      writeFileSync(fileOverride, '#!/bin/sh\nexit 0\n');
+      if (process.platform !== 'win32') chmodSync(fileOverride, 0o644);
+      process.env.PATH = '';
+      process.env.OD_AGENT_HOME = dir;
 
-    assert.equal(
-      resolveAgentExecutable(minimalAgentDef({ id: 'codex', bin: 'codex' }), { CODEX_BIN: directoryOverride }),
-      null,
-    );
-    if (process.platform !== 'win32') {
       assert.equal(
-        resolveAgentExecutable(minimalAgentDef({ id: 'codex', bin: 'codex' }), { CODEX_BIN: fileOverride }),
+        resolveAgentExecutable(minimalAgentDef({ id: 'codex', bin: 'codex' }), { CODEX_BIN: directoryOverride }),
         null,
       );
-    }
+      if (process.platform !== 'win32') {
+        assert.equal(
+          resolveAgentExecutable(minimalAgentDef({ id: 'codex', bin: 'codex' }), { CODEX_BIN: fileOverride }),
+          null,
+        );
+      }
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -166,22 +174,24 @@ test('resolveAgentExecutable ignores configured binary overrides that are not ex
 test('resolveAgentExecutable ignores Windows CODEX_BIN overrides without executable PATHEXT extension', () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-agent-bin-win-invalid-'));
   try {
-    const invalidOverride = join(dir, 'codex-custom.txt');
-    const fallback = join(dir, 'codex.CMD');
-    writeFileSync(invalidOverride, '@echo off\r\nexit /b 0\r\n');
-    writeFileSync(fallback, '@echo off\r\nexit /b 0\r\n');
-    process.env.PATH = dir;
-    process.env.PATHEXT = '.EXE;.CMD;.BAT';
-    process.env.OD_AGENT_HOME = dir;
+    return withEnvSnapshot(['PATH', 'PATHEXT', 'OD_AGENT_HOME'], () => {
+      const invalidOverride = join(dir, 'codex-custom.txt');
+      const fallback = join(dir, 'codex.CMD');
+      writeFileSync(invalidOverride, '@echo off\r\nexit /b 0\r\n');
+      writeFileSync(fallback, '@echo off\r\nexit /b 0\r\n');
+      process.env.PATH = dir;
+      process.env.PATHEXT = '.EXE;.CMD;.BAT';
+      process.env.OD_AGENT_HOME = dir;
 
-    const resolved = withPlatform('win32', () =>
-      resolveAgentExecutable(
-        minimalAgentDef({ id: 'codex', bin: 'codex' }),
-        { CODEX_BIN: invalidOverride },
-      ),
-    );
+      const resolved = withPlatform('win32', () =>
+        resolveAgentExecutable(
+          minimalAgentDef({ id: 'codex', bin: 'codex' }),
+          { CODEX_BIN: invalidOverride },
+        ),
+      );
 
-    assert.equal(resolved, fallback);
+      assert.equal(resolved, fallback);
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -190,20 +200,22 @@ test('resolveAgentExecutable ignores Windows CODEX_BIN overrides without executa
 test('resolveAgentExecutable accepts Windows CODEX_BIN overrides with executable PATHEXT extension', () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-agent-bin-win-valid-'));
   try {
-    const configured = join(dir, 'codex-custom.CMD');
-    writeFileSync(configured, '@echo off\r\nexit /b 0\r\n');
-    process.env.PATH = '';
-    process.env.PATHEXT = '.EXE;.CMD;.BAT';
-    process.env.OD_AGENT_HOME = dir;
+    return withEnvSnapshot(['PATH', 'PATHEXT', 'OD_AGENT_HOME'], () => {
+      const configured = join(dir, 'codex-custom.CMD');
+      writeFileSync(configured, '@echo off\r\nexit /b 0\r\n');
+      process.env.PATH = '';
+      process.env.PATHEXT = '.EXE;.CMD;.BAT';
+      process.env.OD_AGENT_HOME = dir;
 
-    const resolved = withPlatform('win32', () =>
-      resolveAgentExecutable(
-        minimalAgentDef({ id: 'codex', bin: 'codex' }),
-        { CODEX_BIN: configured },
-      ),
-    );
+      const resolved = withPlatform('win32', () =>
+        resolveAgentExecutable(
+          minimalAgentDef({ id: 'codex', bin: 'codex' }),
+          { CODEX_BIN: configured },
+        ),
+      );
 
-    assert.equal(resolved, configured);
+      assert.equal(resolved, configured);
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -212,29 +224,31 @@ test('resolveAgentExecutable accepts Windows CODEX_BIN overrides with executable
 test('detectAgents applies configured env while probing the CLI', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'od-agent-env-'));
   try {
-    const bin = join(dir, process.platform === 'win32' ? 'claude.cmd' : 'claude');
-    if (process.platform === 'win32') {
-      writeFileSync(
-        bin,
-        '@echo off\r\nif "%~1"=="--version" (\r\n  echo %CLAUDE_CONFIG_DIR%\r\n  exit /b 0\r\n)\r\nif "%~1"=="-p" (\r\n  echo --add-dir --include-partial-messages\r\n  exit /b 0\r\n)\r\nexit /b 0\r\n',
-      );
-    } else {
-      writeFileSync(
-        bin,
-        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "$CLAUDE_CONFIG_DIR"; exit 0; fi\nif [ "$1" = "-p" ]; then echo "--add-dir --include-partial-messages"; exit 0; fi\nexit 0\n',
-      );
-      chmodSync(bin, 0o755);
-    }
-    process.env.PATH = dir;
-    process.env.OD_AGENT_HOME = dir;
+    await withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], async () => {
+      const bin = join(dir, process.platform === 'win32' ? 'claude.cmd' : 'claude');
+      if (process.platform === 'win32') {
+        writeFileSync(
+          bin,
+          '@echo off\r\nif "%~1"=="--version" (\r\n  echo %CLAUDE_CONFIG_DIR%\r\n  exit /b 0\r\n)\r\nif "%~1"=="-p" (\r\n  echo --add-dir --include-partial-messages\r\n  exit /b 0\r\n)\r\nexit /b 0\r\n',
+        );
+      } else {
+        writeFileSync(
+          bin,
+          '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "$CLAUDE_CONFIG_DIR"; exit 0; fi\nif [ "$1" = "-p" ]; then echo "--add-dir --include-partial-messages"; exit 0; fi\nexit 0\n',
+        );
+        chmodSync(bin, 0o755);
+      }
+      process.env.PATH = dir;
+      process.env.OD_AGENT_HOME = dir;
 
-    const agents = await detectAgents({
-      claude: { CLAUDE_CONFIG_DIR: '/tmp/claude-config-probe' },
+      const agents = await detectAgents({
+        claude: { CLAUDE_CONFIG_DIR: '/tmp/claude-config-probe' },
+      });
+
+      const detected = agents.find((agent) => agent.id === 'claude');
+      assert.equal(detected?.available, true);
+      assert.equal(detected?.version, '/tmp/claude-config-probe');
     });
-
-    const detected = agents.find((agent) => agent.id === 'claude');
-    assert.equal(detected?.available, true);
-    assert.equal(detected?.version, '/tmp/claude-config-probe');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

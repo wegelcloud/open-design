@@ -152,3 +152,33 @@ export function withPlatform<T>(platform: NodeJS.Platform, run: () => T): T {
   });
   return run();
 }
+
+export function withEnvSnapshot<T>(
+  keys: readonly string[],
+  run: () => T | Promise<T>,
+): T | Promise<T> {
+  const snapshot = new Map(keys.map((key) => [key, process.env[key]]));
+  const restore = () => {
+    for (const key of keys) {
+      const value = snapshot.get(key);
+      if (value == null) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  };
+
+  let result: T | Promise<T>;
+  try {
+    result = run();
+  } catch (error) {
+    restore();
+    throw error;
+  }
+  if (result instanceof Promise) {
+    return result.finally(restore);
+  }
+  restore();
+  return result;
+}
