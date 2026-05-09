@@ -824,6 +824,7 @@ async function runPlugin(args) {
     case 'run':       return runPluginRun(rest);
     case 'scaffold': return runPluginScaffold(rest);
     case 'export':   return runPluginExport(rest);
+    case 'publish':  return runPluginPublish(rest);
     default:
       console.error(`unknown subcommand: od plugin ${sub}`);
       printPluginHelp();
@@ -1368,6 +1369,94 @@ function coerceCliValue(raw) {
   if (raw === 'false') return false;
   if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
   return raw;
+}
+
+// Phase 4 / spec §14.1 — `od plugin publish --to <catalog>`.
+//
+// Reads the installed plugin's manifest metadata (or the snapshot's
+// frozen view via --snapshot-id) and prints the catalog submission URL
+// + PR body. With `--open` the CLI auto-launches the system browser
+// against the URL so the author lands on the catalog's submission form
+// in one step. We never POST anywhere — the upstream review flow is
+// always under the author's control.
+async function runPluginPublish(rest) {
+  const flags = parseFlags(rest, {
+    string: new Set(['daemon-url', 'to', 'snapshot-id', 'repo']),
+    boolean: new Set(['help', 'h', 'json', 'open']),
+  });
+  if (rest.length === 0 || flags.help || flags.h) {
+    console.log(`Usage:
+  od plugin publish <pluginId> --to anthropics-skills|awesome-agent-skills|clawhub|skills-sh
+                    [--repo <github-url>] [--snapshot-id <id>] [--open] [--json]
+
+The CLI prints the catalog's submission URL + a pre-filled PR body.
+Pass --open to auto-launch the system browser. Use --snapshot-id to
+publish from a frozen run snapshot rather than the live installed copy.`);
+    process.exit(rest.length === 0 ? 2 : 0);
+  }
+  const id = rest.find((a) => !a.startsWith('-')
+    && a !== flags.to
+    && a !== flags.repo
+    && a !== flags['snapshot-id']);
+  const target = String(flags.to ?? '');
+  if (!id) {
+    console.error('Usage: od plugin publish <pluginId> --to <catalog>');
+    process.exit(2);
+  }
+  if (!target) {
+    console.error('--to <catalog> is required (one of: anthropics-skills, awesome-agent-skills, clawhub, skills-sh)');
+    process.exit(2);
+  }
+  const base = pluginDaemonUrl(flags).replace(/\/$/, '');
+  // Pull the plugin metadata from the daemon. We do this through the
+  // existing /api/plugins/:id endpoint so the CLI never needs a direct
+  // SQLite handle; everything stays loopback-mediated.
+  let meta = { pluginId: id, pluginVersion: '0.0.0' };
+  try {
+    const resp = await fetch(`${base}/api/plugins/${encodeURIComponent(id)}`);
+    if (resp.ok) {
+      const row = await resp.json();
+      meta = {
+        pluginId:          row.id ?? id,
+        pluginVersion:     row.version ?? '0.0.0',
+        ...(row.title              ? { pluginTitle: row.title }                       : {}),
+        ...(row.manifest?.description ? { pluginDescription: row.manifest.description } : {}),
+      };
+    }
+  } catch {
+    // Best-effort; if the daemon isn't reachable we still try to build
+    // a link from the user's flags so the author doesn't need a daemon
+    // to publish.
+  }
+  if (typeof flags.repo === 'string' && flags.repo.length > 0) {
+    meta.repoUrl = flags.repo;
+  }
+  const { buildPublishLink, PublishError } = await import('./plugins/publish.js');
+  let link;
+  try {
+    link = buildPublishLink({ catalog: target, meta });
+  } catch (err) {
+    if (err instanceof PublishError) {
+      console.error(`[publish] ${err.message}`);
+      process.exit(2);
+    }
+    throw err;
+  }
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(link, null, 2) + '\n');
+  } else {
+    console.log(`[publish] ${link.catalogLabel}`);
+    console.log(link.url);
+    console.log('---');
+    console.log(link.prBody);
+  }
+  if (flags.open) {
+    const opener = process.platform === 'darwin' ? 'open'
+      : process.platform === 'win32' ? 'start'
+      : 'xdg-open';
+    const { spawn } = await import('node:child_process');
+    spawn(opener, [link.url], { detached: true, stdio: 'ignore' }).unref();
+  }
 }
 
 async function runPluginDoctor(rest) {

@@ -1,0 +1,141 @@
+// Phase 4 / spec §14.1 — `od plugin publish --to <catalog>` PR-template launcher.
+//
+// Produces a deep-link URL into the target catalog's "submit" form
+// (or its repo PR template) so an author can land their plugin on
+// every catalog the spec lists in §14 without remembering the URL
+// scheme of each one. We never mutate the catalog directly — the
+// author still goes through the upstream review flow.
+//
+// Targets (must stay in sync with spec §14):
+//   - anthropics-skills      → anthropics/skills
+//   - awesome-agent-skills   → VoltAgent/awesome-agent-skills
+//   - clawhub                → openclaw/clawhub
+//   - skills-sh              → skills.sh discovery hint
+//
+// The function is pure: it accepts the plugin's metadata and returns
+// the catalog target description. The CLI is the side-effect-bearing
+// caller (prints the URL or auto-opens via `open`/`xdg-open`).
+
+export type PublishCatalog =
+  | 'anthropics-skills'
+  | 'awesome-agent-skills'
+  | 'clawhub'
+  | 'skills-sh';
+
+export interface PublishMetadata {
+  // Plugin name + version come from the manifest. The repo URL is the
+  // upstream the author published the plugin under (github.com/owner/repo).
+  pluginId: string;
+  pluginVersion: string;
+  pluginTitle?: string;
+  pluginDescription?: string;
+  repoUrl?: string;
+}
+
+export interface PublishLink {
+  catalog: PublishCatalog;
+  // Human-readable name of the catalog ("anthropics/skills", etc.).
+  catalogLabel: string;
+  // The URL the author lands on. Either a "create issue / new PR"
+  // wizard with the title + body pre-filled, or the catalog's contact
+  // page when the catalog has no submission form.
+  url: string;
+  // Optional pre-rendered PR body the author can copy if the URL's
+  // query string strips it. Always supplied; UI / CLI display it.
+  prBody: string;
+}
+
+export class PublishError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PublishError';
+  }
+}
+
+const KNOWN_TARGETS = new Set<PublishCatalog>([
+  'anthropics-skills',
+  'awesome-agent-skills',
+  'clawhub',
+  'skills-sh',
+]);
+
+export function buildPublishLink(args: {
+  catalog: PublishCatalog;
+  meta: PublishMetadata;
+}): PublishLink {
+  if (!KNOWN_TARGETS.has(args.catalog)) {
+    throw new PublishError(`unknown catalog: ${args.catalog}. Accepted: ${Array.from(KNOWN_TARGETS).join(', ')}`);
+  }
+  const m = args.meta;
+  const title = `Add ${m.pluginTitle ?? m.pluginId}`;
+  const body = renderPrBody(m);
+
+  switch (args.catalog) {
+    case 'anthropics-skills': {
+      const url = newIssueUrl('anthropics/skills', title, body);
+      return { catalog: args.catalog, catalogLabel: 'anthropics/skills', url, prBody: body };
+    }
+    case 'awesome-agent-skills': {
+      const url = newIssueUrl('VoltAgent/awesome-agent-skills', title, body);
+      return { catalog: args.catalog, catalogLabel: 'VoltAgent/awesome-agent-skills', url, prBody: body };
+    }
+    case 'clawhub': {
+      const url = newIssueUrl('openclaw/clawhub', title, body);
+      return { catalog: args.catalog, catalogLabel: 'openclaw/clawhub', url, prBody: body };
+    }
+    case 'skills-sh': {
+      // skills.sh autodiscovers via `npx skills add owner/repo` so a
+      // first-time submission is a documentation step, not a PR. Point
+      // the author at the canonical add command + the docs page.
+      const repo = m.repoUrl?.replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '') ?? 'owner/repo';
+      return {
+        catalog: args.catalog,
+        catalogLabel: 'skills.sh',
+        url: 'https://skills.sh/',
+        prBody: [
+          body,
+          '',
+          '## Submission steps',
+          '',
+          `1. Push the plugin repo to https://github.com/${repo}`,
+          `2. Run \`npx skills add ${repo}\` once locally to seed the catalog index.`,
+          '3. Verify the entry appears at https://skills.sh/ within ~24 hours.',
+        ].join('\n'),
+      };
+    }
+  }
+  // Unreachable; keeps the compiler happy.
+  throw new PublishError(`unhandled catalog: ${String(args.catalog)}`);
+}
+
+function newIssueUrl(repo: string, title: string, body: string): string {
+  const params = new URLSearchParams();
+  params.set('title', title);
+  params.set('body', body);
+  return `https://github.com/${repo}/issues/new?${params.toString()}`;
+}
+
+function renderPrBody(m: PublishMetadata): string {
+  const lines: string[] = [];
+  lines.push(`## ${m.pluginTitle ?? m.pluginId}`);
+  if (m.pluginDescription) {
+    lines.push('');
+    lines.push(m.pluginDescription);
+  }
+  lines.push('');
+  lines.push('## Provenance');
+  lines.push('');
+  lines.push(`- name: \`${m.pluginId}\``);
+  lines.push(`- version: \`${m.pluginVersion}\``);
+  if (m.repoUrl) lines.push(`- repository: ${m.repoUrl}`);
+  lines.push('');
+  lines.push('## Compatibility');
+  lines.push('');
+  lines.push('- Ships `SKILL.md` (canonical agent skill anchor).');
+  lines.push('- Ships `open-design.json` sidecar (additive Open Design metadata).');
+  lines.push('');
+  lines.push('Generated by `od plugin publish` — see https://open-design.ai/docs/plugins-spec.md.');
+  return lines.join('\n');
+}
+
+export const PUBLISH_TARGETS = Array.from(KNOWN_TARGETS);
