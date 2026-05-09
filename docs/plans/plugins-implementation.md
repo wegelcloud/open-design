@@ -121,7 +121,7 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `apps/daemon/src/plugins/atoms/figma-extract.ts` | shipped | Phase 6 — Figma REST shell-out → figma/{tree,tokens,meta}.json |
 | `apps/daemon/src/plugins/atoms/token-map.ts` | shipped | Phase 6/7 — exact + normalised-hex + fuzzy-name crosswalk against the active design system |
 | `apps/daemon/src/plugins/atoms/rewrite-plan.ts` | shipped | Phase 7 — heuristic ownership classifier + per-leaf step generator |
-| `apps/daemon/src/plugins/atoms/patch-edit.ts` | shipped | Phase 7 — unified-diff applier with shell-tier safety gate + per-step receipts |
+| `apps/daemon/src/plugins/atoms/patch-edit.ts` | shipped | Phase 7 — unified-diff applier with shell-tier safety gate + per-step receipts + atomic file writes |
 | `apps/daemon/src/plugins/atoms/diff-review.ts` | shipped | Phase 7-8 — review/{diff.patch,summary.md,decision.json,meta.json} from receipts |
 | `apps/daemon/src/plugins/atoms/auto-surfaces.ts` | shipped | Phase 8 — auto-derives `__auto_diff_review_<stageId>` choice surface for each stage that lists `diff-review` |
 | `apps/daemon/src/plugins/atoms/diff-review-genui-bridge.ts` | shipped | Phase 8 — POST /api/runs/:id/genui/:surfaceId/respond \u2192 runDiffReview() decision update |
