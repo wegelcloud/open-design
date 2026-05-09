@@ -170,6 +170,10 @@ export const tr: Dict = {
   'settings.runtimePackaged': 'Paketlenmiş uygulama',
   'settings.runtimeDevelopment': 'Geliştirme',
   'settings.versionUnavailable': 'Arka plan servisi devre dışıyken sürüm detayları mevcut değildir.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Tasarımlar',
   'entry.tabExamples': 'Örnekler',
@@ -615,6 +619,7 @@ export const tr: Dict = {
   'designFiles.openInTab': 'Sekmede aç',
   'designFiles.download': 'İndir',
   'designFiles.downloadSelected': '{n} dosyayı ZIP olarak indir',
+  'designFiles.addToChat': '{n} dosyayı chate ekle',
   'designFiles.clearSelection': 'Seçimi temizle',
   'designFiles.selectPage': 'Sayfadaki tümünü seç',
   'designFiles.selectAll': 'Tümünü seç',

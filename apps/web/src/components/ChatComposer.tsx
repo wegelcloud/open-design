@@ -67,12 +67,18 @@ interface Props {
   researchAvailable?: boolean;
   projectMetadata?: ProjectMetadata;
   onProjectMetadataChange?: (metadata: ProjectMetadata) => void;
+  // When true and a non-empty initialDraft has just been seeded, the
+  // composer fires submit() exactly once on mount. Used by the prompt-
+  // first home page to auto-execute the user's freshly-typed prompt
+  // after navigating into the brand-new project.
+  autoSubmit?: boolean;
 }
 
 // Imperative handle so ancestors (e.g. example chips in ChatPane) can
 // push text into the composer without owning its draft state.
 export interface ChatComposerHandle {
   setDraft: (text: string) => void;
+  attachProjectFiles: (files: ProjectFile[]) => void;
   focus: () => void;
 }
 
@@ -110,6 +116,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       researchAvailable = false,
       projectMetadata,
       onProjectMetadataChange,
+      autoSubmit = false,
     },
     ref
   ) {
@@ -451,6 +458,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ta.setSelectionRange(pos, pos);
           });
         },
+        attachProjectFiles: (files: ProjectFile[]) => {
+          stageProjectFiles(files);
+        },
         focus: () => {
           textareaRef.current?.focus();
         },
@@ -592,6 +602,27 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       });
     }
 
+    function stageProjectFiles(files: ProjectFile[]) {
+      if (files.length === 0) return;
+      setStaged((current) => {
+        const seen = new Set(current.map((item) => item.path));
+        const next = [...current];
+        for (const file of files) {
+          const path = file.path ?? file.name;
+          if (!path || seen.has(path)) continue;
+          seen.add(path);
+          next.push({
+            path,
+            name: path.split("/").pop() || path,
+            kind: looksLikeImage(path) ? "image" : "file",
+            size: file.size,
+          });
+        }
+        return next;
+      });
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }
+
     function removeStaged(p: string) {
       setStaged((s) => s.filter((a) => a.path !== p));
     }
@@ -626,6 +657,29 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       onSend(prompt, staged, commentAttachments);
       reset();
     }
+
+    // Auto-submit hook: when the prompt-first home seeded the composer
+    // and asked for an immediate run, fire submit() exactly once after
+    // the seed lands. Guarded behind a ref so a re-render with the same
+    // draft cannot retrigger the run.
+    const autoSubmittedRef = useRef(false);
+    useEffect(() => {
+      if (autoSubmittedRef.current) return;
+      if (!autoSubmit) return;
+      if (!draft.trim()) return;
+      if (streaming) return;
+      autoSubmittedRef.current = true;
+      // Defer one tick so React commits the seeded draft before we read
+      // it inside submit() — and so any sibling effect (e.g. ChatPane's
+      // remount on activeConversationId resolve) settles first.
+      const id = window.setTimeout(() => {
+        void submit();
+      }, 0);
+      return () => window.clearTimeout(id);
+      // submit/reset are stable closures within this instance; we deliberately
+      // avoid retriggering on every render so the auto-fire stays one-shot.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoSubmit, draft, streaming]);
 
     // The @-picker treats the project listing as path-shaped (path + size).
     // ProjectFile.path is optional, so fall back to .name for the legacy

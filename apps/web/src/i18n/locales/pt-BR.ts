@@ -173,6 +173,10 @@ export const ptBR: Dict = {
   'settings.runtimePackaged': 'App empacotado',
   'settings.runtimeDevelopment': 'Desenvolvimento',
   'settings.versionUnavailable': 'Os detalhes de versão ficam indisponíveis enquanto o daemon está offline.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Designs',
   'entry.tabExamples': 'Exemplos',
@@ -634,6 +638,7 @@ export const ptBR: Dict = {
   'designFiles.openInTab': 'Abrir em aba',
   'designFiles.download': 'Baixar',
   'designFiles.downloadSelected': 'Baixar {n} selecionados como ZIP',
+  'designFiles.addToChat': 'Adicionar {n} ao chat',
   'designFiles.clearSelection': 'Limpar seleção',
   'designFiles.selectPage': 'Selecionar tudo na página',
   'designFiles.selectAll': 'Selecionar tudo',

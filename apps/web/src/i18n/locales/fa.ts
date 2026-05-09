@@ -174,6 +174,10 @@ export const fa: Dict = {
   'settings.runtimePackaged': 'برنامه بسته‌بندی‌شده',
   'settings.runtimeDevelopment': 'توسعه',
   'settings.versionUnavailable': 'تا وقتی daemon آفلاین است جزئیات نسخه در دسترس نیست.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'طرح‌ها',
   'entry.tabExamples': 'نمونه‌ها',
@@ -636,6 +640,7 @@ export const fa: Dict = {
   'designFiles.openInTab': 'باز کردن در تب',
   'designFiles.download': 'دانلود',
   'designFiles.downloadSelected': 'دانلود {n} به صورت ZIP',
+  'designFiles.addToChat': 'افزودن {n} به chat',
   'designFiles.clearSelection': 'پاک کردن انتخاب',
   'designFiles.selectPage': 'انتخاب همه در صفحه',
   'designFiles.selectAll': 'انتخاب همه',

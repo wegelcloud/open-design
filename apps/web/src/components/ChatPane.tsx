@@ -3,7 +3,8 @@ import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { projectRawUrl } from '../providers/registry';
 import type { TodoItem } from '../runtime/todos';
-import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, Conversation, PreviewComment, ProjectFile, ProjectMetadata } from '../types';
+import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, Conversation, DesignSystemSummary, PreviewComment, ProjectFile, ProjectMetadata, ProjectTemplate, PromptTemplateSummary, SkillSummary } from '../types';
+import { NewProjectPanel, type CreateInput, type CreateTab } from './NewProjectPanel';
 import { dayKey, dayLabel, exactDateTime, messageTime, relativeTimeLong } from '../utils/chatTime';
 import { commentsToAttachments, simplePositionLabel } from '../comments';
 import { AssistantMessage } from './AssistantMessage';
@@ -98,6 +99,23 @@ interface Props {
   projectMetadata?: ProjectMetadata;
   onProjectMetadataChange?: (metadata: ProjectMetadata) => void;
   researchAvailable?: boolean;
+  // Forwarded to ChatComposer — when true and initialDraft is set, the
+  // composer fires submit() once on mount. Used by the prompt-first home.
+  autoSubmit?: boolean;
+  attachFilesRequest?: { id: number; files: ProjectFile[] } | null;
+  // Project setup form mode — when true and the chat is still empty,
+  // render a locked NewProjectPanel where the starter cards normally
+  // sit so the user picks 设计体系/精度/演讲备注/媒体模型/… inside
+  // chat instead of on the home page. Submit triggers the seeded run.
+  setupPending?: boolean;
+  setupSkills?: SkillSummary[];
+  setupDesignSystems?: DesignSystemSummary[];
+  setupTemplates?: ProjectTemplate[];
+  setupPromptTemplates?: PromptTemplateSummary[];
+  setupDefaultDesignSystemId?: string | null;
+  setupLockedTab?: CreateTab;
+  setupSeedName?: string;
+  onSetupSubmit?: (input: CreateInput) => void;
 }
 
 type Tab = 'chat' | 'comments';
@@ -136,6 +154,17 @@ export function ChatPane({
   projectMetadata,
   onProjectMetadataChange,
   researchAvailable,
+  autoSubmit,
+  attachFilesRequest,
+  setupPending,
+  setupSkills,
+  setupDesignSystems,
+  setupTemplates,
+  setupPromptTemplates,
+  setupDefaultDesignSystemId,
+  setupLockedTab,
+  setupSeedName,
+  onSetupSubmit,
 }: Props) {
   const t = useT();
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -156,6 +185,14 @@ export function ChatPane({
   const hasActiveRunMessage = messages.some(
     (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus),
   );
+
+  useEffect(() => {
+    if (!attachFilesRequest || attachFilesRequest.files.length === 0) return;
+    setTab('chat');
+    requestAnimationFrame(() => {
+      composerRef.current?.attachProjectFiles(attachFilesRequest.files);
+    });
+  }, [attachFilesRequest]);
   // Map each assistant message id to the user message that follows it
   // (if any) so QuestionFormView can render its locked "answered" state
   // with the user's picks.
@@ -421,7 +458,28 @@ export function ChatPane({
         <>
           <div className="chat-log-wrap">
             <div className="chat-log" ref={logRef}>
-              {messages.length === 0 ? (
+              {messages.length === 0 && setupPending && onSetupSubmit ? (
+                <div className="chat-setup-wrap">
+                  <NewProjectPanel
+                    skills={setupSkills ?? []}
+                    designSystems={setupDesignSystems ?? []}
+                    defaultDesignSystemId={setupDefaultDesignSystemId ?? null}
+                    templates={setupTemplates ?? []}
+                    promptTemplates={setupPromptTemplates ?? []}
+                    onCreate={onSetupSubmit}
+                    lockedTab={setupLockedTab}
+                    hideTabs
+                    hideImports
+                    createIcon="send"
+                    createLabel={t('chat.send')}
+                  />
+                  {setupSeedName ? (
+                    <p className="chat-setup-hint" data-testid="chat-setup-seedname">
+                      {setupSeedName}
+                    </p>
+                  ) : null}
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="chat-empty-wrap">
                   <div className="chat-empty">
                     <span className="chat-empty-title">
@@ -535,6 +593,7 @@ export function ChatPane({
             researchAvailable={researchAvailable}
             projectMetadata={projectMetadata}
             onProjectMetadataChange={onProjectMetadataChange}
+            autoSubmit={autoSubmit}
           />
         </>
       ) : null}

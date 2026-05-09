@@ -120,15 +120,19 @@ import { buildMcpInstallPayload } from './mcp-install-info.js';
 import {
   buildProjectArchive,
   buildBatchArchive,
+  backupUploadedFile,
   decodeMultipartFilename,
   deleteProjectFile,
   detectEntryFile,
   ensureProject,
   isSafeId,
+  isUploadBackupPath,
   listFiles,
+  listUploadBackupFiles,
   mimeFor,
   projectDir,
   readProjectFile,
+  readUploadBackupFile,
   removeProjectDir,
   sanitizeName,
   searchProjectFiles,
@@ -805,7 +809,9 @@ migrateLegacyDataDirSync({
 });
 const ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'artifacts');
 const PROJECTS_DIR = path.join(RUNTIME_DATA_DIR, 'projects');
+const UPLOAD_BACKUPS_DIR = path.join(RUNTIME_DATA_DIR, 'upload-backups');
 fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+fs.mkdirSync(UPLOAD_BACKUPS_DIR, { recursive: true });
 const orbitService = new OrbitService(RUNTIME_DATA_DIR);
 
 // In-memory OAuth state cache. Lives for the daemon process's lifetime.
@@ -4109,8 +4115,9 @@ export async function startServer({
         since: Number.isFinite(since) ? since : undefined,
         metadata: project?.metadata,
       });
+      const backupFiles = await listUploadBackupFiles(UPLOAD_BACKUPS_DIR);
       /** @type {import('@open-design/contracts').ProjectFilesResponse} */
-      const body = { files };
+      const body = { files: [...backupFiles, ...files] };
       res.json(body);
     } catch (err) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
@@ -4232,6 +4239,14 @@ export async function startServer({
   app.get('/api/projects/:id/raw/*', async (req, res) => {
     try {
       const relPath = req.params[0];
+      if (isUploadBackupPath(relPath)) {
+        const file = await readUploadBackupFile(UPLOAD_BACKUPS_DIR, relPath);
+        if (req.headers.origin === 'null') {
+          res.header('Access-Control-Allow-Origin', '*');
+        }
+        res.type(file.mime).send(file.buffer);
+        return;
+      }
       const project = getProject(db, req.params.id);
       const file = await readProjectFile(PROJECTS_DIR, req.params.id, relPath, project?.metadata);
       // PreviewModal loads artifact HTML via srcdoc, giving the iframe Origin: "null".
@@ -4290,6 +4305,14 @@ export async function startServer({
 
   app.delete('/api/projects/:id/raw/*', async (req, res) => {
     try {
+      if (isUploadBackupPath(req.params[0])) {
+        return sendApiError(
+          res,
+          400,
+          'BAD_REQUEST',
+          'upload backups are global and cannot be deleted from a project',
+        );
+      }
       const project = getProject(db, req.params.id);
       await deleteProjectFile(PROJECTS_DIR, req.params.id, req.params[0], project?.metadata);
       /** @type {import('@open-design/contracts').DeleteProjectFileResponse} */
@@ -4308,6 +4331,11 @@ export async function startServer({
 
   app.get('/api/projects/:id/files/:name/preview', async (req, res) => {
     try {
+      if (isUploadBackupPath(req.params.name)) {
+        const file = await readUploadBackupFile(UPLOAD_BACKUPS_DIR, req.params.name);
+        const preview = await buildDocumentPreview(file);
+        return res.json(preview);
+      }
       const project = getProject(db, req.params.id);
       const file = await readProjectFile(
         PROJECTS_DIR,
@@ -4373,6 +4401,11 @@ export async function startServer({
           const buf = await fs.promises.readFile(req.file.path);
           const desiredName = sanitizeName(
             req.body?.name || req.file.originalname,
+          );
+          await backupUploadedFile(
+            UPLOAD_BACKUPS_DIR,
+            req.file.path,
+            req.file.originalname || desiredName,
           );
           const meta = await writeProjectFile(
             PROJECTS_DIR,
@@ -4759,6 +4792,11 @@ export async function startServer({
         for (const f of incoming) {
           try {
             const stat = await fs.promises.stat(f.path);
+            await backupUploadedFile(
+              UPLOAD_BACKUPS_DIR,
+              f.path,
+              f.originalname || f.filename,
+            );
             out.push({
               name: f.filename,
               path: f.filename,

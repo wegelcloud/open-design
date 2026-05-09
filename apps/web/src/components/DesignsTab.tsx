@@ -55,6 +55,11 @@ interface Props {
 	onOpen: (id: string) => void;
 	onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
 	onDelete: (id: string) => void;
+	// Hide the "最近 / 我的设计" sub-tab pill in the toolbar. The
+	// prompt-first home embeds DesignsTab and doesn't need the filter
+	// — the home is a "recent first" surface by intent. Default false
+	// preserves the workspace behavior in EntryView.
+	hideSubTabs?: boolean;
 }
 
 export function DesignsTab({
@@ -64,6 +69,7 @@ export function DesignsTab({
 	onOpen,
 	onOpenLiveArtifact,
 	onDelete,
+	hideSubTabs = false,
 }: Props) {
 	const t = useT();
 	const [filter, setFilter] = useState("");
@@ -193,26 +199,28 @@ export function DesignsTab({
 		>
 			<div className="tab-panel-toolbar">
 				<div className="toolbar-left">
-					<div
-						className="subtab-pill"
-						role="group"
-						aria-label={t("designs.filterAria")}
-					>
-						<button
-							aria-pressed={sub === "recent"}
-							className={sub === "recent" ? "active" : ""}
-							onClick={() => setSub("recent")}
+					{hideSubTabs ? null : (
+						<div
+							className="subtab-pill"
+							role="group"
+							aria-label={t("designs.filterAria")}
 						>
-							{t("designs.subRecent")}
-						</button>
-						<button
-							aria-pressed={sub === "yours"}
-							className={sub === "yours" ? "active" : ""}
-							onClick={() => setSub("yours")}
-						>
-							{t("designs.subYours")}
-						</button>
-					</div>
+							<button
+								aria-pressed={sub === "recent"}
+								className={sub === "recent" ? "active" : ""}
+								onClick={() => setSub("recent")}
+							>
+								{t("designs.subRecent")}
+							</button>
+							<button
+								aria-pressed={sub === "yours"}
+								className={sub === "yours" ? "active" : ""}
+								onClick={() => setSub("yours")}
+							>
+								{t("designs.subYours")}
+							</button>
+						</div>
+					)}
 				</div>
 				<div className="toolbar-right">
 					<div className="toolbar-search">

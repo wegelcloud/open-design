@@ -176,6 +176,10 @@ export const ko: Dict = {
   'settings.runtimePackaged': '패키징된 앱',
   'settings.runtimeDevelopment': '개발 (Development)',
   'settings.versionUnavailable': '데몬이 오프라인 상태일 때는 버전 세부 정보를 확인할 수 없습니다.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': '디자인',
   'entry.tabExamples': '예제',
@@ -624,6 +628,7 @@ export const ko: Dict = {
   'designFiles.openInTab': '탭에서 열기',
   'designFiles.download': '다운로드',
   'designFiles.downloadSelected': '{n}개를 ZIP으로 다운로드',
+  'designFiles.addToChat': '{n}개를 chat에 추가',
   'designFiles.clearSelection': '선택 해제',
   'designFiles.selectPage': '페이지에서 모두 선택',
   'designFiles.selectAll': '모두 선택',

@@ -268,6 +268,10 @@ export const id: Dict = {
   'settings.orbit.copy': 'Salin',
   'settings.orbit.openArtifact': 'Buka artifact',
   'settings.orbit.sourceMarkdown': 'Markdown sumber',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Desain',
   'entry.tabExamples': 'Contoh',
@@ -723,6 +727,7 @@ export const id: Dict = {
   'designFiles.openInTab': 'Buka di tab',
   'designFiles.download': 'Unduh',
   'designFiles.downloadSelected': 'Unduh {n} sebagai ZIP',
+  'designFiles.addToChat': 'Tambahkan {n} ke chat',
   'designFiles.deleteSelected': 'Hapus {n}',
   'designFiles.clearSelection': 'Bersihkan',
   'designFiles.selectPage': 'Pilih semua di halaman',

@@ -17,12 +17,14 @@ import type {
   PromptTemplateSummary,
   SkillSummary,
 } from '../types';
+import { ActiveTasksTab } from './ActiveTasksTab';
 import { DesignsTab } from './DesignsTab';
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { ExamplesTab } from './ExamplesTab';
-import { AppChromeHeader } from './AppChromeHeader';
+import { AppChromeHeader, type ChromeTab } from './AppChromeHeader';
 import { Icon } from './Icon';
+import { navigate } from '../router';
 import { LanguageMenu } from './LanguageMenu';
 import { CenteredLoader } from './Loading';
 import { NewProjectPanel, type CreateInput } from './NewProjectPanel';
@@ -35,7 +37,13 @@ import { PromptTemplatePreviewModal } from './PromptTemplatePreviewModal';
 import { PromptTemplatesTab } from './PromptTemplatesTab';
 import { apiProtocolLabel } from '../utils/apiProtocol';
 
-type TopTab = 'designs' | 'examples' | 'design-systems' | 'image-templates' | 'video-templates';
+type TopTab =
+  | 'active-tasks'
+  | 'designs'
+  | 'examples'
+  | 'design-systems'
+  | 'image-templates'
+  | 'video-templates';
 
 interface Props {
   skills: SkillSummary[];
@@ -66,6 +74,12 @@ interface Props {
   onAdoptPet: () => void;
   onAdoptPetInline: (petId: string) => void;
   onTogglePet: () => void;
+  // Forwarded into AppChromeHeader so the workspace surface shows the
+  // same open-tabs strip as the prompt-first home and project views.
+  chromeTabs: ChromeTab[];
+  activeTabId: string | null;
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
 }
 
 const SIDEBAR_MIN = 320;
@@ -236,6 +250,10 @@ export function EntryView({
   onAdoptPet,
   onAdoptPetInline,
   onTogglePet,
+  chromeTabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
 }: Props) {
   const t = useT();
   const [topTab, setTopTab] = useState<TopTab>('designs');
@@ -457,7 +475,13 @@ export function EntryView({
 
   return (
     <div className="entry-shell">
-      <AppChromeHeader actions={avatarMenu} />
+      <AppChromeHeader
+        actions={avatarMenu}
+        tabs={chromeTabs}
+        activeTabId={activeTabId}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+      />
       <div
         className={`entry${petRailHidden ? '' : ' has-pet-rail'}`}
         style={{
@@ -553,6 +577,21 @@ export function EntryView({
       <main className="entry-main">
         <div className="entry-header">
           <div className="entry-tabs" role="tablist">
+            <button
+              role="tab"
+              data-testid="entry-tab-home"
+              aria-selected={false}
+              className="entry-tab"
+              onClick={() => navigate({ kind: 'prompt-home' })}
+            >
+              {t('entry.tabHome')}
+            </button>
+            <TopTabButton
+              current={topTab}
+              value="active-tasks"
+              label={t('entry.tabActiveTasks')}
+              onClick={setTopTab}
+            />
             <TopTabButton current={topTab} value="designs" label={t('entry.tabDesigns')} onClick={setTopTab} />
             <TopTabButton current={topTab} value="examples" label={t('entry.tabExamples')} onClick={setTopTab} />
             <TopTabButton
@@ -576,6 +615,13 @@ export function EntryView({
           </div>
         </div>
         <div className="entry-tab-content">
+          {topTab === 'active-tasks' ? (
+            projectsLoading ? (
+              <CenteredLoader label={t('common.loading')} />
+            ) : (
+              <ActiveTasksTab projects={projects} onOpen={onOpenProject} />
+            )
+          ) : null}
           {topTab === 'designs' ? (
             // DesignsTab uses skills + designSystems for tag rendering on
             // each card, so wait until projects + that metadata are present

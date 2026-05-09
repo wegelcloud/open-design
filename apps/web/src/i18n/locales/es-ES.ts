@@ -176,6 +176,10 @@ export const esES: Dict = {
   'settings.runtimePackaged': 'App empaquetada',
   'settings.runtimeDevelopment': 'Desarrollo',
   'settings.versionUnavailable': 'Los detalles de versión no están disponibles mientras el daemon está offline.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Diseños',
   'entry.tabExamples': 'Ejemplos',
@@ -513,6 +517,7 @@ export const esES: Dict = {
   'designFiles.openInTab': 'Abrir en pestaña',
   'designFiles.download': 'Descargar',
   'designFiles.downloadSelected': 'Descargar {n} como ZIP',
+  'designFiles.addToChat': 'Agregar {n} al chat',
   'designFiles.deleteSelected': 'Eliminar {n}',
   'designFiles.clearSelection': 'Limpiar selección',
   'designFiles.selectPage': 'Seleccionar todo en la página',

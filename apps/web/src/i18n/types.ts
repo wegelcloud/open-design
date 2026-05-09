@@ -327,12 +327,16 @@ export interface Dict {
   'notify.failureBody': string;
 
   // Entry view / tabs
+  'entry.tabHome': string;
+  'entry.tabActiveTasks': string;
   'entry.tabDesigns': string;
   'entry.tabExamples': string;
   'entry.tabDesignSystems': string;
   'entry.tabConnectors': string;
   'entry.tabImageTemplates': string;
   'entry.tabVideoTemplates': string;
+  'activeTasks.empty': string;
+  'activeTasks.openProjectAria': string;
   'entry.openSettingsTitle': string;
   'entry.openSettingsAria': string;
   'entry.resizeAria': string;
@@ -785,6 +789,7 @@ export interface Dict {
   'designFiles.openInTab': string;
   'designFiles.download': string;
   'designFiles.downloadSelected': string;
+  'designFiles.addToChat': string;
   'designFiles.deleteSelected': string;
   'designFiles.clearSelection': string;
   'designFiles.selectPage': string;

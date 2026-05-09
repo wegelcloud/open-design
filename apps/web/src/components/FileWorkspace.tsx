@@ -51,6 +51,7 @@ interface Props {
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[]) => Promise<void> | void;
   focusMode?: boolean;
   onFocusModeChange?: (next: boolean) => void;
+  onAttachFilesToChat?: (names: string[]) => void;
 }
 
 interface SketchState {
@@ -62,7 +63,15 @@ interface SketchState {
 }
 
 const DESIGN_FILES_TAB = '__design_files__';
+const WEB_TAB_PREFIX = '__web:';
+const GOOGLE_EMBED_URL = 'https://www.google.com/webhp?igu=1';
 type TabDropEdge = 'before' | 'after';
+
+interface WebTab {
+  id: string;
+  url: string;
+  title: string;
+}
 
 export function FileWorkspace({
   projectId,
@@ -82,6 +91,7 @@ export function FileWorkspace({
   onSendBoardCommentAttachments,
   focusMode = false,
   onFocusModeChange,
+  onAttachFilesToChat,
 }: Props) {
   const t = useT();
   // Persisted tabs come from the parent. Active tab can transiently point
@@ -92,6 +102,8 @@ export function FileWorkspace({
   );
 
   const [showPasteDialog, setShowPasteDialog] = useState(false);
+  const [webTabs, setWebTabs] = useState<WebTab[]>([]);
+  const activeWebTab = webTabs.find((tab) => tab.id === activeTab) ?? null;
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [sketches, setSketches] = useState<Record<string, SketchState>>({});
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
@@ -103,6 +115,7 @@ export function FileWorkspace({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tabsBarRef = useRef<HTMLDivElement | null>(null);
   const draggedTabNameRef = useRef<string | null>(null);
+  const pendingOpenTabRef = useRef<string | null>(null);
 
   const visibleFiles = useMemo(
     () => files.filter((file) => !isLiveArtifactImplementationPath(file.name)),
@@ -136,8 +149,16 @@ export function FileWorkspace({
   // back to the last remaining tab. Skip transient activeTab values
   // (DESIGN_FILES_TAB, pending sketches) since those aren't in persistedTabs.
   useEffect(() => {
+    if (pendingOpenTabRef.current && persistedTabs.includes(pendingOpenTabRef.current)) {
+      pendingOpenTabRef.current = null;
+    }
+  }, [persistedTabs]);
+
+  useEffect(() => {
     if (activeTab === DESIGN_FILES_TAB) return;
+    if (activeTab.startsWith(WEB_TAB_PREFIX)) return;
     if (sketches[activeTab] && !sketches[activeTab]!.persisted) return;
+    if (pendingOpenTabRef.current === activeTab) return;
     if (!persistedTabs.includes(activeTab)) {
       setPersistedActive(persistedTabs[persistedTabs.length - 1] ?? null);
     }
@@ -160,6 +181,7 @@ export function FileWorkspace({
   }, [openRequest]);
 
   function openFile(name: string) {
+    pendingOpenTabRef.current = name;
     onTabsStateChange({
       tabs: persistedTabs.includes(name) ? persistedTabs : [...persistedTabs, name],
       active: name,
@@ -543,6 +565,37 @@ export function FileWorkspace({
             </span>
             <span className="ws-tab-label">{t('workspace.designFiles')}</span>
           </button>
+          {webTabs.map((webTab) => (
+            <button
+              key={webTab.id}
+              type="button"
+              className={`ws-tab ${activeTab === webTab.id ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === webTab.id}
+              data-testid="ws-google-tab"
+              onClick={() => setActiveTab(webTab.id)}
+              title={webTab.title}
+            >
+              <span className="tab-icon" aria-hidden>
+                <Icon name="search" size={13} />
+              </span>
+              <span className="ws-tab-label">{webTab.title}</span>
+              <span
+                role="button"
+                aria-label={`Close ${webTab.title} tab`}
+                className="ws-tab-close"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setWebTabs((tabs) => tabs.filter((t) => t.id !== webTab.id));
+                  if (activeTab === webTab.id) {
+                    setActiveTab(DESIGN_FILES_TAB);
+                  }
+                }}
+              >
+                <Icon name="close" size={11} />
+              </span>
+            </button>
+          ))}
           {tabNames.map((name) => {
             const sketchEntry = sketches[name];
             const dirtyMark =
@@ -603,6 +656,27 @@ export function FileWorkspace({
               />
             );
           })}
+          <button
+            type="button"
+            className="ws-tab-icon-btn ws-tab-add"
+            data-testid="ws-google-search"
+            title="Google 搜索"
+            aria-label="Open Google search"
+            onClick={() => {
+              const id = `${WEB_TAB_PREFIX}google:${Date.now().toString(36)}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`;
+              setWebTabs((tabs) => [
+                ...tabs,
+                { id, url: GOOGLE_EMBED_URL, title: 'Google' },
+              ]);
+              setActiveTab(id);
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden>
+              <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z" />
+            </svg>
+          </button>
         </div>
         {onFocusModeChange ? (
           <div className="ws-tabs-actions">
@@ -643,7 +717,16 @@ export function FileWorkspace({
             </button>
           </div>
         ) : null}
-        {activeTab === DESIGN_FILES_TAB ? (
+        {activeWebTab ? (
+          <iframe
+            key={activeWebTab.id}
+            className="ws-google-iframe"
+            src={activeWebTab.url}
+            title={activeWebTab.title}
+            referrerPolicy="no-referrer"
+            sandbox="allow-forms allow-popups allow-scripts allow-same-origin"
+          />
+        ) : activeTab === DESIGN_FILES_TAB ? (
           <DesignFilesPanel
             key={projectId}
             projectId={projectId}
@@ -654,6 +737,7 @@ export function FileWorkspace({
             onOpenLiveArtifact={(tabId) => openFile(tabId)}
             onDeleteFile={(name) => void handleDelete(name)}
             onDeleteFiles={handleDeleteMany}
+            onAttachFilesToChat={onAttachFilesToChat}
             onUpload={() => fileInputRef.current?.click()}
             onUploadFiles={(picked) => void uploadFiles(picked)}
             onPaste={() => setShowPasteDialog(true)}

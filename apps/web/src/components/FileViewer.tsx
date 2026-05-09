@@ -5202,7 +5202,29 @@ function ImageViewer({
   file: ProjectFile;
 }) {
   const t = useT();
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
+  const imageStyle = naturalSize
+    ? ({
+        maxWidth: `min(100%, ${naturalSize.width}px)`,
+        maxHeight: `min(100%, ${naturalSize.height}px)`,
+      } satisfies CSSProperties)
+    : undefined;
+
+  useEffect(() => {
+    setNaturalSize(null);
+  }, [file.name, file.mtime]);
+
+  function rememberNaturalSize(img: HTMLImageElement) {
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setNaturalSize((current) =>
+        current?.width === img.naturalWidth && current.height === img.naturalHeight
+          ? current
+          : { width: img.naturalWidth, height: img.naturalHeight },
+      );
+    }
+  }
+
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -5232,7 +5254,16 @@ function ImageViewer({
         </div>
       </div>
       <div className="viewer-body image-body">
-        <img alt={file.name} src={url} />
+        <img
+          alt={file.name}
+          className="image-viewer-img"
+          src={url}
+          style={imageStyle}
+          ref={(img) => {
+            if (img?.complete) rememberNaturalSize(img);
+          }}
+          onLoad={(event) => rememberNaturalSize(event.currentTarget)}
+        />
       </div>
     </div>
   );
@@ -5315,7 +5346,28 @@ export function SvgViewer({
   const [loadingSource, setLoadingSource] = useState(false);
   const [sourceError, setSourceError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}`;
+  const imageStyle = naturalSize
+    ? ({
+        maxWidth: `min(100%, ${naturalSize.width}px)`,
+        maxHeight: `min(100%, ${naturalSize.height}px)`,
+      } satisfies CSSProperties)
+    : undefined;
+
+  useEffect(() => {
+    setNaturalSize(null);
+  }, [file.name, file.mtime, reloadKey]);
+
+  function rememberNaturalSize(img: HTMLImageElement) {
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setNaturalSize((current) =>
+        current?.width === img.naturalWidth && current.height === img.naturalHeight
+          ? current
+          : { width: img.naturalWidth, height: img.naturalHeight },
+      );
+    }
+  }
 
   useEffect(() => {
     if (mode !== 'source') return;
@@ -5397,7 +5449,16 @@ export function SvgViewer({
       </div>
       <div className={`viewer-body ${mode === 'preview' ? 'image-body' : ''}`}>
         {mode === 'preview' ? (
-          <img alt={file.name} src={url} />
+          <img
+            alt={file.name}
+            className="image-viewer-img"
+            src={url}
+            style={imageStyle}
+            ref={(img) => {
+              if (img?.complete) rememberNaturalSize(img);
+            }}
+            onLoad={(event) => rememberNaturalSize(event.currentTarget)}
+          />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : sourceError ? (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { EntryView } from './components/EntryView';
+import { PromptHomeView } from './components/PromptHomeView';
 import type { CreateInput } from './components/NewProjectPanel';
 import { PetOverlay } from './components/pet/PetOverlay';
 import { migrateCustomPetAtlas } from './components/pet/pets';
@@ -51,6 +52,30 @@ import type {
   PromptTemplateSummary,
   SkillSummary,
 } from './types';
+
+const OPEN_TABS_STORAGE_KEY = 'od:tabs';
+
+function loadOpenTabIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(OPEN_TABS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function saveOpenTabIds(ids: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(OPEN_TABS_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    /* ignore */
+  }
+}
 
 export function shouldSyncMediaProvidersOnSave(
   mediaProviders: AppConfig['mediaProviders'],
@@ -153,6 +178,52 @@ export function App() {
   // can't overwrite the saved state with `''` before hydration lands.
   const [composioConfigLoading, setComposioConfigLoading] = useState(true);
   const route = useRoute();
+
+  // Browser-tab style open project list. Persisted across reloads so a
+  // user who closes the window and re-opens it still sees the projects
+  // they were working with — clicking the chrome's home button on the
+  // left navigates to `/` without dropping the open tabs. New projects
+  // get pinned on first visit; explicit close on a tab (× button) or
+  // deletion of the underlying project removes the entry.
+  const [openTabIds, setOpenTabIds] = useState<string[]>(() => loadOpenTabIds());
+  const addOpenTab = useCallback((id: string) => {
+    setOpenTabIds((curr) => {
+      if (curr.includes(id)) return curr;
+      const next = [...curr, id];
+      saveOpenTabIds(next);
+      return next;
+    });
+  }, []);
+  // Pin the tab whenever the route lands on a project — covers deep
+  // links and browser back/forward, not just our own navigate() calls.
+  useEffect(() => {
+    if (route.kind === 'project') addOpenTab(route.projectId);
+  }, [route, addOpenTab]);
+
+  const closeOpenTab = useCallback((id: string) => {
+    setOpenTabIds((curr) => {
+      const idx = curr.indexOf(id);
+      if (idx === -1) return curr;
+      const next = curr.filter((t) => t !== id);
+      saveOpenTabIds(next);
+      // If the user closed the tab they were currently viewing, fall
+      // back to the neighbouring tab (next-after-removal, then previous)
+      // so they don't get bounced all the way home unless every project
+      // tab is gone.
+      const isOnClosedTab =
+        typeof window !== 'undefined' &&
+        window.location.pathname.startsWith(`/projects/${encodeURIComponent(id)}`);
+      if (isOnClosedTab) {
+        const fallback = next[idx] ?? next[idx - 1] ?? null;
+        if (fallback) {
+          navigate({ kind: 'project', projectId: fallback, fileName: null });
+        } else {
+          navigate({ kind: 'prompt-home' });
+        }
+      }
+      return next;
+    });
+  }, []);
 
   // Sync theme preference to the <html> element so CSS variables pick it up.
   // useLayoutEffect (vs useEffect) fires before the browser paints, so a
@@ -514,13 +585,14 @@ export function App() {
         result.project,
         ...curr.filter((p) => p.id !== result.project.id),
       ]);
+      addOpenTab(result.project.id);
       navigate({
         kind: 'project',
         projectId: result.project.id,
         fileName: null,
       });
     },
-    [],
+    [addOpenTab],
   );
 
   const handleImportClaudeDesign = useCallback(async (file: File) => {
@@ -530,43 +602,53 @@ export function App() {
       result.project,
       ...curr.filter((p) => p.id !== result.project.id),
     ]);
+    addOpenTab(result.project.id);
     navigate({
       kind: 'project',
       projectId: result.project.id,
       fileName: result.entryFile,
     });
-  }, []);
+  }, [addOpenTab]);
 
   const handleImportFolder = useCallback(async (baseDir: string) => {
     const result = await importFolderProject({ baseDir });
     if (!result) return;
     setProjects((curr) => [result.project, ...curr.filter((p) => p.id !== result.project.id)]);
+    addOpenTab(result.project.id);
     navigate({
       kind: 'project',
       projectId: result.project.id,
       fileName: result.entryFile,
     });
-  }, []);
+  }, [addOpenTab]);
 
   const handleOpenProject = useCallback((id: string) => {
+    addOpenTab(id);
     navigate({ kind: 'project', projectId: id, fileName: null });
-  }, []);
+  }, [addOpenTab]);
 
   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
+    addOpenTab(projectId);
     navigate({ kind: 'project', projectId, fileName: liveArtifactTabId(artifactId) });
-  }, []);
+  }, [addOpenTab]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     const ok = await deleteProjectApi(id);
     if (!ok) return;
     setProjects((curr) => curr.filter((p) => p.id !== id));
+    setOpenTabIds((curr) => {
+      if (!curr.includes(id)) return curr;
+      const next = curr.filter((t) => t !== id);
+      saveOpenTabIds(next);
+      return next;
+    });
     if (route.kind === 'project' && route.projectId === id) {
-      navigate({ kind: 'home' });
+      navigate({ kind: 'prompt-home' });
     }
   }, [route]);
 
   const handleBack = useCallback(() => {
-    navigate({ kind: 'home' });
+    navigate({ kind: 'prompt-home' });
   }, []);
 
   const handleClearPendingPrompt = useCallback(() => {
@@ -690,7 +772,7 @@ export function App() {
   // saved a template inside a project, returning home should reflect it
   // immediately in the From-template tab without forcing a page reload.
   useEffect(() => {
-    if (route.kind !== 'home') return;
+    if (route.kind !== 'home' && route.kind !== 'prompt-home') return;
     void refreshTemplates();
   }, [route.kind, refreshTemplates]);
 
@@ -706,6 +788,26 @@ export function App() {
     [designSystems, config.disabledDesignSystems],
   );
 
+  // Resolve the open-tab id list against the current projects array so
+  // a tab pinned before its project hydrated still gets a real title
+  // when the daemon comes back. Tabs whose project no longer exists
+  // (deleted on another tab/window) are dropped here so the user
+  // never clicks into a 404.
+  const openTabs = useMemo(
+    () => openTabIds
+      .map((id) => projects.find((p) => p.id === id))
+      .filter((p): p is Project => Boolean(p))
+      .map((p) => ({ id: p.id, title: p.name })),
+    [openTabIds, projects],
+  );
+  const activeTabId = route.kind === 'project' ? route.projectId : null;
+  const handleSelectTab = useCallback((id: string) => {
+    navigate({ kind: 'project', projectId: id, fileName: null });
+  }, []);
+  const handleSelectHomeTab = useCallback(() => {
+    navigate({ kind: 'prompt-home' });
+  }, []);
+
   return (
     <>
       {activeProject ? (
@@ -717,6 +819,8 @@ export function App() {
           agents={agents}
           skills={skills}
           designSystems={designSystems}
+          templates={templates}
+          promptTemplates={promptTemplates}
           daemonLive={daemonLive}
           onModeChange={handleModeChange}
           onAgentChange={handleAgentChange}
@@ -732,6 +836,27 @@ export function App() {
           onTouchProject={handleTouchProject}
           onProjectChange={handleProjectChange}
           onProjectsRefresh={refreshProjects}
+          chromeTabs={openTabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onCloseTab={closeOpenTab}
+        />
+      ) : route.kind === 'prompt-home' ? (
+        <PromptHomeView
+          skills={enabledSkills}
+          designSystems={enabledDS}
+          projects={projects}
+          onCreateProject={handleCreateProject}
+          onOpenProject={handleOpenProject}
+          onOpenLiveArtifact={handleOpenLiveArtifact}
+          onDeleteProject={handleDeleteProject}
+          onOpenSettings={openSettings}
+          onImportClaudeDesign={handleImportClaudeDesign}
+          onImportFolder={handleImportFolder}
+          chromeTabs={openTabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onCloseTab={closeOpenTab}
         />
       ) : (
         <EntryView
@@ -758,6 +883,10 @@ export function App() {
           onAdoptPet={openPetSettings}
           onAdoptPetInline={handleAdoptPet}
           onTogglePet={handleTogglePet}
+          chromeTabs={openTabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onCloseTab={closeOpenTab}
         />
       )}
       <PetOverlay

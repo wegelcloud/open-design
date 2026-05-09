@@ -172,6 +172,10 @@ export const zhTW: Dict = {
   'settings.runtimePackaged': '已封裝應用程式',
   'settings.runtimeDevelopment': '開發環境',
   'settings.versionUnavailable': '守護程式離線時無法取得版本詳情。',
+  'entry.tabHome': '首頁',
+  'entry.tabActiveTasks': '進行中的任務',
+  'activeTasks.empty': '目前沒有進行中的任務。當 agent 正在執行、排隊或等待輸入時會顯示在這裡。',
+  'activeTasks.openProjectAria': '開啟專案 {name}',
 
   'entry.tabDesigns': '我的設計',
   'entry.tabExamples': '範例',
@@ -625,6 +629,7 @@ export const zhTW: Dict = {
   'designFiles.openInTab': '在分頁中開啟',
   'designFiles.download': '下載',
   'designFiles.downloadSelected': '下載選中的 {n} 個檔案為 ZIP',
+  'designFiles.addToChat': '加入 chat',
   'designFiles.deleteSelected': '刪除 {n} 個',
   'designFiles.clearSelection': '取消選擇',
   'designFiles.selectPage': '全選此頁',

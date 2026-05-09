@@ -175,6 +175,10 @@ export const uk: Dict = {
   'settings.runtimePackaged': 'Упакований додаток',
   'settings.runtimeDevelopment': 'Розробка',
   'settings.versionUnavailable': 'Деталі версії недоступні, поки фоновий процес перебуває в офлайні.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Дизайни',
   'entry.tabExamples': 'Приклади',
@@ -635,6 +639,7 @@ export const uk: Dict = {
   'designFiles.openInTab': 'Відкрити на вкладці',
   'designFiles.download': 'Завантажити',
   'designFiles.downloadSelected': 'Завантажити {n} як ZIP',
+  'designFiles.addToChat': 'Додати {n} до chat',
   'designFiles.clearSelection': 'Очистити виділення',
   'designFiles.selectPage': 'Вибрати все на сторінці',
   'designFiles.selectAll': 'Вибрати все',

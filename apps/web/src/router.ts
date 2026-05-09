@@ -6,12 +6,14 @@
 import { useEffect, useState } from 'react';
 
 export type Route =
+  | { kind: 'prompt-home' }
   | { kind: 'home' }
   | { kind: 'project'; projectId: string; fileName: string | null };
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean);
-  if (parts.length === 0) return { kind: 'home' };
+  if (parts.length === 0) return { kind: 'prompt-home' };
+  if (parts[0] === 'home' && parts.length === 1) return { kind: 'home' };
   if (parts[0] === 'projects' && parts[1]) {
     const projectId = decodeURIComponent(parts[1]);
     if (parts[2] === 'files' && parts[3]) {
@@ -23,11 +25,13 @@ export function parseRoute(pathname: string): Route {
     }
     return { kind: 'project', projectId, fileName: null };
   }
-  return { kind: 'home' };
+  // Unknown path → land on the new prompt-first home.
+  return { kind: 'prompt-home' };
 }
 
 export function buildPath(route: Route): string {
-  if (route.kind === 'home') return '/';
+  if (route.kind === 'prompt-home') return '/';
+  if (route.kind === 'home') return '/home';
   const id = encodeURIComponent(route.projectId);
   if (route.fileName) {
     const file = route.fileName

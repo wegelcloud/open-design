@@ -72,6 +72,7 @@ import type {
   PreviewCommentTarget,
   ProjectFile,
   ProjectTemplate,
+  PromptTemplateSummary,
   LiveArtifactEventItem,
   LiveArtifactSummary,
   SkillSummary,
@@ -82,11 +83,14 @@ import {
   mergeAttachedComments,
   removeAttachedComment,
 } from '../comments';
-import { AppChromeHeader } from './AppChromeHeader';
+import { AppChromeHeader, type ChromeTab } from './AppChromeHeader';
 import { AvatarMenu } from './AvatarMenu';
 import { ChatPane } from './ChatPane';
+import { consumePendingSetup } from './PromptHomeView';
+import type { CreateInput, CreateTab } from './NewProjectPanel';
 import { decideAutoOpenAfterWrite } from './auto-open-file';
 import { FileWorkspace } from './FileWorkspace';
+import { Icon } from './Icon';
 import { CenteredLoader } from './Loading';
 
 interface Props {
@@ -96,6 +100,8 @@ interface Props {
   agents: AgentInfo[];
   skills: SkillSummary[];
   designSystems: DesignSystemSummary[];
+  templates: ProjectTemplate[];
+  promptTemplates: PromptTemplateSummary[];
   daemonLive: boolean;
   onModeChange: (mode: AppConfig['mode']) => void;
   onAgentChange: (id: string) => void;
@@ -116,6 +122,36 @@ interface Props {
   onTouchProject: () => void;
   onProjectChange: (next: Project) => void;
   onProjectsRefresh: () => void;
+  chromeTabs: ChromeTab[];
+  activeTabId: string | null;
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
+}
+
+// Map a Project's persisted (kind, intent) onto the CreateTab the
+// chat-side setup form should render under. ProjectKind and CreateTab
+// almost overlap one-for-one; the only twist is "live-artifact", which
+// is stored as kind=prototype + intent=live-artifact.
+function lockedTabFromProject(project: Project): CreateTab {
+  const meta = project.metadata;
+  if (!meta) return 'prototype';
+  if (meta.intent === 'live-artifact') return 'live-artifact';
+  switch (meta.kind) {
+    case 'prototype':
+      return 'prototype';
+    case 'deck':
+      return 'deck';
+    case 'template':
+      return 'template';
+    case 'image':
+      return 'image';
+    case 'video':
+      return 'video';
+    case 'audio':
+      return 'audio';
+    default:
+      return 'other';
+  }
 }
 
 let liveArtifactEventSequence = 0;
@@ -220,6 +256,8 @@ export function ProjectView({
   agents,
   skills,
   designSystems,
+  templates,
+  promptTemplates,
   daemonLive,
   onModeChange,
   onAgentChange,
@@ -235,6 +273,10 @@ export function ProjectView({
   onTouchProject,
   onProjectChange,
   onProjectsRefresh,
+  chromeTabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
 }: Props) {
   const t = useT();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -283,6 +325,10 @@ export function ProjectView({
   // include a nonce so re-clicking the same name after the user closed the
   // tab still focuses it.
   const [openRequest, setOpenRequest] = useState<{ name: string; nonce: number } | null>(null);
+  const [attachFilesRequest, setAttachFilesRequest] = useState<{
+    id: number;
+    files: ProjectFile[];
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelRef = useRef<AbortController | null>(null);
   const sendTextBufferRef = useRef<BufferedTextUpdates | null>(null);
@@ -515,6 +561,17 @@ export function ProjectView({
     if (!name) return;
     setOpenRequest({ name, nonce: Date.now() });
   }, []);
+
+  const requestAttachFilesToChat = useCallback((names: string[]) => {
+    if (names.length === 0) return;
+    const byName = new Map(projectFiles.map((file) => [file.name, file]));
+    const files = names
+      .map((name) => byName.get(name))
+      .filter((file): file is ProjectFile => Boolean(file));
+    if (files.length === 0) return;
+    setWorkspaceFocused(false);
+    setAttachFilesRequest({ id: Date.now(), files });
+  }, [projectFiles]);
 
   // Set of project file names that the chat surface uses to decide whether
   // a tool card's path is openable as a tab. Recomputed on every file-list
@@ -1339,6 +1396,32 @@ export function ProjectView({
     ],
   );
 
+  const handleSetupSubmit = useCallback(
+    async (input: CreateInput) => {
+      // Persist the chosen project shape (name + design system + per-tab
+      // metadata) before firing the seeded prompt — the agent composes
+      // its system prompt from the project record so the run sees the
+      // user's choices, not the placeholder defaults the home page
+      // submitted alongside createProject().
+      const trimmedName = input.name.trim();
+      const patch: Partial<Project> = {
+        ...(trimmedName ? { name: trimmedName } : {}),
+        designSystemId: input.designSystemId,
+        skillId: input.skillId,
+        metadata: input.metadata,
+      };
+      const updated = await patchProject(project.id, patch);
+      if (updated) onProjectChange(updated);
+      // Drop the form so the chat log gets the spotlight as the run streams.
+      setSetupPending(false);
+      const seed = (project.pendingPrompt ?? '').trim();
+      if (seed) {
+        void handleSend(seed, [], []);
+      }
+    },
+    [project.id, project.pendingPrompt, handleSend, onProjectChange],
+  );
+
   const handleSendBoardCommentAttachments = useCallback(
     async (commentAttachments: ChatCommentAttachment[]) => {
       if (streaming || commentAttachments.length === 0) return;
@@ -1772,11 +1855,27 @@ export function ProjectView({
     if (project.pendingPrompt) onClearPendingPrompt();
   }, [project.pendingPrompt, onClearPendingPrompt]);
 
+  // Setup-pending handshake from the prompt-first home (/). The home
+  // sets a sessionStorage flag right before navigating into a freshly-
+  // created project so chat shows the project setup form (locked
+  // NewProjectPanel) in place of the starter cards. Submitting that
+  // form patches project metadata and fires the seeded prompt.
+  const [setupPending, setSetupPending] = useState<boolean>(false);
+  useEffect(() => {
+    if (!project.pendingPrompt) return;
+    if (consumePendingSetup()) setSetupPending(true);
+    // Once-per-mount; downstream remounts of ChatPane on
+    // activeConversationId change should not re-show the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="app">
       <AppChromeHeader
-        onBack={onBack}
-        backLabel={t('project.backToProjects')}
+        tabs={chromeTabs}
+        activeTabId={activeTabId}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
         actions={(
           <AvatarMenu
             config={config}
@@ -1791,26 +1890,23 @@ export function ProjectView({
           />
         )}
       >
-        <div className="app-project-title">
-            <span
-              className="title editable"
-              data-testid="project-title"
-              tabIndex={0}
-              role="textbox"
-              suppressContentEditableWarning
-              contentEditable
-              onBlur={(e) => handleProjectRename(e.currentTarget.textContent ?? '')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  (e.currentTarget as HTMLElement).blur();
-                }
-              }}
+        {(() => {
+          const activeConversation = conversations.find(
+            (c) => c.id === activeConversationId,
+          );
+          const conversationTitle = activeConversation?.title?.trim();
+          if (!conversationTitle) return null;
+          return (
+            <div
+              className="app-project-title app-project-conversation"
+              data-testid="project-conversation-title"
+              title={conversationTitle}
             >
-              {project.name}
-            </span>
-            <span className="meta" data-testid="project-meta">{projectMeta}</span>
-        </div>
+              <Icon name="comment" size={13} />
+              <span className="title">{conversationTitle}</span>
+            </div>
+          );
+        })()}
       </AppChromeHeader>
       <div
         ref={splitRef}
@@ -1869,6 +1965,16 @@ export function ProjectView({
               onProjectMetadataChange={(metadata) => {
                 onProjectChange({ ...project, metadata });
               }}
+              attachFilesRequest={attachFilesRequest}
+              setupPending={setupPending}
+              setupSkills={skills}
+              setupDesignSystems={designSystems}
+              setupTemplates={templates}
+              setupPromptTemplates={promptTemplates}
+              setupDefaultDesignSystemId={config.designSystemId}
+              setupLockedTab={lockedTabFromProject(project)}
+              setupSeedName={project.name}
+              onSetupSubmit={handleSetupSubmit}
             />
           ) : (
             <div className="pane" data-testid="chat-pane-loading">
@@ -1912,6 +2018,7 @@ export function ProjectView({
           onSendBoardCommentAttachments={handleSendBoardCommentAttachments}
           focusMode={workspaceFocused}
           onFocusModeChange={setWorkspaceFocused}
+          onAttachFilesToChat={requestAttachFilesToChat}
         />
       </div>
     </div>

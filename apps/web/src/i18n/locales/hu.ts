@@ -176,6 +176,10 @@ export const hu: Dict = {
   'settings.runtimePackaged': 'Csomagolt alkalmazás',
   'settings.runtimeDevelopment': 'Fejlesztői',
   'settings.versionUnavailable': 'A verzió adatai nem érhetők el, amíg a daemon offline.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Tervek',
   'entry.tabExamples': 'Példák',
@@ -624,6 +628,7 @@ export const hu: Dict = {
   'designFiles.openInTab': 'Megnyitás lapon',
   'designFiles.download': 'Letöltés',
   'designFiles.downloadSelected': '{n} fájl letöltése ZIP-ként',
+  'designFiles.addToChat': '{n} hozzáadása a chathez',
   'designFiles.clearSelection': 'Kijelölés törlése',
   'designFiles.selectPage': 'Összes kijelölése az oldalon',
   'designFiles.selectAll': 'Összes kijelölése',

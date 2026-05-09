@@ -172,6 +172,10 @@ export const zhCN: Dict = {
   'settings.runtimePackaged': '已打包应用',
   'settings.runtimeDevelopment': '开发环境',
   'settings.versionUnavailable': '守护进程离线时无法获取版本详情。',
+  'entry.tabHome': '首页',
+  'entry.tabActiveTasks': '正在进行的任务',
+  'activeTasks.empty': '暂无正在进行的任务。当 agent 正在运行、排队或等待输入时会出现在这里。',
+  'activeTasks.openProjectAria': '打开项目 {name}',
 
   'entry.tabDesigns': '我的设计',
   'entry.tabExamples': '示例',
@@ -625,6 +629,7 @@ export const zhCN: Dict = {
   'designFiles.openInTab': '在标签页中打开',
   'designFiles.download': '下载',
   'designFiles.downloadSelected': '下载选中的 {n} 个文件为 ZIP',
+  'designFiles.addToChat': '添加到 chat',
   'designFiles.deleteSelected': '删除 {n} 个',
   'designFiles.clearSelection': '取消选择',
   'designFiles.selectPage': '全选此页',

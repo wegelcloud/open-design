@@ -176,6 +176,10 @@ export const de: Dict = {
   'settings.runtimePackaged': 'Paketierte App',
   'settings.runtimeDevelopment': 'Entwicklung',
   'settings.versionUnavailable': 'Versionsdetails sind nicht verfügbar, solange der Daemon offline ist.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Designs',
   'entry.tabExamples': 'Beispiele',
@@ -512,6 +516,7 @@ export const de: Dict = {
   'designFiles.openInTab': 'In Tab öffnen',
   'designFiles.download': 'Herunterladen',
   'designFiles.downloadSelected': '{n} als ZIP herunterladen',
+  'designFiles.addToChat': '{n} zum Chat hinzufügen',
   'designFiles.deleteSelected': '{n} löschen',
   'designFiles.clearSelection': 'Auswahl aufheben',
   'designFiles.selectPage': 'Alle auf dieser Seite auswählen',

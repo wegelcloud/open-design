@@ -7,7 +7,7 @@
 // All paths flowing in from HTTP handlers are validated against the project
 // directory to prevent path traversal — see resolveSafe().
 
-import { lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import {
@@ -18,6 +18,7 @@ import {
 
 const FORBIDDEN_SEGMENT = /^$|^\.\.?$/;
 const RESERVED_PROJECT_FILE_SEGMENTS = new Set(['.live-artifacts']);
+export const UPLOAD_BACKUP_PREFIX = '__uploaded-backup__';
 
 export function projectDir(projectsRoot, projectId) {
   if (!isSafeId(projectId)) throw new Error('invalid project id');
@@ -60,6 +61,65 @@ export async function listFiles(projectsRoot, projectId, opts = {}) {
     return out.filter((f) => Number(f.mtime) > since);
   }
   return out;
+}
+
+export function isUploadBackupPath(name) {
+  return (
+    typeof name === 'string' &&
+    (name === UPLOAD_BACKUP_PREFIX || name.startsWith(`${UPLOAD_BACKUP_PREFIX}/`))
+  );
+}
+
+function stripUploadBackupPrefix(name) {
+  if (!isUploadBackupPath(name)) throw new Error('not an upload backup path');
+  const rel = name.slice(UPLOAD_BACKUP_PREFIX.length).replace(/^\/+/, '');
+  return validateProjectPath(rel);
+}
+
+export async function backupUploadedFile(backupRoot, sourcePath, originalName) {
+  await mkdir(backupRoot, { recursive: true });
+  const safe = sanitizeName(originalName);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const targetName = `${stamp}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+  const target = await resolveSafeReal(backupRoot, targetName);
+  await copyFile(sourcePath, target);
+  const st = await stat(target);
+  return {
+    name: `${UPLOAD_BACKUP_PREFIX}/${targetName}`,
+    path: `${UPLOAD_BACKUP_PREFIX}/${targetName}`,
+    type: 'file',
+    size: st.size,
+    mtime: st.mtimeMs,
+    kind: kindFor(targetName),
+    mime: mimeFor(targetName),
+  };
+}
+
+export async function listUploadBackupFiles(backupRoot) {
+  const out = [];
+  await collectFiles(backupRoot, '', out);
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out.map((file) => ({
+    ...file,
+    name: `${UPLOAD_BACKUP_PREFIX}/${file.name}`,
+    path: `${UPLOAD_BACKUP_PREFIX}/${file.path ?? file.name}`,
+  }));
+}
+
+export async function readUploadBackupFile(backupRoot, name) {
+  const rel = stripUploadBackupPrefix(name);
+  const file = await resolveSafeReal(backupRoot, rel);
+  const buf = await readFile(file);
+  const st = await stat(file);
+  return {
+    buffer: buf,
+    name: `${UPLOAD_BACKUP_PREFIX}/${rel}`,
+    path: `${UPLOAD_BACKUP_PREFIX}/${rel}`,
+    size: st.size,
+    mtime: st.mtimeMs,
+    mime: mimeFor(rel),
+    kind: kindFor(rel),
+  };
 }
 
 // Build/install dirs that should be hidden from the file panel when a

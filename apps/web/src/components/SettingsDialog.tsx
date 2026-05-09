@@ -76,6 +76,28 @@ export type SettingsSection =
   | 'privacy'
   | 'about';
 
+const SETTINGS_SECTIONS = new Set<SettingsSection>([
+  'execution',
+  'media',
+  'composio',
+  'orbit',
+  'integrations',
+  'mcpClient',
+  'language',
+  'appearance',
+  'notifications',
+  'pet',
+  'library',
+  'privacy',
+  'about',
+]);
+
+function normalizeSettingsSection(value: unknown): SettingsSection {
+  return typeof value === 'string' && SETTINGS_SECTIONS.has(value as SettingsSection)
+    ? (value as SettingsSection)
+    : 'execution';
+}
+
 interface Props {
   initial: AppConfig;
   agents: AgentInfo[];
@@ -582,7 +604,9 @@ export function SettingsDialog({
   }, [initial.theme, initial.accentColor]);
   const [showApiKey, setShowApiKey] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
+  const [activeSection, setActiveSection] = useState<SettingsSection>(() =>
+    normalizeSettingsSection(initialSection),
+  );
   const [languageMenuRect, setLanguageMenuRect] = useState<DOMRect | null>(null);
   const [agentRescanRunning, setAgentRescanRunning] = useState(false);
   const [agentRescanNotice, setAgentRescanNotice] =
@@ -606,7 +630,7 @@ export function SettingsDialog({
   // routes through this when the MCP tab is active so the user can press the
   // single Save button at the bottom instead of hunting for the inner one.
   useEffect(() => {
-    setActiveSection(initialSection);
+    setActiveSection(normalizeSettingsSection(initialSection));
   }, [initialSection]);
 
   // Tests pin a result against the unsaved draft. Once the user edits any
@@ -1060,7 +1084,7 @@ export function SettingsDialog({
     library: { title: t('settings.library'), subtitle: t('settings.libraryHint') },
     about: { title: t('settings.about'), subtitle: t('settings.aboutHint') },
   };
-  const activeHeader = sectionHeader[activeSection];
+  const activeHeader = sectionHeader[activeSection] ?? sectionHeader.execution;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

@@ -141,6 +141,12 @@ describe('ProjectView daemon cleanup', () => {
         agents={[{ id: 'agent-1', name: 'OpenCode', models: [] } as never]}
         skills={[]}
         designSystems={[]}
+        templates={[]}
+        promptTemplates={[]}
+        chromeTabs={[]}
+        activeTabId={null}
+        onSelectTab={() => {}}
+        onCloseTab={() => {}}
         daemonLive
         onModeChange={() => {}}
         onAgentChange={() => {}}

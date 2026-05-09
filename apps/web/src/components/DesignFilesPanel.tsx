@@ -17,6 +17,7 @@ interface Props {
   onOpenLiveArtifact: (tabId: LiveArtifactWorkspaceEntry['tabId']) => void;
   onDeleteFile: (name: string) => void;
   onDeleteFiles: (names: string[]) => Promise<void> | void;
+  onAttachFilesToChat?: (names: string[]) => void;
   onUpload: () => void;
   onUploadFiles: (files: File[]) => void;
   onPaste: () => void;
@@ -25,6 +26,15 @@ interface Props {
 
 type SortKey = 'name' | 'kind' | 'mtime';
 type SortDir = 'asc' | 'desc';
+const UPLOAD_BACKUP_PREFIX = '__uploaded-backup__/';
+
+function isUploadBackupFile(name: string) {
+  return name.startsWith(UPLOAD_BACKUP_PREFIX);
+}
+
+function displayFileName(name: string) {
+  return isUploadBackupFile(name) ? name.slice(UPLOAD_BACKUP_PREFIX.length) : name;
+}
 
 export function DesignFilesPanel({
   projectId,
@@ -35,6 +45,7 @@ export function DesignFilesPanel({
   onOpenLiveArtifact,
   onDeleteFile,
   onDeleteFiles,
+  onAttachFilesToChat,
   onUpload,
   onUploadFiles,
   onPaste,
@@ -76,6 +87,11 @@ export function DesignFilesPanel({
   const rangeEnd = Math.min((safePage + 1) * effectivePageSize, sortedFiles.length);
   const allPageSelected = pageFiles.every((f) => selected.has(f.name));
   const somePageSelected = !allPageSelected && pageFiles.some((f) => selected.has(f.name));
+  const selectedProjectFiles = useMemo(
+    () => [...selected].filter((name) => !isUploadBackupFile(name)),
+    [selected],
+  );
+  const selectedChatFiles = useMemo(() => [...selected], [selected]);
 
   useEffect(() => {
     setPage(0);
@@ -199,7 +215,7 @@ export function DesignFilesPanel({
 
   async function handleBatchDelete() {
     if (deleting) return;
-    const fileList = [...selected];
+    const fileList = selectedProjectFiles;
     if (fileList.length === 0) return;
     setDeleting(true);
     try {
@@ -250,6 +266,12 @@ export function DesignFilesPanel({
     }
   }
 
+  function handleAttachSelectedToChat() {
+    if (selectedChatFiles.length === 0) return;
+    onAttachFilesToChat?.(selectedChatFiles);
+    clearSelection();
+  }
+
   function handleDrop(ev: React.DragEvent<HTMLDivElement>) {
     ev.preventDefault();
     dragDepthRef.current = 0;
@@ -277,6 +299,16 @@ export function DesignFilesPanel({
             <div className="df-actions">
               <button
                 type="button"
+                className="primary"
+                disabled={selectedChatFiles.length === 0 || !onAttachFilesToChat}
+                onClick={handleAttachSelectedToChat}
+                title={t('designFiles.addToChat', { n: selectedChatFiles.length })}
+              >
+                <Icon name="comment" size={13} />
+                <span>{t('designFiles.addToChat', { n: selectedChatFiles.length })}</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleBatchDownload()}
                 title={t('designFiles.downloadSelected', { n: selected.size })}
               >
@@ -287,11 +319,11 @@ export function DesignFilesPanel({
                 type="button"
                 className="danger"
                 data-testid="design-files-batch-delete"
-                disabled={deleting}
+                disabled={deleting || selectedProjectFiles.length === 0}
                 onClick={() => void handleBatchDelete()}
-                title={t('designFiles.deleteSelected', { n: selected.size })}
+                title={t('designFiles.deleteSelected', { n: selectedProjectFiles.length })}
               >
-                <span>{t('designFiles.deleteSelected', { n: selected.size })}</span>
+                <span>{t('designFiles.deleteSelected', { n: selectedProjectFiles.length })}</span>
               </button>
             </div>
           ) : (
@@ -391,24 +423,6 @@ export function DesignFilesPanel({
                         </button>
                       ) : null}
                     </div>
-                    <div className="df-pagination-right">
-                      <button
-                        type="button"
-                        className="df-page-btn"
-                        disabled={safePage <= 0}
-                        onClick={() => setPage(Math.max(0, safePage - 1))}
-                      >
-                        {t('designFiles.prev')}
-                      </button>
-                      <button
-                        type="button"
-                        className="df-page-btn"
-                        disabled={safePage >= totalPages - 1}
-                        onClick={() => setPage(Math.min(totalPages - 1, safePage + 1))}
-                      >
-                        {t('designFiles.next')}
-                      </button>
-                    </div>
                   </div>
                   <table className="df-table">
                     <thead>
@@ -468,6 +482,8 @@ export function DesignFilesPanel({
                       {pageFiles.map((f) => {
                         const active = preview === f.name;
                         const isHovered = hover === f.name;
+                        const isBackup = isUploadBackupFile(f.name);
+                        const visibleName = displayFileName(f.name);
                         return (
                           <tr
                             key={f.name}
@@ -531,8 +547,11 @@ export function DesignFilesPanel({
                                 }}
                               >
                                 <span className="df-row-name-wrap">
-                                  <span className="df-row-name">{f.name}</span>
-                                  <span className="df-row-sub">{humanBytes(f.size)}</span>
+                                  <span className="df-row-name">{visibleName}</span>
+                                  <span className="df-row-sub">
+                                    {isBackup ? 'Backup · ' : ''}
+                                    {humanBytes(f.size)}
+                                  </span>
                                 </span>
                               </button>
                             </td>
@@ -554,6 +573,7 @@ export function DesignFilesPanel({
                               <span
                                 data-testid={`design-file-menu-${f.name}`}
                                 className="df-row-menu"
+                                data-backup={isBackup ? 'true' : undefined}
                                 style={isHovered || active ? { opacity: 1 } : undefined}
                                 role="button"
                                 tabIndex={0}
@@ -685,20 +705,22 @@ export function DesignFilesPanel({
               {t('designFiles.download')}
             </button>
           </a>
-          <button
-            type="button"
-            className="danger"
-            data-testid={`design-file-delete-${menuPos.name}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              const name = menuPos.name;
-              setMenuPos(null);
-              onDeleteFile(name);
-            }}
-          >
-            {t('designFiles.delete')}
-          </button>
+          {isUploadBackupFile(menuPos.name) ? null : (
+            <button
+              type="button"
+              className="danger"
+              data-testid={`design-file-delete-${menuPos.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const name = menuPos.name;
+                setMenuPos(null);
+                onDeleteFile(name);
+              }}
+            >
+              {t('designFiles.delete')}
+            </button>
+          )}
         </div>
       ) : null}
     </div>
@@ -718,13 +740,14 @@ function DfPreview({
 }) {
   const t = useT();
   const url = projectFileUrl(projectId, file.name);
+  const visibleName = displayFileName(file.name);
   return (
     <aside className="df-preview">
       <div className="df-preview-thumb">
         {file.kind === 'image' || file.kind === 'sketch' ? (
-          <img src={`${url}?v=${Math.round(file.mtime)}`} alt={file.name} />
+          <img src={`${url}?v=${Math.round(file.mtime)}`} alt={visibleName} />
         ) : file.kind === 'html' ? (
-          <iframe title={file.name} src={url} sandbox="allow-scripts" />
+          <iframe title={visibleName} src={url} sandbox="allow-scripts" />
         ) : file.kind === 'video' ? (
           <video
             src={`${url}?v=${Math.round(file.mtime)}`}
@@ -760,7 +783,7 @@ function DfPreview({
           <Icon name="eye" size={13} />
           <span>{t('designFiles.previewOpen')}</span>
         </button>
-        <div className="df-preview-name">{file.name}</div>
+        <div className="df-preview-name">{visibleName}</div>
         <div className="df-preview-kind">{kindLabel(file.kind, t)}</div>
         <div className="df-preview-stats">
           {t('designFiles.modified', {
@@ -772,7 +795,7 @@ function DfPreview({
           <a
             className="ghost-link"
             href={url}
-            download={file.name}
+            download={visibleName}
             style={{ textDecoration: 'none' }}
           >
             {t('designFiles.download')}

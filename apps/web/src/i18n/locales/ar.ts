@@ -176,6 +176,10 @@ export const ar: Dict = {
   'settings.runtimePackaged': 'تطبيق معبأ',
   'settings.runtimeDevelopment': 'تطوير',
   'settings.versionUnavailable': 'تفاصيل النسخة غير متوفرة بينما البرنامج الخفي غير متصل.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'التصاميم',
   'entry.tabExamples': 'أمثلة',
@@ -625,6 +629,7 @@ export const ar: Dict = {
   'designFiles.openInTab': 'فتح في علامة تبويب',
   'designFiles.download': 'تحميل',
   'designFiles.downloadSelected': 'تنزيل {n} كـ ZIP',
+  'designFiles.addToChat': 'إضافة {n} إلى chat',
   'designFiles.clearSelection': 'مسح التحديد',
   'designFiles.selectPage': 'تحديد الكل في الصفحة',
   'designFiles.selectAll': 'تحديد الكل',

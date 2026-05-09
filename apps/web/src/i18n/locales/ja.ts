@@ -176,6 +176,10 @@ export const ja: Dict = {
   'settings.runtimePackaged': 'パッケージ版アプリ',
   'settings.runtimeDevelopment': '開発環境',
   'settings.versionUnavailable': 'daemon がオフラインの間はバージョン詳細を取得できません。',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'デザイン',
   'entry.tabExamples': 'サンプル',
@@ -511,6 +515,7 @@ export const ja: Dict = {
   'designFiles.openInTab': 'タブで開く',
   'designFiles.download': 'ダウンロード',
   'designFiles.downloadSelected': '{n}件をZIPとしてダウンロード',
+  'designFiles.addToChat': '{n}件をchatに追加',
   'designFiles.deleteSelected': '{n} 件を削除',
   'designFiles.clearSelection': '選択をクリア',
   'designFiles.selectPage': 'このページをすべて選択',

@@ -173,6 +173,10 @@ export const ru: Dict = {
   'settings.runtimePackaged': 'Упакованное приложение',
   'settings.runtimeDevelopment': 'Разработка',
   'settings.versionUnavailable': 'Сведения о версии недоступны, пока daemon не запущен.',
+  'entry.tabHome': 'Home',
+  'entry.tabActiveTasks': 'Active tasks',
+  'activeTasks.empty': 'No active tasks. Projects with running, queued, or awaiting-input agents will appear here.',
+  'activeTasks.openProjectAria': 'Open project {name}',
 
   'entry.tabDesigns': 'Дизайны',
   'entry.tabExamples': 'Примеры',
@@ -634,6 +638,7 @@ export const ru: Dict = {
   'designFiles.openInTab': 'Открыть во вкладке',
   'designFiles.download': 'Скачать',
   'designFiles.downloadSelected': 'Скачать {n} как ZIP',
+  'designFiles.addToChat': 'Добавить {n} в chat',
   'designFiles.clearSelection': 'Очистить выделение',
   'designFiles.selectPage': 'Выбрать всё на странице',
   'designFiles.selectAll': 'Выбрать всё',

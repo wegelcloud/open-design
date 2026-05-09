@@ -73,6 +73,32 @@ interface Props {
   connectorsLoading?: boolean;
   onOpenConnectorsTab?: () => void;
   loading?: boolean;
+  // Optional content rendered at the top of the form body, above the
+  // title. The prompt-first home page uses this to surface its big
+  // textarea while reusing the per-tab options below.
+  composerSlot?: React.ReactNode;
+  // Override the default "create" button presentation. The prompt-first
+  // home page rebrands the action as "Send".
+  createIcon?: 'plus' | 'send';
+  createLabel?: string;
+  // Extra disable signal layered on top of the panel's own canCreate
+  // logic (used by home to require a non-empty prompt).
+  disableCreate?: boolean;
+  // Hide the per-tab title (e.g. "新建原型") when the surrounding
+  // surface already provides its own header.
+  hideTitle?: boolean;
+  // Lock the panel to a specific tab and pin the active tab there for
+  // the lifetime of the component. The chat-side setup form uses this
+  // so the user can't change the project's mode after the home page
+  // already committed to it.
+  lockedTab?: CreateTab;
+  // Hide the row of mode tabs at the top entirely. Pairs with
+  // `lockedTab` when the surrounding context (project / route) already
+  // pins the mode and the user has no choice to make here.
+  hideTabs?: boolean;
+  // Hide the import-from-zip / open-folder buttons. The chat-side
+  // setup form doesn't offer those — imports start from the home page.
+  hideImports?: boolean;
 }
 
 const TAB_LABEL_KEYS: Record<CreateTab, keyof Dict> = {
@@ -122,13 +148,21 @@ export function NewProjectPanel({
   connectorsLoading = false,
   onOpenConnectorsTab,
   loading = false,
+  composerSlot,
+  createIcon = 'plus',
+  createLabel,
+  disableCreate = false,
+  hideTitle = false,
+  lockedTab,
+  hideTabs = false,
+  hideImports = false,
 }: Props) {
   const t = useT();
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
   const [baseDir, setBaseDir] = useState('');
   const [importingFolder, setImportingFolder] = useState(false);
-  const [tab, setTab] = useState<CreateTab>('prototype');
+  const [tab, setTab] = useState<CreateTab>(lockedTab ?? 'prototype');
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [tabScroll, setTabScroll] = useState({ left: false, right: false });
   const [name, setName] = useState('');
@@ -398,6 +432,7 @@ export function NewProjectPanel({
 
   return (
     <div className="newproj" data-testid="new-project-panel">
+      {hideTabs ? null : (
       <div className={`newproj-tabs-shell${tabScroll.left ? ' can-left' : ''}${tabScroll.right ? ' can-right' : ''}`}>
         <button
           type="button"
@@ -432,16 +467,20 @@ export function NewProjectPanel({
           <Icon name="chevron-right" size={16} strokeWidth={2} />
         </button>
       </div>
+      )}
       <div className="newproj-body">
-        <h3 className="newproj-title">
-          <span className="newproj-title-text">{titleForTab(tab, t)}</span>
-          {tab === 'live-artifact' ? (
-            // "Beta" is an internationally adopted brand-style status marker;
-            // intentionally not run through t() (consistent with short product
-            // status pills that read the same across our supported locales).
-            <span className="newproj-title-badge" aria-label="Beta feature">Beta</span>
-          ) : null}
-        </h3>
+        {composerSlot}
+        {hideTitle ? null : (
+          <h3 className="newproj-title">
+            <span className="newproj-title-text">{titleForTab(tab, t)}</span>
+            {tab === 'live-artifact' ? (
+              // "Beta" is an internationally adopted brand-style status marker;
+              // intentionally not run through t() (consistent with short product
+              // status pills that read the same across our supported locales).
+              <span className="newproj-title-badge" aria-label="Beta feature">Beta</span>
+            ) : null}
+          </h3>
+        )}
 
         <input
           className="newproj-name"
@@ -451,138 +490,29 @@ export function NewProjectPanel({
           onChange={(e) => setName(e.target.value)}
         />
 
-        {showDesignSystemPicker ? (
-          <DesignSystemPicker
-            designSystems={designSystems}
-            defaultDesignSystemId={defaultDesignSystemId}
-            selectedIds={selectedDsIds}
-            multi={dsMulti}
-            onChangeMulti={setDsMulti}
-            onChange={handleDesignSystemChange}
-            loading={loading}
-          />
-        ) : null}
-
-        {tab === 'image' ? (
-          <PromptTemplatePicker
-            surface="image"
-            templates={promptTemplates}
-            value={imagePromptTemplate}
-            onChange={setImagePromptTemplate}
-          />
-        ) : null}
-
-        {tab === 'video' ? (
-          <PromptTemplatePicker
-            surface="video"
-            templates={promptTemplates}
-            value={videoPromptTemplate}
-            onChange={setVideoPromptTemplate}
-          />
-        ) : null}
-
-        {tab === 'prototype' || tab === 'live-artifact' ? (
-          <FidelityPicker value={fidelity} onChange={setFidelity} />
-        ) : null}
-
-        {tab === 'live-artifact' ? (
-          <ConnectorsSection
-            connectors={connectors}
-            loading={connectorsLoading}
-            onOpenConnectorsTab={onOpenConnectorsTab}
-          />
-        ) : null}
-
-        {tab === 'deck' ? (
-          <ToggleRow
-            label={t('newproj.toggleSpeakerNotes')}
-            hint={t('newproj.toggleSpeakerNotesHint')}
-            checked={speakerNotes}
-            onChange={setSpeakerNotes}
-          />
-        ) : null}
-
-        {tab === 'template' ? (
-          <>
-            <TemplatePicker
-              templates={templates}
-              value={templateId}
-              onChange={setTemplateId}
-            />
-            <ToggleRow
-              label={t('newproj.toggleAnimations')}
-              hint={t('newproj.toggleAnimationsHint')}
-              checked={animations}
-              onChange={setAnimations}
-            />
-          </>
-        ) : null}
-
-        {tab === 'image' ? (
-          <MediaProjectOptions
-            surface="image"
-            imageModel={imageModel}
-            imageAspect={imageAspect}
-            imageStyle={imageStyle}
-            mediaProviders={mediaProviders}
-            onImageModel={setImageModel}
-            onImageAspect={setImageAspect}
-            onImageStyle={setImageStyle}
-          />
-        ) : null}
-
-        {tab === 'video' ? (
-          <MediaProjectOptions
-            surface="video"
-            videoModel={videoModel}
-            videoAspect={videoAspect}
-            videoLength={videoLength}
-            mediaProviders={mediaProviders}
-            onVideoModel={setVideoModel}
-            onVideoAspect={setVideoAspect}
-            onVideoLength={setVideoLength}
-          />
-        ) : null}
-
-        {tab === 'audio' ? (
-          <MediaProjectOptions
-            surface="audio"
-            audioKind={audioKind}
-            audioModel={audioModel}
-            audioDuration={audioDuration}
-            voice={voice}
-            mediaProviders={mediaProviders}
-            onAudioKind={(kind) => {
-              setAudioKind(kind);
-              setAudioModel(DEFAULT_AUDIO_MODEL[kind]);
-            }}
-            onAudioModel={setAudioModel}
-            onAudioDuration={setAudioDuration}
-            onVoice={setVoice}
-          />
-        ) : null}
-
         <button
           className="primary newproj-create"
           data-testid="create-project"
           onClick={handleCreate}
-          disabled={!canCreate}
+          disabled={!canCreate || disableCreate}
           title={
             tab === 'template' && templateId == null
               ? t('newproj.createDisabledTitle')
               : undefined
           }
         >
-          <Icon name="plus" size={13} />
+          <Icon name={createIcon} size={13} />
           <span>
-            {tab === 'template'
-              ? t('newproj.createFromTemplate')
-              : tab === 'live-artifact'
-                ? t('newproj.createLiveArtifact')
-              : t('newproj.create')}
+            {createLabel ?? (
+              tab === 'template'
+                ? t('newproj.createFromTemplate')
+                : tab === 'live-artifact'
+                  ? t('newproj.createLiveArtifact')
+                : t('newproj.create')
+            )}
           </span>
         </button>
-        {onImportClaudeDesign ? (
+        {!hideImports && onImportClaudeDesign ? (
           <>
             <input
               ref={importInputRef}
@@ -607,7 +537,7 @@ export function NewProjectPanel({
             </button>
           </>
         ) : null}
-        {onImportFolder ? (
+        {!hideImports && onImportFolder ? (
           <div className="newproj-open-folder">
             {!hasElectronPicker ? (
               <input
