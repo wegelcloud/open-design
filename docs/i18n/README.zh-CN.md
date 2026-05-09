@@ -46,19 +46,6 @@
 
 💻 **本地优先**，所有数据与运行环境完全在你自己的设备上。
 
-## ✨ Key Features
-
-- 🤖 **16 个 Coding Agent** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI 等，自动检测 `PATH` 上已装好的 CLI
-- 🎨 **129 个品牌设计体系** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla 等，一键切换品牌语言
-- 🛠️ **31 个可组合 Skill** ── 原型、Live Artifact、Slides、杂志海报、仪表盘、社交三连图、E-guide、动效页、周报、OKR、看板等
-- 🎬 **多模态输出** ── HTML 原型、网页 Slides、gpt-image-2 静帧、Seedance 2.0 电影感视频、HyperFrames HTML→MP4 动效
-- 🔌 **每一层都 BYOK** ── Anthropic / OpenAI / Azure / Google + 14 家媒体供应商（Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …）
-- 💾 **本地优先存储** ── 项目落本地 SQLite（`.od/` 目录），凭证不出你的机器
-- 🖼️ **沙盒预览** ── 每个 artifact 在干净的 `srcdoc` iframe 中渲染，支持 HTML / PDF / PPT / ZIP / Markdown 多格式导出
-- 🎭 **Sketch 草图 + Live Artifact** ── 在画布上画结构代替 prompt 描述；接 Notion / Linear / Slack 实时数据（Composio）
-- 🚀 **一条命令的生命周期** ── `pnpm tools-dev` 一键启动 daemon + web（+ desktop），端口、命名空间、日志统一管理
-- 📜 **Apache-2.0 开源** ── fork、自部署、商用全部允许
-
 ## 💡 Why
 
 🚀 2026 年 4 月，Anthropic 发布了 [Claude Design][cd]，**第一次让 LLM 真正做设计**——不是写一篇关于设计的文章，而是**直接产出一份能用的设计稿**。
@@ -80,6 +67,19 @@
 | **品牌设计体系** | 内置但不可换 | 团队 Library（私域） | 主题 JSON | ✅ 129 个 Markdown 体系，可自定义 |
 | **Skill 扩展** | 闭源 | Plugin 市场（受平台审核） | 闭源 | ✅ 拖入文件夹即生效 |
 | **场景** | 通用设计 | UI / 原型 / 协作 | 偏代码原型 | ✅ 设计 / 营销 / 运营 / 产品 / 财务 / HR |
+
+## ✨ Key Features
+
+- 🤖 **16 个 Coding Agent** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI 等，自动检测 `PATH` 上已装好的 CLI
+- 🎨 **129 个品牌设计体系** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla 等，一键切换品牌语言
+- 🛠️ **31 个可组合 Skill** ── 原型、Live Artifact、Slides、杂志海报、仪表盘、社交三连图、E-guide、动效页、周报、OKR、看板等
+- 🎬 **多模态输出** ── HTML 原型、网页 Slides、gpt-image-2 静帧、Seedance 2.0 电影感视频、HyperFrames HTML→MP4 动效
+- 🔌 **每一层都 BYOK** ── Anthropic / OpenAI / Azure / Google + 14 家媒体供应商（Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …）
+- 💾 **本地优先存储** ── 项目落本地 SQLite（`.od/` 目录），凭证不出你的机器
+- 🖼️ **沙盒预览** ── 每个 artifact 在干净的 `srcdoc` iframe 中渲染，支持 HTML / PDF / PPT / ZIP / Markdown 多格式导出
+- 🎭 **Sketch 草图 + Live Artifact** ── 在画布上画结构代替 prompt 描述；接 Notion / Linear / Slack 实时数据（Composio）
+- 🚀 **一条命令的生命周期** ── `pnpm tools-dev` 一键启动 daemon + web（+ desktop），端口、命名空间、日志统一管理
+- 📜 **Apache-2.0 开源** ── fork、自部署、商用全部允许
 
 ## 🖼️ Demo
 
