@@ -95,8 +95,18 @@ describe('connector display sorting', () => {
       status: 'connected' as const,
       toolCount: 846,
       tools: [
-        { name: 'github.github_search_repositories' },
-        { name: 'github.github_get_issue' },
+        {
+          title: 'Search repositories',
+          name: 'github.github_search_repositories',
+          safety: { sideEffect: 'read' as const, approval: 'auto' as const, reason: 'Read-only search.' },
+          refreshEligible: true,
+        },
+        {
+          title: 'Get issue',
+          name: 'github.github_get_issue',
+          safety: { sideEffect: 'read' as const, approval: 'auto' as const, reason: 'Read-only get.' },
+          refreshEligible: true,
+        },
       ],
       curatedToolNames: ['github.github_search_repositories', 'github.github_get_issue'],
     };
