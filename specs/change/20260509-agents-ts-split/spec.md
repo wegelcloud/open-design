@@ -1,7 +1,7 @@
 ---
 id: 20260509-agents-ts-split
 name: Agents Ts Split
-status: designed
+status: implemented
 created: '2026-05-09'
 ---
 
@@ -173,22 +173,22 @@ Flow:
 
 ## Plan
 
-- [ ] Step 1: Establish runtime module skeleton and facade
-  - [ ] Substep 1.1 Implement: create `apps/daemon/src/runtimes/` modules and move shared types/constants/helpers without behavior changes.
-  - [ ] Substep 1.2 Implement: replace `apps/daemon/src/agents.ts` with compatibility exports for the existing API surface.
-  - [ ] Substep 1.3 Verify: run daemon typecheck and the current `agents.test.ts` against the facade.
-- [ ] Step 2: Split runtime definitions and registry
-  - [ ] Substep 2.1 Implement: move each `AGENT_DEFS` entry into `runtimes/defs/*.ts` while preserving order.
-  - [ ] Substep 2.2 Implement: centralize aggregation and lookup in `runtimes/registry.ts` with an id uniqueness guard.
-  - [ ] Substep 2.3 Verify: run registry, args, detection, and daemon typecheck coverage.
-- [ ] Step 3: Split tests by responsibility
-  - [ ] Substep 3.1 Implement: extract shared env/fetch/platform/tmp executable helpers under `apps/daemon/tests/runtimes/helpers/`.
-  - [ ] Substep 3.2 Implement: split `agents.test.ts` into registry, args, executables, env, detection, MCP, and prompt-budget test files.
-  - [ ] Substep 3.3 Verify: run `pnpm --filter @open-design/daemon test` and ensure split tests still import compatibility APIs through the facade where relevant.
-- [ ] Step 4: Stabilize edge cases and review boundaries
-  - [ ] Substep 4.1 Implement: fix movement-only circular imports, `.js` import suffixes, and singleton ownership issues found by validation.
-  - [ ] Substep 4.2 Verify: run `pnpm --filter @open-design/daemon typecheck` and `pnpm --filter @open-design/daemon test`.
-  - [ ] Substep 4.3 Verify: review changed files against app test placement and facade compatibility boundaries.
+- [x] Step 1: Establish runtime module skeleton and facade
+  - [x] Substep 1.1 Implement: create `apps/daemon/src/runtimes/` modules and move shared types/constants/helpers without behavior changes.
+  - [x] Substep 1.2 Implement: replace `apps/daemon/src/agents.ts` with compatibility exports for the existing API surface.
+  - [x] Substep 1.3 Verify: run daemon typecheck and the split runtime tests against the facade.
+- [x] Step 2: Split runtime definitions and registry
+  - [x] Substep 2.1 Implement: move each `AGENT_DEFS` entry into `runtimes/defs/*.ts` while preserving order.
+  - [x] Substep 2.2 Implement: centralize aggregation and lookup in `runtimes/registry.ts` with an id uniqueness guard.
+  - [x] Substep 2.3 Verify: run registry, args, detection, and daemon typecheck coverage.
+- [x] Step 3: Split tests by responsibility
+  - [x] Substep 3.1 Implement: extract shared env/fetch/platform/tmp executable helpers under `apps/daemon/tests/runtimes/helpers/`.
+  - [x] Substep 3.2 Implement: split `agents.test.ts` into registry, args, executables, env, detection, MCP, and prompt-budget test files.
+  - [x] Substep 3.3 Verify: run `pnpm --filter @open-design/daemon test` and ensure split tests still import compatibility APIs through the facade where relevant.
+- [x] Step 4: Stabilize edge cases and review boundaries
+  - [x] Substep 4.1 Implement: fix movement-only circular imports, `.js` import suffixes, and singleton ownership issues found by validation.
+  - [x] Substep 4.2 Verify: run `pnpm --filter @open-design/daemon typecheck` and `pnpm --filter @open-design/daemon test`.
+  - [x] Substep 4.3 Verify: review changed files against app test placement and facade compatibility boundaries.
 
 ## Notes
 
@@ -196,8 +196,15 @@ Flow:
 
 ### Implementation
 
-<!-- Files created/modified, decisions made during coding, deviations from design -->
+- Split `apps/daemon/src/agents.ts` into a thin facade over `apps/daemon/src/runtimes/*` modules.
+- Moved adapter definitions into `apps/daemon/src/runtimes/defs/*.ts` and preserved registry order in `apps/daemon/src/runtimes/registry.ts`.
+- Kept singleton ownership in dedicated modules: capabilities cache, executable toolchain-dir cache, and live model cache.
+- Split daemon agent tests into `apps/daemon/tests/runtimes/*.test.ts` with shared helpers under `apps/daemon/tests/runtimes/helpers/`.
+- Fixed configured-env `~` expansion after review and added split-test coverage for home-path expansion.
 
 ### Verification
 
-<!-- How the feature was verified: tests written, manual testing steps, results -->
+- `pnpm --filter @open-design/daemon typecheck` ✅
+- `pnpm --filter @open-design/daemon exec vitest run -c vitest.config.ts tests/runtimes` ✅
+- `pnpm --filter @open-design/daemon exec vitest run -c vitest.config.ts tests/chat-route.test.ts` ✅ after one full-suite flaky failure in `tests/chat-route.test.ts`.
+- `pnpm --filter @open-design/daemon test` ⚠️ runtime split tests passed; full suite still fails in existing unrelated `tests/finalize-design.test.ts` assertions where resolved artifact names include long relative temp paths.
