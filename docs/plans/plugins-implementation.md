@@ -180,10 +180,15 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `od files diff` | absent | Phase 2C |
 | `od project import` (CLI wrapper of `/api/import/folder`) | absent | Phase 2C |
 | `od conversation new` | absent | Phase 2C |
-| `od marketplace search` (catalog query) | absent | Phase 3 |
 | `od plugin scaffold` (interactive starter) | shipped | Phase 4 — `apps/daemon/src/plugins/scaffold.ts` + `od plugin scaffold --id <id>` |
 | `od plugin export <projectId> --as od\|claude-plugin\|agent-skill` | shipped | Phase 4 — `apps/daemon/src/plugins/export.ts` + `POST /api/applied-plugins/export` |
-| `od plugin publish --to <catalog>` | absent | Phase 4 |
+| `od plugin publish --to anthropics-skills\|awesome-agent-skills\|clawhub\|skills-sh` | shipped | Phase 4 — `apps/daemon/src/plugins/publish.ts` + `--open` browser launch |
+| `od atoms list / show` | shipped | Phase 4 — wraps `GET /api/atoms` |
+| `od skills list / show` | shipped | Phase 4 — wraps `GET /api/skills{,/:id}` |
+| `od design-systems list / show` | shipped | Phase 4 — wraps `GET /api/design-systems{,/:id}` |
+| `od craft list / show` | shipped | Phase 4 — new `GET /api/craft{,/:id}` |
+| `od status / od version` | shipped | Phase 4 |
+| `od marketplace search "<query>" [--tag <t>]` | shipped | Phase 3 — substring search over every configured catalog |
 | `od skills/design-systems/craft/atoms list/show` | absent | Phase 4 |
 | `od status/doctor/version/config` | partial | Phase 4 (some pieces exist; audit) |
 
@@ -432,8 +437,8 @@ Deliverables
 - [x] `od plugin export <projectId> --as od|claude-plugin|agent-skill` — `apps/daemon/src/plugins/export.ts` + `POST /api/applied-plugins/export`.
 - [x] `od plugin run <id> --input k=v --follow` (apply + run start wrapper) — landed in §3.B3 (Phase 2A). Full ND-JSON streaming via `od run watch` is also shipped (Phase 1 follow-up §3.F1).
 - [x] `od plugin scaffold` interactive starter — `apps/daemon/src/plugins/scaffold.ts`.
-- [ ] `od plugin publish --to anthropics-skills|awesome-agent-skills|clawhub` (PR template launcher).
-- [ ] CLI parity remainder: `od skills/design-systems/craft/atoms list/show`, `od status/doctor/version`, `od config get/set/list/unset`, `od marketplace search`.
+- [x] `od plugin publish --to anthropics-skills|awesome-agent-skills|clawhub|skills-sh` (PR template launcher) — `apps/daemon/src/plugins/publish.ts`.
+- [x] CLI parity remainder (mostly): `od skills/design-systems/craft/atoms list/show`, `od status`, `od version`, `od marketplace search`. Still open: `od doctor` (repo-wide diagnostics) and `od config get/set/list/unset`.
 - [ ] Optional `plugins/_official/atoms/<atom>/SKILL.md` extraction (spec §23.3.2 patch 2).
 - [ ] `@open-design/agui-adapter` package; `GET /api/runs/:runId/agui` SSE endpoint emits AG-UI canonical events.
 - [ ] Plugin manifest upgrade: `od.genui.surfaces[].component` (capability gate `genui:custom-component`).
@@ -524,10 +529,10 @@ Plus repo-wide gates
 
 | Field | Value |
 | --- | --- |
-| Current phase | Phase 2A + 1 + 1.5 + 2B (composer mount + ChatComposer mount + marketplace deep UI) + 2C entry slice + 3 (entry slice incl. `od plugin install <name>`) + 4 (scaffold + export + atoms doc) + early 5 |
-| Next planned PR | Plug `runPipelineForRun()` into the live agent loop in `startChatRun()` (lifts e2e-3 from entry-slice to the full §8 'first SSE event = `pipeline_stage_started`' contract); Phase 4 `od plugin publish --to <catalog>` PR-template launcher; Phase 4 atom migration into `plugins/_official/atoms/<atom>/SKILL.md`; Phase 4 AG-UI adapter; Phase 5 Docker image |
+| Current phase | Phase 2A + 1 + 1.5 + 2B (composer mount + ChatComposer mount + marketplace deep UI) + 2C entry slice + 3 (full incl. `od plugin install <name>` + marketplace search) + 4 (scaffold + export + publish + atoms doc + library/status/version CLI) + early 5 |
+| Next planned PR | Plug `runPipelineForRun()` into the live agent loop in `startChatRun()` (lifts e2e-3 from entry-slice to the full §8 'first SSE event = `pipeline_stage_started`' contract); Phase 4 atom migration into `plugins/_official/atoms/<atom>/SKILL.md`; Phase 4 AG-UI adapter package; Phase 5 Docker image |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 4 scaffold / export / atoms doc + Phase 2B marketplace deep UI + ChatComposer mount landing) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 4 publish + library CLI parity + craft route + marketplace search landing) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
