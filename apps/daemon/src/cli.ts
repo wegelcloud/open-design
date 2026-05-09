@@ -833,6 +833,7 @@ async function runPlugin(args) {
     case 'run':       return runPluginRun(rest);
     case 'scaffold': return runPluginScaffold(rest);
     case 'validate': return runPluginValidate(rest);
+    case 'pack':     return runPluginPack(rest);
     case 'export':   return runPluginExport(rest);
     case 'publish':  return runPluginPublish(rest);
     default:
@@ -990,6 +991,83 @@ Exit codes:
     process.exit(2);
   }
   process.exit(result.ok ? 0 : 4);
+}
+
+// Phase 4 / spec §14 / plan §3.X1 — `od plugin pack <folder>`.
+//
+// Produces a gzip-compressed tar archive ready to install via the
+// installer's HTTPS-tarball path. The output path is folder-base +
+// version when the manifest exposes a version, otherwise folder-base.
+async function runPluginPack(rest) {
+  const flags = parseFlags(rest, {
+    string:  new Set(['out']),
+    boolean: new Set(['help', 'h', 'json']),
+  });
+  if (flags.help || flags.h || rest.length === 0 || rest[0]?.startsWith('-')) {
+    console.log(`Usage:
+  od plugin pack <folder> [--out <path>] [--json]
+
+Builds a gzip-compressed tar archive of <folder> at --out (default
+'<folder>/../<basename>-<manifest.version>.tgz'). The archive is the
+exact shape \`od plugin install --source <https://...>\` consumes.
+
+Skipped when packing:
+  node_modules / .git / .next / dist / build / out / coverage /
+  .turbo / .cache / .pnpm-store / .parcel-cache / .svelte-kit /
+  .nuxt / .astro / .vercel / .vscode / .DS_Store / Thumbs.db
+  (matches the installer's tarball-extract skiplist).
+Symlinks are rejected at pack time (consistent with extract-time
+rejection at install).
+
+Exit codes:
+  0  archive written
+  2  CLI usage error
+  4  pack-time error (missing open-design.json, invalid JSON, etc)`);
+    process.exit(rest.length === 0 ? 2 : 0);
+  }
+  const folder = rest[0];
+  try {
+    const { packPlugin, PackPluginError } = await import('./plugins/pack.js');
+    let result;
+    try {
+      result = await packPlugin({
+        folder,
+        ...(typeof flags.out === 'string' ? { out: flags.out } : {}),
+      });
+    } catch (err) {
+      if (err instanceof PackPluginError) {
+        if (flags.json) {
+          process.stdout.write(JSON.stringify({ ok: false, error: err.message }, null, 2) + '\n');
+        } else {
+          console.error(`[pack] ${err.message}`);
+        }
+        process.exit(4);
+      }
+      throw err;
+    }
+    if (flags.json) {
+      process.stdout.write(JSON.stringify({
+        ok:            true,
+        outPath:       result.outPath,
+        bytes:         result.bytes,
+        fileCount:     result.files.length,
+        pluginId:      result.pluginId,
+        pluginVersion: result.pluginVersion,
+      }, null, 2) + '\n');
+    } else {
+      const idStr = result.pluginVersion
+        ? `${result.pluginId ?? 'plugin'}@${result.pluginVersion}`
+        : result.pluginId ?? 'plugin';
+      console.log(`[pack] packed ${idStr}`);
+      console.log(`[pack] out:    ${result.outPath}`);
+      console.log(`[pack] files:  ${result.files.length}`);
+      console.log(`[pack] bytes:  ${result.bytes}`);
+      console.log(`\nNext: od plugin install --source ${result.outPath}`);
+    }
+  } catch (err) {
+    console.error(`[pack] failed: ${err?.message ?? err}`);
+    process.exit(2);
+  }
 }
 
 // Phase 4 / spec §14 — `od plugin export <projectId> --as <target>`.
@@ -1986,6 +2064,8 @@ function printPluginHelp() {
                                           Stage a capability grant (full mutation lands Phase 3).
   od plugin validate <folder> [--json]    Lint a plugin folder before installing
                                           (manifest parse + atom + ref checks).
+  od plugin pack <folder> [--out <path>]  Build a .tgz archive of a plugin
+                                          folder for distribution.
 
 Common options:
   --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL or http://127.0.0.1:7456).

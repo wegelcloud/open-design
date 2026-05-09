@@ -9,6 +9,12 @@ export {
   type ValidatePluginFolderInput,
   type ValidatePluginFolderResult,
 } from './validate.js';
+export {
+  packPlugin,
+  PackPluginError,
+  type PackPluginInput,
+  type PackPluginResult,
+} from './pack.js';
 export * from './atoms/build-test.js';
 export * from './atoms/code-import.js';
 export * from './atoms/design-extract.js';
