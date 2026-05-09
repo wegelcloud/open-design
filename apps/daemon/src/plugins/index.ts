@@ -35,8 +35,11 @@ export {
 } from './snapshot-diff.js';
 export {
   pluginInventoryStats,
+  pluginSourceBuckets,
   snapshotInventoryStats,
   type PluginInventoryStats,
+  type PluginSourceBucket,
+  type PluginSourceBucketsResult,
   type SnapshotInventoryStats,
   type SnapshotStatsRow,
 } from './stats.js';

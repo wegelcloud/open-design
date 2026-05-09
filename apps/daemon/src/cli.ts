@@ -824,7 +824,9 @@ async function runPlugin(args) {
     case 'list':      return runPluginList(rest);
     case 'search':    return runPluginSearch(rest);
     case 'stats':     return runPluginStats(rest);
+    case 'sources':   return runPluginSources(rest);
     case 'info':      return runPluginInfo(rest);
+    case 'manifest':  return runPluginManifest(rest);
     case 'install':   return runPluginInstall(rest);
     case 'upgrade':   return runPluginUpgrade(rest);
     case 'uninstall': return runPluginUninstall(rest);
@@ -1694,6 +1696,81 @@ async function runPluginInfo(rest) {
   }
   const data = await resp.json();
   process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+}
+
+// Plan §3.MM1 — `od plugin manifest <id>`. Prints just the parsed
+// manifest JSON, no wrapper. Useful for plugin authors who want to
+// compare the daemon's view to their on-disk open-design.json
+// without scrolling past the registry record fields (sourceKind /
+// fsPath / installedAt etc).
+async function runPluginManifest(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const id = rest.find((a) => !a.startsWith('--') && a !== flags['daemon-url'] && a !== flags.source);
+  if (!id) {
+    console.error('Usage: od plugin manifest <id>');
+    process.exit(2);
+  }
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}`;
+  const resp = await fetch(url);
+  if (resp.status === 404) {
+    console.error(`plugin ${id} not found`);
+    process.exit(65);
+  }
+  if (!resp.ok) {
+    console.error(`GET /api/plugins/${id} failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const data = await resp.json();
+  if (!data?.manifest) {
+    console.error(`plugin ${id} has no recorded manifest (registry row is incomplete)`);
+    process.exit(1);
+  }
+  process.stdout.write(JSON.stringify(data.manifest, null, 2) + '\n');
+}
+
+// Plan §3.MM2 — `od plugin sources`. Lists every distinct install
+// source string + count of plugins installed from it, ordered by
+// count descending then source ascending. Useful for ops audits
+// ('which github repos do my plugins come from') + for plugin
+// authors comparing their fork to its upstream installs.
+async function runPluginSources(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    console.error(`GET /api/plugins failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const data = await resp.json();
+  const plugins = Array.isArray(data?.plugins) ? data.plugins : [];
+  const buckets = new Map();
+  for (const p of plugins) {
+    const key = `${p.sourceKind ?? 'unknown'}\t${p.source ?? '(none)'}`;
+    const entry = buckets.get(key) ?? { sourceKind: p.sourceKind ?? 'unknown', source: p.source ?? '(none)', count: 0, plugins: [] };
+    entry.count += 1;
+    entry.plugins.push({ id: p.id, version: p.version });
+    buckets.set(key, entry);
+  }
+  const rows = [...buckets.values()].sort((a, b) => {
+    if (a.count !== b.count) return b.count - a.count;
+    if (a.sourceKind !== b.sourceKind) return a.sourceKind.localeCompare(b.sourceKind);
+    return a.source.localeCompare(b.source);
+  });
+  if (flags.json) {
+    process.stdout.write(JSON.stringify({ total: plugins.length, sources: rows }, null, 2) + '\n');
+    return;
+  }
+  if (rows.length === 0) {
+    console.log('No plugins installed.');
+    return;
+  }
+  console.log(`# Plugin install sources (total: ${plugins.length})`);
+  for (const row of rows) {
+    console.log(`  ${row.sourceKind.padEnd(11)}  ${String(row.count).padStart(3)}  ${row.source}`);
+    for (const plug of row.plugins) {
+      console.log(`               \u2514\u2500 ${plug.id}@${plug.version}`);
+    }
+  }
 }
 
 async function runPluginInstall(rest) {
@@ -2972,6 +3049,8 @@ function printPluginHelp() {
   od plugin search <query> [--tag <t>]    Search installed plugins by id/title/desc/tag.
   od plugin stats [--json]                Inventory + snapshot health report.
   od plugin info <id>                     Print a plugin's manifest + trust state as JSON.
+  od plugin manifest <id>                 Print only the parsed manifest JSON (no wrapper).
+  od plugin sources                       List distinct install sources + counts.
   od plugin install --source <path>       Install a plugin from a local folder (Phase 1).
   od plugin upgrade <id>                  Re-install a plugin from its recorded source.
   od plugin uninstall <id>                Remove a plugin from the registry + on-disk staging.

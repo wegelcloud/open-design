@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
 import {
   pluginInventoryStats,
+  pluginSourceBuckets,
   snapshotInventoryStats,
   type SnapshotStatsRow,
 } from '../src/plugins/stats.js';
@@ -149,5 +150,60 @@ describe('snapshotInventoryStats', () => {
     expect(s.withRun).toBe(1);
     expect(s.oldestAppliedAt).toBe(50);
     expect(s.newestAppliedAt).toBe(200);
+  });
+});
+
+describe('pluginSourceBuckets — Plan §3.MM2', () => {
+  it('returns total=0 + empty buckets[] for an empty list', () => {
+    const result = pluginSourceBuckets([]);
+    expect(result.total).toBe(0);
+    expect(result.buckets).toEqual([]);
+  });
+
+  // Local helper that overrides the make()'s baked-in source/fsPath.
+  const withSource = (rec: ReturnType<typeof make>, source: string) => ({ ...rec, source, fsPath: source });
+
+  it('aggregates plugins by (sourceKind, source) tuples', () => {
+    const result = pluginSourceBuckets([
+      withSource(make('a', { sourceKind: 'github' }), 'github:owner/repo'),
+      withSource(make('b', { sourceKind: 'github' }), 'github:owner/repo'),
+      withSource(make('c', { sourceKind: 'local'  }), '/tmp/c'),
+    ]);
+    expect(result.total).toBe(3);
+    expect(result.buckets).toHaveLength(2);
+    const github = result.buckets.find((b) => b.sourceKind === 'github');
+    expect(github?.count).toBe(2);
+    expect(github?.source).toBe('github:owner/repo');
+    expect(github?.plugins.map((p) => p.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('sorts buckets by descending count, then ascending sourceKind/source', () => {
+    const result = pluginSourceBuckets([
+      withSource(make('a', { sourceKind: 'local'  }), '/x'),
+      withSource(make('b', { sourceKind: 'local'  }), '/x'),
+      withSource(make('c', { sourceKind: 'github' }), 'github:owner/repo'),
+    ]);
+    // local/(/x)=2, github/(github:owner/repo)=1 → local first.
+    expect(result.buckets[0]?.sourceKind).toBe('local');
+    expect(result.buckets[1]?.sourceKind).toBe('github');
+  });
+
+  it('breaks count ties alphabetically by sourceKind', () => {
+    const result = pluginSourceBuckets([
+      withSource(make('a', { sourceKind: 'local'  }), '/x'),
+      withSource(make('b', { sourceKind: 'github' }), 'github:owner/repo'),
+    ]);
+    // Both count=1; github < local alphabetically.
+    expect(result.buckets[0]?.sourceKind).toBe('github');
+    expect(result.buckets[1]?.sourceKind).toBe('local');
+  });
+
+  it('plugins inside a bucket sort by id alphabetically', () => {
+    const result = pluginSourceBuckets([
+      withSource(make('zeta',  { sourceKind: 'local' }), '/x'),
+      withSource(make('alpha', { sourceKind: 'local' }), '/x'),
+      withSource(make('mango', { sourceKind: 'local' }), '/x'),
+    ]);
+    expect(result.buckets[0]?.plugins.map((p) => p.id)).toEqual(['alpha', 'mango', 'zeta']);
   });
 });

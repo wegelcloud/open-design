@@ -14,7 +14,7 @@
 // snapshot-side aggregation in separately because that side
 // requires a SQLite read.
 
-import type { InstalledPluginRecord } from '@open-design/contracts';
+import type { InstalledPluginRecord, PluginSourceKind } from '@open-design/contracts';
 
 export interface PluginInventoryStats {
   total:       number;
@@ -108,6 +108,48 @@ export interface SnapshotStatsRow {
   project_id: string | null;
   run_id:     string | null;
   applied_at: number;
+}
+
+// Plan §3.MM2 — `pluginSourceBuckets()` aggregates installed
+// plugins by (sourceKind, source) tuples. Used by the
+// `od plugin sources` CLI; lives next to the other stats
+// helpers so future audit panels can reuse it.
+
+export interface PluginSourceBucket {
+  sourceKind:  PluginSourceKind | 'unknown';
+  source:      string;
+  count:       number;
+  plugins:     Array<{ id: string; version: string }>;
+}
+
+export interface PluginSourceBucketsResult {
+  total:   number;
+  buckets: PluginSourceBucket[];
+}
+
+export function pluginSourceBuckets(plugins: ReadonlyArray<InstalledPluginRecord>): PluginSourceBucketsResult {
+  const map = new Map<string, PluginSourceBucket>();
+  for (const p of plugins) {
+    const sourceKind = (p.sourceKind ?? 'unknown') as PluginSourceBucket['sourceKind'];
+    const source = p.source ?? '(none)';
+    const key = `${sourceKind}\t${source}`;
+    let bucket = map.get(key);
+    if (!bucket) {
+      bucket = { sourceKind, source, count: 0, plugins: [] };
+      map.set(key, bucket);
+    }
+    bucket.count += 1;
+    bucket.plugins.push({ id: p.id, version: p.version });
+  }
+  // Sort plugins within bucket by id for deterministic output.
+  for (const b of map.values()) b.plugins.sort((a, b) => a.id.localeCompare(b.id));
+  // Sort buckets by descending count, then ascending sourceKind / source.
+  const buckets = [...map.values()].sort((a, b) => {
+    if (a.count !== b.count) return b.count - a.count;
+    if (a.sourceKind !== b.sourceKind) return a.sourceKind.localeCompare(b.sourceKind);
+    return a.source.localeCompare(b.source);
+  });
+  return { total: plugins.length, buckets };
 }
 
 export function snapshotInventoryStats(rows: ReadonlyArray<SnapshotStatsRow>): SnapshotInventoryStats {
