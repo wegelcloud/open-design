@@ -3252,22 +3252,42 @@ export async function startServer({
       // Three-state extraction handling so the UI can: (a) leave the
       // override alone (omit `extraction`), (b) clear it back to
       // auto-pick (`extraction: null`), or (c) commit a custom override
-      // (`extraction: { provider, ... }`). Preserves the existing
-      // apiKey when the patch contains the same provider but no apiKey
-      // field — matches how the masked GET response surfaces an
-      // `apiKeyTail` without echoing the secret.
+      // (`extraction: { provider, ... }`). For the apiKey field we
+      // need *four* states because the masked GET surfaces only an
+      // `apiKeyTail` (the secret never round-trips):
+      //   - field absent      → preserve the stored key (UI re-saves
+      //                          a settings form without re-typing
+      //                          the secret).
+      //   - field === ''      → CLEAR the stored key (the picker's
+      //                          drift-resync effect fires this when
+      //                          the user clears their BYOK chat
+      //                          API key — keeping the old daemon-
+      //                          side credential would silently keep
+      //                          calling the provider after the user
+      //                          intentionally removed it from the
+      //                          chat picker, which the reviewer
+      //                          flagged as a credential-sync bug).
+      //   - field === 'sk-…'  → replace with the new key.
+      //   - provider differs  → ignore stored key entirely.
       if (Object.prototype.hasOwnProperty.call(body, 'extraction')) {
         if (body.extraction === null) {
           patch.extraction = null;
         } else if (body.extraction && typeof body.extraction === 'object') {
           const incoming = body.extraction;
           const current = await readMemoryConfig(RUNTIME_DATA_DIR);
-          const reuseKey =
-            current.extraction
-            && current.extraction.provider === incoming.provider
-            && (incoming.apiKey === undefined || incoming.apiKey === '')
-              ? current.extraction.apiKey
-              : '';
+          const apiKeyOmitted = !Object.prototype.hasOwnProperty.call(
+            incoming,
+            'apiKey',
+          );
+          const sameProvider =
+            !!current.extraction
+            && current.extraction.provider === incoming.provider;
+          let nextApiKey = '';
+          if (typeof incoming.apiKey === 'string' && incoming.apiKey) {
+            nextApiKey = incoming.apiKey;
+          } else if (apiKeyOmitted && sameProvider) {
+            nextApiKey = current.extraction.apiKey ?? '';
+          }
           patch.extraction = {
             provider: incoming.provider,
             model:
@@ -3276,10 +3296,7 @@ export async function startServer({
               typeof incoming.baseUrl === 'string'
                 ? incoming.baseUrl
                 : undefined,
-            apiKey:
-              typeof incoming.apiKey === 'string' && incoming.apiKey
-                ? incoming.apiKey
-                : reuseKey,
+            apiKey: nextApiKey,
             // Azure-only; ignored by the validator for the other providers.
             // We forward whatever the UI sent (or the previously-stored
             // value when the UI omits the field) so re-saving an azure
