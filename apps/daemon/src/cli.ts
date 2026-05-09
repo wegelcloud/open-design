@@ -125,6 +125,8 @@ const SUBCOMMAND_MAP = {
   craft: runCraft,
   status: runStatus,
   version: runVersion,
+  doctor: runDoctor,
+  config: runConfig,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
@@ -2647,4 +2649,246 @@ async function runVersion(args) {
     ? data.version
     : (data?.version?.version ?? JSON.stringify(data));
   console.log(version);
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od doctor / od config (Phase 4 CLI parity tail).
+//
+// Plan §3.I2 / spec §12.2.
+//
+// `od doctor` — repo-wide diagnostics. Hits /api/daemon/status, lists
+// installed plugins + runs the per-plugin doctor, lists skills /
+// design-systems / craft / atoms. Exits non-zero when any plugin
+// doctor returns ok=false. Useful in CI: a failed exit causes the
+// pipeline to surface plugin-system regressions.
+//
+// `od config get/set/list/unset` — wraps GET/PUT /api/app-config so a
+// code agent can flip provider keys / orbit settings / pet config
+// without leaving the terminal. JSON values pass through unchanged;
+// scalar strings/numbers/booleans are coerced.
+// ---------------------------------------------------------------------------
+
+const CONFIG_STRING_FLAGS = new Set(['daemon-url', 'value', 'value-json']);
+const CONFIG_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
+async function runDoctor(args) {
+  const flags = parseFlags(args, { string: CONFIG_STRING_FLAGS, boolean: CONFIG_BOOLEAN_FLAGS });
+  if (flags.help || flags.h) {
+    console.log(`Usage:
+  od doctor [--json]   Print a daemon + plugin + design-library health summary.
+
+Exit code is non-zero when any installed plugin's doctor returns ok=false
+or the daemon cannot be reached.`);
+    process.exit(0);
+  }
+  const base = libraryDaemonUrl(flags).replace(/\/$/, '');
+  const report = {
+    daemon:        null,
+    plugins:       [],
+    skills:        [],
+    designSystems: [],
+    atoms:         [],
+    issues:        [],
+  };
+
+  // Daemon status
+  try {
+    const resp = await fetch(`${base}/api/daemon/status`);
+    if (!resp.ok) {
+      report.issues.push({ severity: 'error', code: 'daemon-status', message: `HTTP ${resp.status}` });
+    } else {
+      report.daemon = await resp.json();
+    }
+  } catch (err) {
+    report.issues.push({ severity: 'error', code: 'daemon-not-running', message: String(err?.message ?? err) });
+    if (flags.json) {
+      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    } else {
+      console.error('[doctor] daemon unreachable:', String(err?.message ?? err));
+    }
+    process.exit(64);
+  }
+
+  // Library inventory
+  try {
+    const [skillsResp, dsResp, atomsResp] = await Promise.all([
+      fetch(`${base}/api/skills`),
+      fetch(`${base}/api/design-systems`),
+      fetch(`${base}/api/atoms`),
+    ]);
+    if (skillsResp.ok) {
+      const data = await skillsResp.json();
+      report.skills = data?.skills ?? [];
+    }
+    if (dsResp.ok) {
+      const data = await dsResp.json();
+      report.designSystems = data?.designSystems ?? [];
+    }
+    if (atomsResp.ok) {
+      const data = await atomsResp.json();
+      report.atoms = data?.atoms ?? [];
+    }
+  } catch (err) {
+    report.issues.push({ severity: 'warn', code: 'library-list-failed', message: String(err?.message ?? err) });
+  }
+
+  // Plugin doctor — runs the daemon's per-plugin check on every install.
+  try {
+    const listResp = await fetch(`${base}/api/plugins`);
+    if (listResp.ok) {
+      const list = await listResp.json();
+      const plugins = list?.plugins ?? [];
+      for (const p of plugins) {
+        try {
+          const doctorResp = await fetch(`${base}/api/plugins/${encodeURIComponent(p.id)}/doctor`, { method: 'POST' });
+          const data = await doctorResp.json().catch(() => ({}));
+          report.plugins.push({ id: p.id, version: p.version, ok: !!data?.ok, issues: data?.issues ?? [] });
+          if (!data?.ok) {
+            report.issues.push({
+              severity: 'error',
+              code:     'plugin-doctor-failed',
+              message:  `${p.id}@${p.version}: ${(data?.issues ?? []).map((i) => i.code).join(', ')}`,
+            });
+          }
+        } catch (err) {
+          report.issues.push({
+            severity: 'warn',
+            code:     'plugin-doctor-error',
+            message:  `${p.id}: ${err?.message ?? err}`,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    report.issues.push({ severity: 'warn', code: 'plugin-list-failed', message: String(err?.message ?? err) });
+  }
+
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  } else {
+    console.log(`[doctor] daemon ${report.daemon?.bindHost ?? '?'}:${report.daemon?.port ?? '?'} pid=${report.daemon?.pid ?? '?'}`);
+    console.log(`[doctor] plugins: ${report.plugins.length} (skills ${report.skills.length}, design-systems ${report.designSystems.length}, atoms ${report.atoms.length})`);
+    if (report.issues.length === 0) {
+      console.log('[doctor] no issues');
+    } else {
+      for (const i of report.issues) {
+        console.log(`  [${i.severity}] ${i.code}: ${i.message}`);
+      }
+    }
+  }
+  const hasError = report.issues.some((i) => i.severity === 'error');
+  process.exit(hasError ? 1 : 0);
+}
+
+async function runConfig(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od config list                      Print the full app config as JSON.
+  od config get <key>                 Print one top-level key.
+  od config set <key> <value>         Set a top-level key (string / number / boolean).
+  od config set <key> --value-json '<json>'
+                                       Set a key to a JSON value.
+  od config unset <key>               Remove a top-level key.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: CONFIG_STRING_FLAGS, boolean: CONFIG_BOOLEAN_FLAGS });
+  const base = libraryDaemonUrl(flags).replace(/\/$/, '');
+
+  const fetchConfig = async () => {
+    const resp = await fetch(`${base}/api/app-config`);
+    if (!resp.ok) return structuredHttpFailure(resp);
+    const data = await resp.json();
+    return data?.config ?? {};
+  };
+  const writeConfig = async (next) => {
+    const resp = await fetch(`${base}/api/app-config`, {
+      method:  'PUT',
+      headers: { 'content-type': 'application/json' },
+      body:    JSON.stringify(next),
+    });
+    if (!resp.ok) return structuredHttpFailure(resp);
+    return (await resp.json())?.config ?? next;
+  };
+
+  switch (sub) {
+    case 'list': {
+      const cfg = await fetchConfig();
+      process.stdout.write(JSON.stringify(cfg, null, 2) + '\n');
+      return;
+    }
+    case 'get': {
+      const key = rest.find((a) => !a.startsWith('-'));
+      if (!key) {
+        console.error('Usage: od config get <key>');
+        process.exit(2);
+      }
+      const cfg = await fetchConfig();
+      const value = cfg?.[key];
+      if (flags.json) {
+        process.stdout.write(JSON.stringify(value ?? null, null, 2) + '\n');
+      } else {
+        console.log(value === undefined ? '' : (typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
+      }
+      return;
+    }
+    case 'set': {
+      const positional = rest.filter((a) => !a.startsWith('-')
+        && a !== flags.value
+        && a !== flags['value-json']);
+      const [key, scalarValue] = positional;
+      if (!key) {
+        console.error('Usage: od config set <key> <value> | od config set <key> --value-json <json>');
+        process.exit(2);
+      }
+      let parsed;
+      if (typeof flags['value-json'] === 'string') {
+        try { parsed = JSON.parse(flags['value-json']); } catch (err) {
+          console.error(`--value-json must be valid JSON: ${err.message}`);
+          process.exit(2);
+        }
+      } else if (typeof flags.value === 'string') {
+        parsed = coerceCliValue(flags.value);
+      } else if (scalarValue !== undefined) {
+        parsed = coerceCliValue(scalarValue);
+      } else {
+        console.error('Provide a value (positional, --value, or --value-json).');
+        process.exit(2);
+      }
+      const cfg = await fetchConfig();
+      const next = { ...cfg, [key]: parsed };
+      const written = await writeConfig(next);
+      if (flags.json) {
+        process.stdout.write(JSON.stringify(written, null, 2) + '\n');
+      } else {
+        console.log(`[config] set ${key}`);
+      }
+      return;
+    }
+    case 'unset': {
+      const key = rest.find((a) => !a.startsWith('-'));
+      if (!key) {
+        console.error('Usage: od config unset <key>');
+        process.exit(2);
+      }
+      const cfg = await fetchConfig();
+      const next = { ...cfg };
+      delete next[key];
+      const written = await writeConfig(next);
+      if (flags.json) {
+        process.stdout.write(JSON.stringify(written, null, 2) + '\n');
+      } else {
+        console.log(`[config] unset ${key}`);
+      }
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od config ${sub}`);
+      process.exit(2);
+  }
 }
