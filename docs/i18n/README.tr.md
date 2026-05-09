@@ -253,7 +253,7 @@ Open Design'ı ileri taşıyan herkese teşekkürler ── kod, dokümantasyon,
 
 ## 📊 GitHub Stats
 
-<a href="https://repobeats.axiom.co"><img alt="Repobeats analytics" src="https://repobeats.axiom.co/api/embed/nexu-io/open-design.svg" width="100%" /></a>
+<a href="https://repobeats.axiom.co"><img alt="Repobeats analytics" src="https://repobeats.axiom.co/api/embed/c59ecce40d164b136afd44a153b3b01827e2ec51.svg" width="100%" /></a>
 
 ## ⭐ Star History
 
