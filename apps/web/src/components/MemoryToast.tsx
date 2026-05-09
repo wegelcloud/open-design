@@ -33,6 +33,9 @@ export function MemoryToast({ onOpenMemory }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Guard for environments without EventSource (jsdom in tests, SSR).
+    // The toast is purely a UX nicety; no SSE just means no auto-pop-up.
+    if (typeof EventSource === 'undefined') return;
     const es = new EventSource('/api/memory/events');
     es.addEventListener('change', (raw) => {
       try {
