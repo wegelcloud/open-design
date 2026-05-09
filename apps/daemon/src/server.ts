@@ -45,6 +45,7 @@ import {
   getInstalledPlugin,
   getSnapshot,
   installFromLocalFolder,
+  installPlugin,
   listInstalledPlugins,
   listIterationsForRun,
   MissingInputError,
@@ -3214,9 +3215,19 @@ export async function startServer({
     if (!source) {
       return res.status(400).json({ error: 'source is required' });
     }
-    // Phase 1 only supports local folder installs. Phase 2A adds github + url.
-    if (!source.startsWith('/') && !source.startsWith('./') && !source.startsWith('~')) {
-      return res.status(400).json({ error: `Unsupported install source '${source}'. Phase 1 supports local-folder paths only.` });
+    // Plan §3.A6: accept local folder, github:owner/repo[@ref][/subpath],
+    // and https://*.tar.gz / *.tgz sources. Other shapes are 400 so the
+    // error surface is clear.
+    const supportedShape =
+      source.startsWith('/') ||
+      source.startsWith('./') ||
+      source.startsWith('~') ||
+      source.startsWith('github:') ||
+      /^https:\/\//i.test(source);
+    if (!supportedShape) {
+      return res.status(400).json({
+        error: `Unsupported install source '${source}'. Accepted: local folder, github:owner/repo[@ref][/subpath], https://*.tar.gz`,
+      });
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -3229,7 +3240,7 @@ export async function startServer({
     };
 
     try {
-      for await (const ev of installFromLocalFolder(db, { source })) {
+      for await (const ev of installPlugin(db, { source })) {
         writeEvent(ev.kind, ev);
         if (ev.kind === 'success' || ev.kind === 'error') break;
       }

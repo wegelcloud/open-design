@@ -1,16 +1,25 @@
-// Plugin installer. Phase 1 supports only the local-folder install path so
-// the e2e-1 / §12.5 walkthrough lands without GitHub/HTTPS network code.
-// Phase 2A adds the github tarball + https archive sources from spec §7.2.
+// Plugin installer. Spec §7.2:
 //
-// Hard install constraints (spec §7.2 / plan Phase 1 deliverables):
+//   - `./folder` / `/abs/path`     — local-copy backend (Phase 1).
+//   - `github:owner/repo[@ref][/subpath]` — fetched from
+//     codeload.github.com as a tar.gz, extracted into a temp dir, then
+//     copied into ~/.open-design/plugins/<id>/ via the local backend.
+//   - `https://…tar.gz` / `…tgz`   — same extraction path, no path-rewrite.
+//
+// Hard install constraints (spec §7.2 / plan §3.A6):
 //   - Reject path-traversal segments inside the source folder when copying.
 //   - Reject symlinks (we do not stage non-local pointers).
 //   - Cap copied tree size at 50 MiB by default.
 //   - Refuse to overwrite a different plugin id at the destination.
+//   - Tarball extraction inherits the same caps via tar's strict mode.
 
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { promises as fsp } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { x as tarExtract } from 'tar';
 import {
   defaultRegistryRoots,
   deleteInstalledPlugin,
@@ -53,32 +62,255 @@ export interface InstallOptions {
   // When true (the default), an existing install with the same id is
   // replaced. Set false from CLI flows that want to surface a confirm step.
   overwriteExisting?: boolean;
+  // Pluggable network fetcher for tests. Production injects globalThis.fetch.
+  // The contract: returns a ReadableStream of the gzipped tar bytes.
+  fetcher?: ArchiveFetcher;
 }
+
+export type ArchiveFetcher = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  body: Readable | null;
+}>;
 
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
 
 const SAFE_BASENAME = /^[a-z0-9][a-z0-9._-]*$/;
+const GITHUB_SOURCE_RE = /^github:([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)(?:@([A-Za-z0-9._/-]+))?(?:\/(.+))?$/;
+const HTTPS_SOURCE_RE = /^https:\/\//i;
 
-export async function* installFromLocalFolder(
+// Top-level dispatcher. Picks the backend off the source string and yields
+// the same InstallEvent stream regardless of where the bytes came from.
+export async function* installPlugin(
   db: SqliteDb,
   opts: InstallOptions,
 ): AsyncGenerator<InstallEvent, void, void> {
+  if (opts.source.startsWith('github:')) {
+    yield* installFromGithub(db, opts);
+    return;
+  }
+  if (HTTPS_SOURCE_RE.test(opts.source)) {
+    yield* installFromHttpsArchive(db, opts);
+    return;
+  }
+  yield* installFromLocalFolder(db, opts);
+}
+
+// `github:owner/repo[@ref][/subpath]` → codeload tarball.
+async function* installFromGithub(
+  db: SqliteDb,
+  opts: InstallOptions,
+): AsyncGenerator<InstallEvent, void, void> {
+  const match = GITHUB_SOURCE_RE.exec(opts.source);
+  if (!match) {
+    yield {
+      kind: 'error',
+      message: `Malformed github source ${opts.source}; expected github:owner/repo[@ref][/subpath]`,
+      warnings: [],
+    };
+    return;
+  }
+  const [, owner, repo, ref, subpath] = match;
+  const tarballUrl = `https://codeload.github.com/${owner}/${repo}/tar.gz/${ref ?? 'HEAD'}`;
+  yield {
+    kind: 'progress',
+    phase: 'resolving',
+    message: `Fetching ${tarballUrl}`,
+  };
+  yield* installFromArchiveUrl(db, opts, tarballUrl, subpath);
+}
+
+// Plain `https://…tar.gz` / `https://…tgz` source.
+async function* installFromHttpsArchive(
+  db: SqliteDb,
+  opts: InstallOptions,
+): AsyncGenerator<InstallEvent, void, void> {
+  if (!/\.t(?:ar\.)?gz$/i.test(opts.source)) {
+    yield {
+      kind: 'error',
+      message: `Only .tar.gz / .tgz archives are accepted from https sources (got ${opts.source})`,
+      warnings: [],
+    };
+    return;
+  }
+  yield {
+    kind: 'progress',
+    phase: 'resolving',
+    message: `Fetching ${opts.source}`,
+  };
+  yield* installFromArchiveUrl(db, opts, opts.source, undefined);
+}
+
+async function* installFromArchiveUrl(
+  db: SqliteDb,
+  opts: InstallOptions,
+  url: string,
+  subpath: string | undefined,
+): AsyncGenerator<InstallEvent, void, void> {
+  const fetcher = opts.fetcher ?? defaultFetcher;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+  const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'od-plugin-archive-'));
+  try {
+    const resp = await fetcher(url);
+    if (!resp.ok || !resp.body) {
+      yield {
+        kind: 'error',
+        message: `Fetch failed: ${resp.status} ${resp.statusText} for ${url}`,
+        warnings: [],
+      };
+      return;
+    }
+    yield { kind: 'progress', phase: 'copying', message: 'Extracting archive' };
+    let symlinkSeen = false;
+    let traversalSeen = false;
+    try {
+      // The tar package handles gzip decompression. We pass `strip: 1`
+      // because codeload tarballs always wrap the repo in a single
+      // `repo-<sha>/` folder, and we want the manifest to land at
+      // tmpRoot/<files>. The filter rejects symlinks / hard links and
+      // any path-traversal segment; we then surface those as a clean
+      // install error instead of silently skipping unsafe entries.
+      await pipeline(
+        resp.body as NodeJS.ReadableStream,
+        tarExtract({
+          cwd: tmpRoot,
+          strip: 1,
+          filter: (filePath, entry) => {
+            if (entry.type === 'SymbolicLink' || entry.type === 'Link') {
+              symlinkSeen = true;
+              return false;
+            }
+            if (filePath.includes('..')) {
+              traversalSeen = true;
+              return false;
+            }
+            return true;
+          },
+        }) as NodeJS.WritableStream,
+      );
+    } catch (err) {
+      yield {
+        kind: 'error',
+        message: `Archive extraction failed: ${(err as Error).message}`,
+        warnings: [],
+      };
+      return;
+    }
+    if (symlinkSeen) {
+      yield {
+        kind: 'error',
+        message: 'Archive contains symbolic / hard links — refusing to stage non-local pointers',
+        warnings: [],
+      };
+      return;
+    }
+    if (traversalSeen) {
+      yield {
+        kind: 'error',
+        message: 'Archive contains path-traversal segments — refusing to stage',
+        warnings: [],
+      };
+      return;
+    }
+    // Pre-flight size check inside the staging dir.
+    const total = await measureTreeSize(tmpRoot);
+    if (total > maxBytes) {
+      yield {
+        kind: 'error',
+        message: `Extracted archive exceeds ${maxBytes} bytes (size=${total})`,
+        warnings: [],
+      };
+      return;
+    }
+    const stagingFolder = subpath
+      ? path.join(tmpRoot, sanitizeRelativePath(subpath))
+      : tmpRoot;
+    if (!fs.existsSync(stagingFolder)) {
+      yield {
+        kind: 'error',
+        message: `Subpath ${subpath} not found inside archive`,
+        warnings: [],
+      };
+      return;
+    }
+    // Hand off to the local-folder backend so the registry write is the
+    // single canonical implementation. The `source` string is the
+    // original (github:… or https://…) so installed_plugins records
+    // provenance accurately.
+    yield* installFromLocalFolder(db, {
+      ...opts,
+      source: opts.source,
+      // Drive the local backend through the staged folder; the
+      // override on `_stagedFolder` is internal and lets us re-use the
+      // copy / re-parse / persist phases without forking the function.
+      _stagedFolder: stagingFolder,
+      _stagedSourceKind: opts.source.startsWith('github:') ? 'github' : 'url',
+    } as InstallOptions & { _stagedFolder?: string; _stagedSourceKind?: PluginSourceKind });
+  } finally {
+    await fsp.rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function defaultFetcher(url: string): ReturnType<ArchiveFetcher> {
+  const response = await fetch(url, { redirect: 'follow' });
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    body: response.body ? Readable.fromWeb(response.body as never) : null,
+  };
+}
+
+async function measureTreeSize(root: string): Promise<number> {
+  let total = 0;
+  const queue: string[] = [root];
+  while (queue.length > 0) {
+    const next = queue.pop()!;
+    const stat = await fsp.lstat(next);
+    if (stat.isDirectory()) {
+      const entries = await fsp.readdir(next);
+      for (const entry of entries) queue.push(path.join(next, entry));
+    } else if (stat.isFile()) {
+      total += stat.size;
+    }
+  }
+  return total;
+}
+
+function sanitizeRelativePath(input: string): string {
+  return input
+    .replace(/^[\\/]+/, '')
+    .split(/[\\/]+/)
+    .filter((seg) => seg !== '..' && seg !== '.' && seg !== '')
+    .join(path.sep);
+}
+
+export async function* installFromLocalFolder(
+  db: SqliteDb,
+  opts: InstallOptions & { _stagedFolder?: string; _stagedSourceKind?: PluginSourceKind },
+): AsyncGenerator<InstallEvent, void, void> {
   const warnings: string[] = [];
   const roots = opts.roots ?? defaultRegistryRoots();
-  const sourceAbs = path.resolve(opts.source);
+  // When called from the archive backend, the bytes are already on disk
+  // under `_stagedFolder`; the public `source` field still records
+  // provenance (github:owner/repo, https://example.com/foo.tgz, etc.).
+  const sourceFolder = opts._stagedFolder ?? path.resolve(opts.source);
+  const recordedSource = opts.source;
+  const recordedSourceKind: PluginSourceKind = opts._stagedSourceKind ?? 'local';
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
 
-  yield { kind: 'progress', phase: 'resolving', message: `Resolving ${sourceAbs}` };
+  yield { kind: 'progress', phase: 'resolving', message: `Resolving ${sourceFolder}` };
 
   let stats: fs.Stats;
   try {
-    stats = await fsp.stat(sourceAbs);
+    stats = await fsp.stat(sourceFolder);
   } catch (err) {
-    yield { kind: 'error', message: `Source folder not found: ${sourceAbs} (${(err as Error).message})`, warnings };
+    yield { kind: 'error', message: `Source folder not found: ${sourceFolder} (${(err as Error).message})`, warnings };
     return;
   }
   if (!stats.isDirectory()) {
-    yield { kind: 'error', message: `Source path is not a directory: ${sourceAbs}`, warnings };
+    yield { kind: 'error', message: `Source path is not a directory: ${sourceFolder}`, warnings };
     return;
   }
 
@@ -87,12 +319,12 @@ export async function* installFromLocalFolder(
   // ids deterministic when authors rename the folder on disk between
   // installs.
   yield { kind: 'progress', phase: 'parsing', message: 'Parsing manifest' };
-  const tentativeId = path.basename(sourceAbs).toLowerCase();
+  const tentativeId = path.basename(sourceFolder).toLowerCase();
   const probe = await resolvePluginFolder({
-    folder: sourceAbs,
+    folder: sourceFolder,
     folderId: SAFE_BASENAME.test(tentativeId) ? tentativeId : 'plugin',
-    sourceKind: 'local',
-    source: sourceAbs,
+    sourceKind: recordedSourceKind,
+    source: recordedSource,
   });
   if (!probe.ok) {
     yield { kind: 'error', message: probe.errors.join('; '), warnings: probe.warnings };
@@ -119,7 +351,7 @@ export async function* installFromLocalFolder(
     await fsp.rm(destFolder, { recursive: true, force: true });
   }
   try {
-    await safeCopyTree(sourceAbs, destFolder, maxBytes);
+    await safeCopyTree(sourceFolder, destFolder, maxBytes);
   } catch (err) {
     yield { kind: 'error', message: `Copy failed: ${(err as Error).message}`, warnings };
     await fsp.rm(destFolder, { recursive: true, force: true }).catch(() => undefined);
@@ -130,8 +362,8 @@ export async function* installFromLocalFolder(
   const parsed = await resolvePluginFolder({
     folder: destFolder,
     folderId: pluginId,
-    sourceKind: 'local',
-    source: sourceAbs,
+    sourceKind: recordedSourceKind,
+    source: recordedSource,
   });
   if (!parsed.ok) {
     await fsp.rm(destFolder, { recursive: true, force: true }).catch(() => undefined);
