@@ -14136,6 +14136,11 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
+  pointer-events: none;
+}
+
+.privacy-consent-banner .seg-control {
+  pointer-events: auto;
 }
 
 .privacy-consent-banner-head {
