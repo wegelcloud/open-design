@@ -9,7 +9,7 @@ created: '2026-05-09'
 
 ### Goals
 
-- Split `agents.ts` and `agents.test.ts` according to the approach in `specs/change/20260509-agents-ts-split/agents-merge-conflict-report.md`, while implementing the three phases described there.
+- Split `agents.ts` and `agents.test.ts`.
 - During the split, keep the `agents.ts` name unchanged, but use `runtimes` as the new directory name so the agent terminology can gradually migrate to runtimes later.
 - Because test coverage is limited, keep the split refactor primarily as code movement rather than logic rewriting. If any logic truly needs to be rewritten, leave it for later to reduce the overall change risk.
 
