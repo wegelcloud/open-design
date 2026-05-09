@@ -68,6 +68,19 @@
 | **Skill 擴充** | 閉源 | Plugin 市集（受平台審核） | 閉源 | ✅ 拖入資料夾即生效 |
 | **場景** | 通用設計 | UI / 原型 / 協作 | 偏代碼原型 | ✅ 設計 / 行銷 / 營運 / 產品 / 財務 / HR |
 
+## ✨ Key Features
+
+- 🤖 **16 個 Coding Agent** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI 等，自動偵測 `PATH` 上已裝好的 CLI
+- 🎨 **129 個品牌設計體系** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla 等，一鍵切換品牌語言
+- 🛠️ **31 個可組合 Skill** ── 原型、Live Artifact、Slides、雜誌海報、儀表板、社群三連圖、E-guide、動效頁、週報、OKR、看板等
+- 🎬 **多模態輸出** ── HTML 原型、網頁 Slides、gpt-image-2 靜幀、Seedance 2.0 電影感影片、HyperFrames HTML→MP4 動效
+- 🔌 **每一層都 BYOK** ── Anthropic / OpenAI / Azure / Google + 14 家媒體供應商（Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …）
+- 💾 **本地優先儲存** ── 專案落本地 SQLite（`.od/` 目錄），憑證不出你的機器
+- 🖼️ **沙盒預覽** ── 每個 artifact 在乾淨的 `srcdoc` iframe 中渲染，支援 HTML / PDF / PPT / ZIP / Markdown 多格式匯出
+- 🎭 **Sketch 草圖 + Live Artifact** ── 在畫布上畫結構代替 prompt 描述；接 Notion / Linear / Slack 即時資料（Composio）
+- 🚀 **一條命令的生命週期** ── `pnpm tools-dev` 一鍵啟動 daemon + web（+ desktop），埠、命名空間、日誌統一管理
+- 📜 **Apache-2.0 開源** ── fork、自部署、商用全部允許
+
 ## 🖼️ Demo
 
 按四類核心產物展示：

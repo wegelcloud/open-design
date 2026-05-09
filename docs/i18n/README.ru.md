@@ -68,6 +68,19 @@
 | **Расширение Skill** | Закрытое | Маркетплейс плагинов (с фильтром) | Закрытое | ✅ Бросьте папку, готово |
 | **Сценарии** | Общий дизайн | UI / прототип / коллаб | Прототипы под код | ✅ Дизайн / маркетинг / ops / продукт / финансы / HR |
 
+## ✨ Key Features
+
+- 🤖 **16 Coding Agents** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI и другие, автоопределение в `PATH`
+- 🎨 **129 брендовых дизайн-систем** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla и другие, переключение в один клик
+- 🛠️ **31 композиционный Skill** ── прототипы, Live Artifacts, слайды, журнальные постеры, дашборды, социальные карусели, e-guides, motion frames, еженедельные отчёты, OKR, канбан
+- 🎬 **Мультимодальный вывод** ── HTML-прототипы, веб-слайды, статика gpt-image-2, кинематографичное видео Seedance 2.0, motion graphics HyperFrames HTML→MP4
+- 🔌 **BYOK на каждом уровне** ── Anthropic / OpenAI / Azure / Google + 14 медиа-провайдеров (Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **Local-first хранилище** ── проекты в локальном SQLite (`.od/`), креденшелы не покидают вашу машину
+- 🖼️ **Песочный preview** ── каждый artifact рендерится в чистом `srcdoc` iframe; экспорт в HTML / PDF / PPT / ZIP / Markdown
+- 🎭 **Sketch + Live Artifact** ── эскизируйте структуру на холсте вместо описания в промпте; подтягивайте реальные данные из Notion / Linear / Slack через Composio
+- 🚀 **Жизненный цикл одной командой** ── `pnpm tools-dev` поднимает daemon + web (+ desktop) с едиными портами, неймспейсами и логами
+- 📜 **Apache-2.0 Open Source** ── форк, self-host, коммерческое использование — всё разрешено
+
 ## 🖼️ Demo
 
 Четыре основных типа артефактов:

@@ -68,6 +68,19 @@
 | **Skill 확장** | 클로즈드 | 플러그인 마켓(심사) | 클로즈드 | ✅ 폴더 드롭으로 즉시 적용 |
 | **시나리오** | 일반 디자인 | UI / 프로토타입 / 협업 | 코드 지향 프로토 | ✅ 디자인 / 마케팅 / 운영 / 프로덕트 / 재무 / HR |
 
+## ✨ Key Features
+
+- 🤖 **16개의 Coding Agent** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI 등, `PATH` 위 설치된 CLI 자동 감지
+- 🎨 **129개의 브랜드 디자인 시스템** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla 등, 원클릭 전환
+- 🛠️ **31개의 조합 가능한 Skill** ── 프로토타입, Live Artifact, Slides, 매거진 포스터, 대시보드, 소셜 캐러셀, E-가이드, 모션 프레임, 주간 보고, OKR, 칸반
+- 🎬 **멀티모달 출력** ── HTML 프로토타입, 웹 Slides, gpt-image-2 정지화, Seedance 2.0 시네마틱 비디오, HyperFrames HTML→MP4 모션 그래픽
+- 🔌 **모든 계층에서 BYOK** ── Anthropic / OpenAI / Azure / Google + 14개 미디어 제공자(Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **로컬 우선 저장** ── 프로젝트는 로컬 SQLite(`.od/`)에 저장, 자격 증명은 기기를 떠나지 않음
+- 🖼️ **샌드박스 프리뷰** ── 모든 artifact는 깔끔한 `srcdoc` iframe에서 렌더링; HTML / PDF / PPT / ZIP / Markdown 내보내기
+- 🎭 **Sketch + Live Artifact** ── 프롬프트로 설명하는 대신 캔버스에 구조를 스케치; Notion / Linear / Slack에서 실시간 데이터(Composio)
+- 🚀 **단일 명령 라이프사이클** ── `pnpm tools-dev` 하나로 daemon + web(+ desktop), 포트 · 네임스페이스 · 로그 통합 관리
+- 📜 **Apache-2.0 오픈소스** ── fork · 셀프 호스팅 · 상업 사용 모두 허용
+
 ## 🖼️ Demo
 
 네 가지 핵심 산출물:

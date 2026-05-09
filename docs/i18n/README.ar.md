@@ -70,6 +70,23 @@
 | **توسعة Skill** | مغلق المصدر | متجر Plugins (مفلتر) | مغلق المصدر | ✅ أسقط مجلداً، انتهى |
 | **سيناريوهات** | تصميم عام | UI / نموذج / تعاون | نماذج موجهة للكود | ✅ تصميم / تسويق / تشغيل / منتج / مالية / موارد بشرية |
 
+## ✨ Key Features
+
+<div dir="rtl">
+
+- 🤖 **16 وكيل ترميز (Coding Agent)** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI وغيرها، اكتشاف تلقائي على `PATH`
+- 🎨 **129 نظام تصميم على مستوى العلامات** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla وغيرها، تبديل بنقرة واحدة
+- 🛠️ **31 Skill قابلة للتركيب** ── نماذج أوّلية، Live Artifacts، شرائح، ملصقات تحريرية، لوحات معلومات، كاروسيلات اجتماعية، e-guides، إطارات حركية، تقارير أسبوعية، OKRs، Kanban
+- 🎬 **مخرجات متعددة الوسائط** ── نماذج HTML، شرائح ويب، صور gpt-image-2، فيديوهات سينمائية Seedance 2.0، motion graphics HyperFrames HTML→MP4
+- 🔌 **BYOK في كل طبقة** ── Anthropic / OpenAI / Azure / Google + 14 مزوّد وسائط (Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **تخزين محلي أولاً** ── المشاريع في SQLite تحت `.od/`، الاعتمادات لا تغادر جهازك
+- 🖼️ **معاينة في sandbox** ── كل artifact يُرسم في `srcdoc` iframe نظيف، يمكن تصديره إلى HTML / PDF / PPT / ZIP / Markdown
+- 🎭 **Sketch + Live Artifact** ── ارسم البنية على اللوحة بدلاً من وصفها في prompt؛ اسحب بيانات حقيقية من Notion / Linear / Slack عبر Composio
+- 🚀 **دورة حياة بأمر واحد** ── `pnpm tools-dev` يشغّل daemon + web (+ desktop) مع منافذ ومساحات أسماء وسجلات موحّدة
+- 📜 **Apache-2.0 مفتوح المصدر** ── fork، استضافة ذاتية، استخدام تجاري — كل ذلك مسموح
+
+</div>
+
 ## 🖼️ Demo
 
 أربعة أنواع جوهرية من المخرجات:

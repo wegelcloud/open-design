@@ -68,6 +68,19 @@
 | **Skill 拡張** | クローズド | プラグインマーケット（審査付き） | クローズド | ✅ フォルダを置くだけ |
 | **シナリオ** | 汎用デザイン | UI / プロトタイプ / 協業 | コード寄りプロト | ✅ デザイン / マーケ / 運用 / プロダクト / 財務 / HR |
 
+## ✨ Key Features
+
+- 🤖 **16 種の Coding Agent** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI など、`PATH` 上にインストール済みの CLI を自動検出
+- 🎨 **129 種のブランドデザインシステム** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla など、ワンクリックで切替
+- 🛠️ **31 個の組合可能な Skill** ── プロトタイプ、Live Artifact、Slides、マガジンポスター、ダッシュボード、ソーシャルカルーセル、E-guide、モーションフレーム、週報、OKR、カンバン
+- 🎬 **マルチモーダル出力** ── HTML プロトタイプ、Web Slides、gpt-image-2 静止画、Seedance 2.0 シネマティック動画、HyperFrames HTML→MP4 モーショングラフィック
+- 🔌 **すべての層で BYOK** ── Anthropic / OpenAI / Azure / Google + 14 種のメディアプロバイダ（Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …）
+- 💾 **ローカル優先ストレージ** ── プロジェクトはローカル SQLite（`.od/` 配下）に保存、認証情報は端末から出ません
+- 🖼️ **サンドボックスプレビュー** ── 各 artifact はクリーンな `srcdoc` iframe で描画、HTML / PDF / PPT / ZIP / Markdown に書き出し
+- 🎭 **Sketch + Live Artifact** ── プロンプトでの説明の代わりにキャンバス上のスケッチで指示；Notion / Linear / Slack からリアルデータを取得（Composio）
+- 🚀 **ワンコマンドのライフサイクル** ── `pnpm tools-dev` で daemon + web（+ desktop）を起動、ポート・名前空間・ログを一括管理
+- 📜 **Apache-2.0 オープンソース** ── fork、セルフホスト、商用利用すべて可能
+
 ## 🖼️ Demo
 
 4 種類のコア成果物：

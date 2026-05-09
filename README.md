@@ -68,6 +68,19 @@
 | **Skill extension** | Closed source | Plugin marketplace (gated) | Closed source | ✅ Drop a folder, done |
 | **Scenarios** | General design | UI / prototype / collab | Code-leaning prototypes | ✅ Design / marketing / ops / product / finance / HR |
 
+## ✨ Key Features
+
+- 🤖 **16 Coding Agents** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI and more — auto-detected on `PATH`
+- 🎨 **129 Brand Design Systems** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla and more — swap with one click
+- 🛠️ **31 Composable Skills** ── prototypes, Live Artifacts, slides, magazine posters, dashboards, social carousels, e-guides, motion frames, weekly reports, OKRs, kanban
+- 🎬 **Multi-modal Output** ── HTML prototypes, web slides, gpt-image-2 stills, Seedance 2.0 cinematic videos, HyperFrames HTML→MP4 motion graphics
+- 🔌 **BYOK at Every Layer** ── Anthropic / OpenAI / Azure / Google + 14 media providers (Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **Local-First Storage** ── projects in SQLite under `.od/`, credentials never leave your machine
+- 🖼️ **Sandboxed Preview** ── every artifact renders in a clean `srcdoc` iframe; export to HTML / PDF / PPT / ZIP / Markdown
+- 🎭 **Sketch + Live Artifact** ── sketch the layout on canvas instead of describing in a prompt; pull real data from Notion / Linear / Slack via Composio
+- 🚀 **One-Command Lifecycle** ── `pnpm tools-dev` boots daemon + web (+ desktop) with unified ports, namespaces, logs
+- 📜 **Apache-2.0 Open Source** ── fork it, self-host it, ship it commercially
+
 ## 🖼️ Demo
 
 Four core artifact types:

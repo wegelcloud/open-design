@@ -68,6 +68,19 @@
 | **Skill-Erweiterung** | Closed Source | Plugin-Marktplatz (kuratiert) | Closed Source | ✅ Ordner ablegen, fertig |
 | **Szenarien** | Allgemeines Design | UI / Prototyp / Collab | Code-orientierte Prototypen | ✅ Design / Marketing / Ops / Produkt / Finanzen / HR |
 
+## ✨ Key Features
+
+- 🤖 **16 Coding Agents** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI und mehr — automatisch im `PATH` erkannt
+- 🎨 **129 Brand Design Systems** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla und mehr — mit einem Klick wechselbar
+- 🛠️ **31 komponierbare Skills** ── Prototypen, Live Artifacts, Slides, Magazin-Poster, Dashboards, Social Carousels, E-Guides, Motion Frames, Wochenberichte, OKRs, Kanban
+- 🎬 **Multi-modale Ausgabe** ── HTML-Prototypen, Web-Slides, gpt-image-2-Standbilder, Seedance-2.0-Cinematic-Videos, HyperFrames HTML→MP4 Motion Graphics
+- 🔌 **BYOK auf jeder Ebene** ── Anthropic / OpenAI / Azure / Google + 14 Medien-Provider (Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **Local-First-Speicher** ── Projekte in SQLite unter `.od/`, Credentials verlassen nie deine Maschine
+- 🖼️ **Sandboxed Preview** ── jedes Artefakt rendert in einem sauberen `srcdoc`-iframe; Export zu HTML / PDF / PPT / ZIP / Markdown
+- 🎭 **Sketch + Live Artifact** ── skizziere das Layout auf dem Canvas statt es im Prompt zu beschreiben; ziehe echte Daten aus Notion / Linear / Slack via Composio
+- 🚀 **Ein-Befehl-Lebenszyklus** ── `pnpm tools-dev` bootet Daemon + Web (+ Desktop) mit vereinheitlichten Ports, Namespaces, Logs
+- 📜 **Apache-2.0 Open Source** ── Fork, Self-Host, kommerzieller Einsatz — alles erlaubt
+
 ## 🖼️ Demo
 
 Vier zentrale Artefakttypen:

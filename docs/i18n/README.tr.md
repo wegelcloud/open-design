@@ -68,6 +68,19 @@
 | **Skill genişletme** | Kapalı kaynak | Plugin marketplace (denetimli) | Kapalı kaynak | ✅ Klasör bırak, tamam |
 | **Senaryolar** | Genel tasarım | UI / prototip / işbirliği | Koda yönelik prototipler | ✅ Tasarım / pazarlama / ops / ürün / finans / İK |
 
+## ✨ Key Features
+
+- 🤖 **16 Coding Agent** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI ve dahası, `PATH`'te otomatik algılanır
+- 🎨 **129 marka düzeyinde tasarım sistemi** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla ve daha fazlası, tek tıkla değiştirilir
+- 🛠️ **31 birleştirilebilir Skill** ── prototipler, Live Artifacts, slaytlar, dergi posterleri, dashboard'lar, sosyal carousel'lar, e-guide'lar, motion frame'ler, haftalık raporlar, OKR'ler, kanban
+- 🎬 **Çok modlu çıktı** ── HTML prototipleri, web slaytları, gpt-image-2 görüntüleri, Seedance 2.0 sinematik videolar, HyperFrames HTML→MP4 motion graphics
+- 🔌 **Her katmanda BYOK** ── Anthropic / OpenAI / Azure / Google + 14 medya sağlayıcı (Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **Local-first depolama** ── projeler `.od/` altında SQLite'ta, kimlik bilgileri makineni asla terk etmez
+- 🖼️ **Sandbox önizleme** ── her artifact temiz bir `srcdoc` iframe'de render edilir; HTML / PDF / PPT / ZIP / Markdown'a dışa aktarılabilir
+- 🎭 **Sketch + Live Artifact** ── prompt'la tarif etmek yerine canvas'ta yapıyı çiz; Notion / Linear / Slack'ten Composio ile gerçek veri çek
+- 🚀 **Tek komutlu yaşam döngüsü** ── `pnpm tools-dev` daemon + web (+ desktop) açar, port'lar, namespace'ler ve loglar bir arada
+- 📜 **Apache-2.0 Açık Kaynak** ── fork, self-host, ticari kullanım — hepsine izin var
+
 ## 🖼️ Demo
 
 Dört temel çıktı türü:

@@ -68,6 +68,19 @@
 | **Extensão Skill** | Closed source | Marketplace de plugins (curado) | Closed source | ✅ Solte uma pasta, pronto |
 | **Cenários** | Design geral | UI / protótipo / colaboração | Protótipos voltados a código | ✅ Design / marketing / ops / produto / finanças / RH |
 
+## ✨ Key Features
+
+- 🤖 **16 Coding Agents** ── Claude Code · Codex · Cursor Agent · Gemini CLI · OpenClaw · Hermes Agent · Kimi · Qoder · Copilot CLI e mais — autodetectados no `PATH`
+- 🎨 **129 Design Systems de marca** ── Linear / Stripe / Apple / Notion / Vercel / Anthropic / Tesla e mais, troque com um clique
+- 🛠️ **31 Skills componíveis** ── protótipos, Live Artifacts, slides, pôsteres editoriais, dashboards, carrosséis sociais, e-guides, motion frames, relatórios semanais, OKRs, kanban
+- 🎬 **Saída multi-modal** ── protótipos HTML, slides web, fotos gpt-image-2, vídeos cinematográficos Seedance 2.0, motion graphics HyperFrames HTML→MP4
+- 🔌 **BYOK em cada camada** ── Anthropic / OpenAI / Azure / Google + 14 provedores de mídia (Volcengine / MiniMax / FishAudio / Replicate / ElevenLabs / Suno …)
+- 💾 **Armazenamento local-first** ── projetos em SQLite sob `.od/`, credenciais nunca saem da sua máquina
+- 🖼️ **Preview em sandbox** ── cada artifact renderiza em um `srcdoc` iframe limpo; exporte para HTML / PDF / PPT / ZIP / Markdown
+- 🎭 **Sketch + Live Artifact** ── esboce o layout no canvas em vez de descrever em um prompt; puxe dados reais do Notion / Linear / Slack via Composio
+- 🚀 **Ciclo de vida em um comando** ── `pnpm tools-dev` sobe daemon + web (+ desktop) com portas, namespaces e logs unificados
+- 📜 **Apache-2.0 Open Source** ── fork, self-host, uso comercial — tudo permitido
+
 ## 🖼️ Demo
 
 Quatro tipos de artefato centrais:
