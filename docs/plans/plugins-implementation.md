@@ -486,9 +486,9 @@ Validation
 
 These are tracked but **not part of v1 sign-off**. Listed here so spec patches that promote `(planned)` atoms have a place to update.
 
-- [ ] **Phase 6 — figma-migration native**: implement `figma-extract` + `token-map`; ship official `figma-migration` plugin.
-- [ ] **Phase 7 — code-migration native** (§20.3 §21.3.2): `code-import`, `design-extract`, `rewrite-plan`, `patch-edit`, `diff-review`, `build-test` evaluator; freeze target-stack contract; freeze design-token mapping contract.
-- [ ] **Phase 8 — production code delivery native**: repo-aware multi-file patch orchestration; native review-and-apply surface; promote `handoffKind: 'deployable-app'` from reservation to implementation.
+- [ ] **Phase 6 — figma-migration native**: implement `figma-extract` + `token-map`; ship official `figma-migration` plugin. **Substrate landed (plan §3.M3): SKILL.md + open-design.json for both ids ship under `plugins/_official/atoms/`; the bundled boot walker registers them at startup. Implementation (Figma REST + node walk + token map heuristic) is the next PR.**
+- [ ] **Phase 7 — code-migration native** (§20.3 §21.3.2): `code-import`, `design-extract`, `rewrite-plan`, `patch-edit`, `diff-review`, `build-test` evaluator; freeze target-stack contract; freeze design-token mapping contract. **Substrate landed (plan §3.M4): SKILL.md + open-design.json for all six ids ship under `plugins/_official/atoms/`; the prompt fragments lock the per-atom output shape (e.g. `code/index.json`, `plan/steps.json`, `critique/build-test.json`) so the implementation PR reads the same contract.**
+- [ ] **Phase 8 — production code delivery native**: repo-aware multi-file patch orchestration; native review-and-apply surface; promote `handoffKind: 'deployable-app'` from reservation to implementation. **Substrate landed (plan §3.M4): `handoff` atom SKILL.md ships, locking the seven `exportTargets[].surface` enum values.**
 
 ---
 
@@ -545,10 +545,10 @@ Plus repo-wide gates
 
 | Field | Value |
 | --- | --- |
-| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full minus the live composeSystemPrompt rewiring) + 5 (full minus the AWS SDK + postgres adapter wiring) |
-| Next planned PR | (a) Wire composeSystemPrompt's pipeline branch through loadAtomBodies + renderActiveStageBlock so OD_BUNDLED_ATOM_PROMPTS=1 swaps the inline DISCOVERY_AND_PHILOSOPHY constants for SKILL.md fragments; (b) AWS SDK wiring inside S3ProjectStorage; (c) postgres adapter wiring inside the DaemonDb resolver; (d) `OD_SNAPSHOT_RETENTION_DAYS` referenced-row TTL enforcement; (e) Phase 6 / 7 / 8 native scenarios (figma-extract / token-map / code-import / build-test). |
+| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full minus the live OD_BUNDLED_ATOM_PROMPTS rollout) + 5 (full minus the AWS SDK + postgres adapter wiring) + 6 / 7 / 8 atom-prompt substrate |
+| Next planned PR | (a) Promote OD_BUNDLED_ATOM_PROMPTS=1 to the daemon default once the prompt fragment library covers DISCOVERY_AND_PHILOSOPHY's responsibilities; (b) AWS SDK wiring inside S3ProjectStorage; (c) postgres adapter wiring inside the DaemonDb resolver; (d) Phase 6 figma-extract + token-map shell-out implementations; (e) Phase 7 code-import + design-extract + rewrite-plan + patch-edit + diff-review + build-test shell-out implementations; (f) Phase 8 deployable-app handoff path + ArtifactManifest.handoffKind='deployable-app' promotion. |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 5 per-cloud Helm overrides + composeSystemPrompt activeStageBlocks + plugin asset route + ProjectStorage / DaemonDb adapter substrate landing) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-09 (OD_SNAPSHOT_RETENTION_DAYS referenced-row TTL + OD_BUNDLED_ATOM_PROMPTS runtime wiring + Phase 6 / 7 / 8 atom SKILL.md substrate landing) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
