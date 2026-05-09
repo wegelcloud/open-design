@@ -11,6 +11,8 @@
 //   - handoffKind can be promoted (e.g. 'patch' → 'deployable-app')
 //     when build-test signals + diff-review acceptance combine.
 
+import path from 'node:path';
+import { promises as fsp } from 'node:fs';
 import type {
   ArtifactDeployTarget,
   ArtifactExportTarget,
@@ -109,4 +111,136 @@ export function isDeployableAppEligible(args: {
   if (args.testsPassing !== true) return false;
   const exports = args.manifest.exportTargets ?? [];
   return exports.some((t: ArtifactExportTarget) => t.surface === 'docker' || t.surface === 'cli');
+}
+
+// Plan §3.S1 — pipeline-driven handoff bridge.
+//
+// Reads the on-disk state previous atoms wrote (critique/build-test.json,
+// review/decision.json) and returns the updated manifest with the right
+// handoffKind / exportTargets[] / signals attached. The function is
+// pure relative to its inputs (it reads files, never writes back). The
+// caller decides where to persist the updated manifest (typically
+// `<cwd>/<manifest-path>` or `.od/artifacts/<id>/manifest.json`).
+//
+// Promotion ladder (spec §11.5.1):
+//   1. decision='reject'                              → handoffKind='design-only'
+//   2. decision='accept'/'partial' AND no build-test  → handoffKind='implementation-plan'
+//   3. (2) + build.passing OR tests.passing           → handoffKind='patch'
+//   4. (3) + build.passing && tests.passing + docker/cli exportTarget
+//                                                     → handoffKind='deployable-app'
+//
+// Monotonicity is enforced via recordHandoff() — a subsequent run
+// can only advance, never demote.
+
+export interface RunHandoffAtomInput {
+  cwd: string;
+  manifest: ArtifactManifest;
+  // Optional explicit export target the caller is recording (e.g.
+  // 'cli' when od plugin export wrote to disk; 'docker' when the
+  // tools-pack image build completes; 'figma' when Figma export
+  // wrote a frame back).
+  exportTarget?: ArtifactExportTarget;
+  exportTargets?: ArtifactExportTarget[];
+  deployTarget?: ArtifactDeployTarget;
+  deployTargets?: ArtifactDeployTarget[];
+}
+
+export interface RunHandoffAtomResult {
+  manifest: ArtifactManifest;
+  changed:  Array<'exportTargets' | 'deployTargets' | 'handoffKind'>;
+  signals: {
+    decision?:     'accept' | 'reject' | 'partial';
+    buildPassing?: boolean;
+    testsPassing?: boolean;
+    deployable:    boolean;
+  };
+}
+
+export async function runHandoffAtom(input: RunHandoffAtomInput): Promise<RunHandoffAtomResult> {
+  const cwd = path.resolve(input.cwd);
+  const decision = await readDiffReviewDecision(cwd);
+  const buildTest = await readBuildTestSignals(cwd);
+
+  // Start by appending whatever explicit export/deploy targets the
+  // caller passed in. Idempotency is enforced inside recordHandoff().
+  let next = input.manifest;
+  let changed: RunHandoffAtomResult['changed'] = [];
+  const targets: ArtifactExportTarget[] = [
+    ...(input.exportTarget ? [input.exportTarget] : []),
+    ...(input.exportTargets ?? []),
+  ];
+  for (const t of targets) {
+    const out = recordHandoff({ manifest: next, exportTarget: t });
+    next = out.manifest;
+    for (const c of out.changed) if (!changed.includes(c)) changed.push(c);
+  }
+  const deploys: ArtifactDeployTarget[] = [
+    ...(input.deployTarget ? [input.deployTarget] : []),
+    ...(input.deployTargets ?? []),
+  ];
+  for (const d of deploys) {
+    const out = recordHandoff({ manifest: next, deployTarget: d });
+    next = out.manifest;
+    for (const c of out.changed) if (!changed.includes(c)) changed.push(c);
+  }
+
+  // Compute the target handoff kind from the on-disk state.
+  let handoffKind: ArtifactProvenanceHandoffKind | undefined;
+  if (decision === 'reject') {
+    handoffKind = 'design-only';
+  } else if (decision === 'accept' || decision === 'partial') {
+    handoffKind = 'implementation-plan';
+    if (buildTest && (buildTest.buildPassing || buildTest.testsPassing)) {
+      handoffKind = 'patch';
+    }
+    if (buildTest && isDeployableAppEligible({
+      manifest: next,
+      buildPassing: buildTest.buildPassing,
+      testsPassing: buildTest.testsPassing,
+    })) {
+      handoffKind = 'deployable-app';
+    }
+  }
+  if (handoffKind) {
+    const out = recordHandoff({ manifest: next, handoffKind });
+    next = out.manifest;
+    for (const c of out.changed) if (!changed.includes(c)) changed.push(c);
+  }
+
+  const signals: RunHandoffAtomResult['signals'] = {
+    deployable: handoffKind === 'deployable-app',
+  };
+  if (decision) signals.decision = decision;
+  if (buildTest) {
+    signals.buildPassing = buildTest.buildPassing;
+    signals.testsPassing = buildTest.testsPassing;
+  }
+  return { manifest: next, changed, signals };
+}
+
+async function readDiffReviewDecision(cwd: string): Promise<'accept' | 'reject' | 'partial' | undefined> {
+  const p = path.join(cwd, 'review', 'decision.json');
+  try {
+    const raw = await fsp.readFile(p, 'utf8');
+    const obj = JSON.parse(raw) as { decision?: unknown };
+    if (obj.decision === 'accept' || obj.decision === 'reject' || obj.decision === 'partial') {
+      return obj.decision;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readBuildTestSignals(cwd: string): Promise<{ buildPassing: boolean; testsPassing: boolean } | undefined> {
+  const p = path.join(cwd, 'critique', 'build-test.json');
+  try {
+    const raw = await fsp.readFile(p, 'utf8');
+    const obj = JSON.parse(raw) as { signals?: { 'build.passing'?: unknown; 'tests.passing'?: unknown } };
+    const buildPassing = obj.signals?.['build.passing'] === true;
+    const testsPassing = obj.signals?.['tests.passing'] === true;
+    return { buildPassing, testsPassing };
+  } catch {
+    return undefined;
+  }
 }
