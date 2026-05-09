@@ -1,6 +1,6 @@
-// @ts-nocheck
 import path from 'node:path';
 import { DEFAULT_MODEL_OPTION, execAgentFile, parsePiModels } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const piAgentDef = {
     id: 'pi',
@@ -92,4 +92,4 @@ export const piAgentDef = {
     // input (base64-encoded). The daemon attaches image paths to the
     // session so attachPiRpcSession can read and forward them.
     supportsImagePaths: true,
-};
+} satisfies RuntimeAgentDef;

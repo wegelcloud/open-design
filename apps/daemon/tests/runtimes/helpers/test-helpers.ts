@@ -19,6 +19,7 @@ import {
   resolveAgentExecutable,
   spawnEnvForAgent,
 } from '../../../src/agents.js';
+import type { RuntimeAgentDef } from '../../../src/runtimes/types.js';
 
 export {
   assert,
@@ -39,7 +40,7 @@ export {
   writeFileSync,
 };
 
-export type TestAgentDef = (typeof AGENT_DEFS)[number];
+export type TestAgentDef = RuntimeAgentDef;
 
 export function requireAgent(id: string): TestAgentDef {
   const agent = AGENT_DEFS.find((candidate) => candidate.id === id);
@@ -47,7 +48,9 @@ export function requireAgent(id: string): TestAgentDef {
   return agent;
 }
 
-export function minimalAgentDef(partial: Pick<TestAgentDef, 'bin'> & Partial<TestAgentDef>): TestAgentDef {
+export function minimalAgentDef(
+  partial: Pick<TestAgentDef, 'bin'> & Partial<TestAgentDef>,
+): TestAgentDef {
   const { bin, ...rest } = partial;
   return {
     id: partial.id ?? `test-${bin}`,
@@ -58,7 +61,7 @@ export function minimalAgentDef(partial: Pick<TestAgentDef, 'bin'> & Partial<Tes
     buildArgs: partial.buildArgs ?? (() => []),
     streamFormat: partial.streamFormat ?? 'plain',
     ...rest,
-  } as unknown as TestAgentDef;
+  };
 }
 
 export const codex = requireAgent('codex');
@@ -75,11 +78,13 @@ export const pi = requireAgent('pi');
 export const deepseek = requireAgent('deepseek');
 export const gemini = requireAgent('gemini');
 export const qoder = requireAgent('qoder');
-export const deepseekMaxPromptArgBytes = deepseek.maxPromptArgBytes;
-assert.ok(
-  deepseekMaxPromptArgBytes !== undefined,
-  'deepseek must define maxPromptArgBytes for argv budget tests',
-);
+export const deepseekMaxPromptArgBytes = (() => {
+  assert.ok(
+    deepseek.maxPromptArgBytes !== undefined,
+    'deepseek must define maxPromptArgBytes for argv budget tests',
+  );
+  return deepseek.maxPromptArgBytes;
+})();
 const originalDisablePlugins = process.env.OD_CODEX_DISABLE_PLUGINS;
 const originalPath = process.env.PATH;
 const originalHome = process.env.HOME;

@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { DEFAULT_MODEL_OPTION, parseLineSeparatedModels } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const opencodeAgentDef = {
     id: 'opencode',
@@ -39,4 +39,4 @@ export const opencodeAgentDef = {
     promptViaStdin: true,
     streamFormat: 'json-event-stream',
     eventParser: 'opencode',
-};
+} satisfies RuntimeAgentDef;

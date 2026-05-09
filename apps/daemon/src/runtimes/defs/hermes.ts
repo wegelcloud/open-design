@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { detectAcpModels, DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const hermesAgentDef = {
     id: 'hermes',
@@ -26,4 +26,4 @@ export const hermesAgentDef = {
     buildArgs: () => ['acp', '--accept-hooks'],
     streamFormat: 'acp-json-rpc',
     mcpDiscovery: 'mature-acp',
-};
+} satisfies RuntimeAgentDef;

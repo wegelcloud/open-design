@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { test } from 'vitest';
 import {
   assert, claude, codex, copilot, cursorAgent, deepseek, devin, detectAgents, gemini, join, kilo, kiro, mkdtempSync, pi, qoder, rmSync, spawnEnvForAgent, tmpdir, vibe, writeFileSync, chmodSync,
 } from './helpers/test-helpers.js';
+import type { TestAgentDef } from './helpers/test-helpers.js';
 
 test('cursor-agent args deliver prompts via stdin without passing a literal dash prompt', () => {
   const args = cursorAgent.buildArgs(

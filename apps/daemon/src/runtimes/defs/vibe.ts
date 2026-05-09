@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { detectAcpModels, DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const vibeAgentDef = {
     id: 'vibe',
@@ -17,4 +17,4 @@ export const vibeAgentDef = {
     fallbackModels: [DEFAULT_MODEL_OPTION],
     buildArgs: () => [],
     streamFormat: 'acp-json-rpc',
-};
+} satisfies RuntimeAgentDef;

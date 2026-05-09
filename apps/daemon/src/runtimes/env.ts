@@ -1,5 +1,6 @@
-// @ts-nocheck
 import { expandConfiguredEnv } from './paths.js';
+
+type RuntimeEnvMap = NodeJS.ProcessEnv | Record<string, string>;
 
 // Build the env passed to spawn() for a given agent adapter.
 //
@@ -19,8 +20,15 @@ import { expandConfiguredEnv } from './paths.js';
 // object loses Node's case-insensitive accessor — `Anthropic_Api_Key`
 // would survive a literal `delete env.ANTHROPIC_API_KEY` and still reach
 // the child. Iterate keys and compare case-insensitively to close that.
-export function spawnEnvForAgent(agentId, baseEnv, configuredEnv = {}) {
-  const env = { ...baseEnv, ...expandConfiguredEnv(configuredEnv) };
+export function spawnEnvForAgent(
+  agentId: string,
+  baseEnv: RuntimeEnvMap,
+  configuredEnv: unknown = {},
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    ...expandConfiguredEnv(configuredEnv),
+  };
   if (agentId !== 'claude') return env;
   const hasCustomBaseUrl = Object.keys(env).some(
     (k) =>

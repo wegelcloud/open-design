@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { claudeAgentDef } from './defs/claude.js';
 import { codexAgentDef } from './defs/codex.js';
 import { devinAgentDef } from './defs/devin.js';
@@ -15,19 +14,9 @@ import { kiroAgentDef } from './defs/kiro.js';
 import { kiloAgentDef } from './defs/kilo.js';
 import { vibeAgentDef } from './defs/vibe.js';
 import { deepseekAgentDef } from './defs/deepseek.js';
+import type { RuntimeAgentDef } from './types.js';
 
-type AgentDef = {
-  id: string;
-  name: string;
-  bin: string;
-  versionArgs: string[];
-  fallbackModels: Array<{ id: string; label: string }>;
-  buildArgs: (...args: any[]) => string[];
-  streamFormat: string;
-  [key: string]: any;
-};
-
-export const AGENT_DEFS: AgentDef[] = [
+export const AGENT_DEFS: RuntimeAgentDef[] = [
   claudeAgentDef,
   codexAgentDef,
   devinAgentDef,
@@ -54,6 +43,6 @@ for (const def of AGENT_DEFS) {
   ids.add(def.id);
 }
 
-export function getAgentDef(id): AgentDef | null {
+export function getAgentDef(id: string): RuntimeAgentDef | null {
   return AGENT_DEFS.find((a) => a.id === id) || null;
 }

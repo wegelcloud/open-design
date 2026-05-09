@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { detectAcpModels, DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const kimiAgentDef = {
     id: 'kimi',
@@ -23,4 +23,4 @@ export const kimiAgentDef = {
     buildArgs: () => ['acp'],
     streamFormat: 'acp-json-rpc',
     mcpDiscovery: 'mature-acp',
-};
+} satisfies RuntimeAgentDef;

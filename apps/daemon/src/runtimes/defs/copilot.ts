@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const copilotAgentDef = {
     id: 'copilot',
@@ -67,4 +67,4 @@ export const copilotAgentDef = {
     },
     promptViaStdin: true,
     streamFormat: 'copilot-stream-json',
-};
+} satisfies RuntimeAgentDef;

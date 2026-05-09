@@ -1,12 +1,15 @@
-// @ts-nocheck
 import { detectAcpModels } from '../../acp.js';
 import { parsePiModels } from '../../pi-rpc.js';
 import { execAgentFile } from '../invocation.js';
 import { DEFAULT_MODEL_OPTION } from '../models.js';
+import type { RuntimeModelOption } from '../types.js';
 
 export { detectAcpModels, parsePiModels, execAgentFile, DEFAULT_MODEL_OPTION };
 
-export function clampCodexReasoning(modelId, effort) {
+export function clampCodexReasoning(
+  modelId: string | null | undefined,
+  effort: string | null | undefined,
+) {
   if (!effort) return effort;
   const raw = String(modelId ?? '').trim();
   const id = raw.includes('/') ? raw.split('/').pop() : raw;
@@ -27,7 +30,7 @@ export function clampCodexReasoning(modelId, effort) {
 
 // Parse one-id-per-line stdout from `<cli> models` and prepend the synthetic
 // default option. Used by opencode / cursor-agent.
-export function parseLineSeparatedModels(stdout) {
+export function parseLineSeparatedModels(stdout: string): RuntimeModelOption[] {
   const ids = String(stdout || '')
     .split('\n')
     .map((line) => line.trim())

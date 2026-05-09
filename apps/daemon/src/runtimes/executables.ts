@@ -1,12 +1,12 @@
-// @ts-nocheck
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { delimiter } from 'node:path';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { wellKnownUserToolchainBins } from '@open-design/platform';
 import { expandHomePath } from './paths.js';
+import type { RuntimeAgentDef } from './types.js';
 
-const AGENT_BIN_ENV_KEYS = new Map([
+const AGENT_BIN_ENV_KEYS = new Map<string, string>([
   ['claude', 'CLAUDE_BIN'],
   ['codex', 'CODEX_BIN'],
   ['copilot', 'COPILOT_BIN'],
@@ -26,8 +26,8 @@ const AGENT_BIN_ENV_KEYS = new Map([
 ]);
 
 const TOOLCHAIN_DIR_CACHE_TTL_MS = 5000;
-let cachedToolchainHome = null;
-let cachedToolchainDirs = null;
+let cachedToolchainHome: string | null = null;
+let cachedToolchainDirs: string[] | null = null;
 let cachedToolchainDirsAt = 0;
 
 function userToolchainDirs() {
@@ -74,7 +74,7 @@ function resolvePathDirs() {
   });
 }
 
-export function resolveOnPath(bin) {
+export function resolveOnPath(bin: string): string | null {
   const exts =
     process.platform === 'win32'
       ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';')
@@ -89,7 +89,7 @@ export function resolveOnPath(bin) {
   return null;
 }
 
-function looksExecutableOnWindows(filePath) {
+function looksExecutableOnWindows(filePath: string): boolean {
   const ext = path.extname(filePath).trim().toUpperCase();
   if (!ext) return false;
   const executableExts = (process.env.PATHEXT || '.EXE;.CMD;.BAT')
@@ -104,7 +104,10 @@ function looksExecutableOnWindows(filePath) {
 // agents whose forks ship under a different binary name but speak the
 // exact same CLI (Claude Code → OpenClaude, issue #235). Returns null
 // when no candidate is on PATH.
-function configuredExecutableOverride(def, configuredEnv = {}) {
+function configuredExecutableOverride(
+  def: RuntimeAgentDef,
+  configuredEnv: Record<string, string> = {},
+): string | null {
   const envKey = AGENT_BIN_ENV_KEYS.get(def?.id);
   if (!envKey) return null;
   const raw = configuredEnv?.[envKey];
@@ -124,7 +127,10 @@ function configuredExecutableOverride(def, configuredEnv = {}) {
   }
 }
 
-export function resolveAgentExecutable(def, configuredEnv = {}) {
+export function resolveAgentExecutable(
+  def: RuntimeAgentDef,
+  configuredEnv: Record<string, string> = {},
+): string | null {
   if (!def?.bin) return null;
   const configured = configuredExecutableOverride(def, configuredEnv);
   if (configured) return configured;

@@ -1,5 +1,9 @@
-// @ts-nocheck
-export function checkPromptArgvBudget(def, composed) {
+import type { RuntimeAgentDef, RuntimePromptBudgetError } from './types.js';
+
+export function checkPromptArgvBudget(
+  def: RuntimeAgentDef | null | undefined,
+  composed: unknown,
+): RuntimePromptBudgetError | null {
   if (!def || typeof def.maxPromptArgBytes !== 'number') return null;
   const bytes = Buffer.byteLength(
     typeof composed === 'string' ? composed : '',
@@ -26,7 +30,7 @@ export function checkPromptArgvBudget(def, composed) {
 // (DeepSeek TUI today): `%name%` pairs would otherwise be expanded from
 // the daemon environment before the child reads them, leaking secrets
 // like `%DEEPSEEK_API_KEY%` whenever the prompt mentions an env-var name.
-function quoteForWindowsCmdShim(value) {
+function quoteForWindowsCmdShim(value: unknown): string {
   const str = String(value ?? '');
   if (!/[\s"&<>|^%]/.test(str)) return str;
   const escaped = str.replace(/"/g, '""').replace(/%/g, '"^%"');
@@ -41,7 +45,7 @@ function quoteForWindowsCmdShim(value) {
 // closing wrap quote) gets doubled, and an arg with whitespace or a
 // quote is wrapped in outer `"..."`. Kept local so the budget check
 // works on macOS/Linux test hosts against a fake `C:\…\foo.exe` path.
-function quoteForWindowsDirectExe(value) {
+function quoteForWindowsDirectExe(value: unknown): string {
   const str = String(value ?? '');
   // libuv emits a literal `""` for an empty argv entry so it survives
   // CommandLineToArgvW round-tripping; mirror that.
@@ -105,7 +109,11 @@ const WINDOWS_CREATE_PROCESS_HEADROOM = 256;
 // Pure: takes `resolvedBin` explicitly so a test on macOS can pass a
 // fake `C:\\…\\deepseek.cmd` path and exercise the same math the daemon
 // would run on Windows.
-export function checkWindowsCmdShimCommandLineBudget(def, resolvedBin, args) {
+export function checkWindowsCmdShimCommandLineBudget(
+  def: RuntimeAgentDef | null | undefined,
+  resolvedBin: unknown,
+  args: unknown,
+): RuntimePromptBudgetError | null {
   if (!def || typeof def.maxPromptArgBytes !== 'number') return null;
   if (typeof resolvedBin !== 'string' || !/\.(bat|cmd)$/i.test(resolvedBin))
     return null;
@@ -134,7 +142,7 @@ export function checkWindowsCmdShimCommandLineBudget(def, resolvedBin, args) {
 // `C:\…\foo.exe` path through the same math the daemon would run on
 // Windows, while still skipping POSIX-shaped paths (which never go
 // through CreateProcess).
-function looksLikeWindowsPath(p) {
+function looksLikeWindowsPath(p: unknown): boolean {
   if (typeof p !== 'string' || p.length === 0) return false;
   // Drive-letter (`C:\…`, `C:/…`) or UNC (`\\server\share\…`).
   return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\');
@@ -168,7 +176,11 @@ function looksLikeWindowsPath(p) {
 // pass a fake `C:\…\deepseek.exe` and exercise the same math the daemon
 // would run on Windows. The libuv quoting math lives in
 // `quoteForWindowsDirectExe` above.
-export function checkWindowsDirectExeCommandLineBudget(def, resolvedBin, args) {
+export function checkWindowsDirectExeCommandLineBudget(
+  def: RuntimeAgentDef | null | undefined,
+  resolvedBin: unknown,
+  args: unknown,
+): RuntimePromptBudgetError | null {
   if (!def || typeof def.maxPromptArgBytes !== 'number') return null;
   if (typeof resolvedBin !== 'string' || resolvedBin.length === 0) return null;
   // The cmd-shim guard owns `.bat` / `.cmd`; skip those here so a single

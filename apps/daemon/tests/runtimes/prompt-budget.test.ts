@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { test } from 'vitest';
 import {
   assert, checkPromptArgvBudget, checkWindowsCmdShimCommandLineBudget, checkWindowsDirectExeCommandLineBudget, claude, deepseek, deepseekMaxPromptArgBytes, vibe,
 } from './helpers/test-helpers.js';
+import type { TestAgentDef } from './helpers/test-helpers.js';
 
 // DeepSeek TUI's exec subcommand requires the prompt as a positional
 // argument (no `-` stdin sentinel; clap declares `prompt: String` as a

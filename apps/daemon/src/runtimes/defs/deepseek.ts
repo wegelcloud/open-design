@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const deepseekAgentDef = {
     id: 'deepseek',
@@ -52,4 +52,4 @@ export const deepseekAgentDef = {
     // --auto --model <id>` and any internal quoting.
     maxPromptArgBytes: 30_000,
     streamFormat: 'plain',
-};
+} satisfies RuntimeAgentDef;

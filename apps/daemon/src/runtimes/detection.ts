@@ -1,12 +1,21 @@
-// @ts-nocheck
 import { execAgentFile } from './invocation.js';
 import { AGENT_DEFS } from './registry.js';
 import { DEFAULT_MODEL_OPTION, rememberLiveModels } from './models.js';
 import { resolveAgentExecutable } from './executables.js';
 import { spawnEnvForAgent } from './env.js';
 import { agentCapabilities } from './capabilities.js';
+import type {
+  DetectedAgent,
+  RuntimeAgentDef,
+  RuntimeCapabilityMap,
+  RuntimeModelOption,
+} from './types.js';
 
-async function fetchModels(def, resolvedBin, env) {
+async function fetchModels(
+  def: RuntimeAgentDef,
+  resolvedBin: string,
+  env: NodeJS.ProcessEnv,
+): Promise<RuntimeModelOption[]> {
   if (typeof def.fetchModels === 'function') {
     try {
       const parsed = await def.fetchModels(resolvedBin, env);
@@ -26,7 +35,7 @@ async function fetchModels(def, resolvedBin, env) {
       // it so we don't truncate the listing.
       maxBuffer: 8 * 1024 * 1024,
     });
-    const parsed = def.listModels.parse(stdout);
+    const parsed = def.listModels.parse(String(stdout));
     // Empty / null parse result means the CLI didn't actually return a
     // usable list (e.g. cursor-agent's "No models available"); fall back
     // to the static hint so the picker isn't stuck on Default-only.
@@ -37,7 +46,10 @@ async function fetchModels(def, resolvedBin, env) {
   }
 }
 
-async function probe(def, configuredEnv = {}) {
+async function probe(
+  def: RuntimeAgentDef,
+  configuredEnv: Record<string, string> = {},
+): Promise<DetectedAgent> {
   const resolved = resolveAgentExecutable(def, configuredEnv);
   if (!resolved) {
     return {
@@ -60,14 +72,14 @@ async function probe(def, configuredEnv = {}) {
       env: probeEnv,
       timeout: 3000,
     });
-    version = stdout.trim().split('\n')[0];
+    version = String(stdout).trim().split('\n')[0] ?? null;
   } catch {
     // binary exists but --version failed; still mark available
   }
   // Probe `--help` once per agent and record which flags the installed CLI
   // advertises. Cached on `agentCapabilities` for buildArgs to consult.
   if (def.helpArgs && def.capabilityFlags) {
-    const caps = {};
+    const caps: RuntimeCapabilityMap = {};
     try {
       const { stdout } = await execAgentFile(resolved, def.helpArgs, {
         env: probeEnv,
@@ -75,7 +87,7 @@ async function probe(def, configuredEnv = {}) {
         maxBuffer: 4 * 1024 * 1024,
       });
       for (const [flag, key] of Object.entries(def.capabilityFlags)) {
-        caps[key] = stdout.includes(flag);
+        caps[key] = String(stdout).includes(flag);
       }
     } catch {
       // If --help fails, leave caps empty — buildArgs falls back to the safe
@@ -93,7 +105,9 @@ async function probe(def, configuredEnv = {}) {
   };
 }
 
-function stripFns(def) {
+function stripFns(
+  def: RuntimeAgentDef,
+): Omit<DetectedAgent, 'models' | 'available' | 'path' | 'version'> {
   // Drop the buildArgs / listModels closures but keep declarative metadata
   // (reasoningOptions, streamFormat, name, bin, etc.). `models` is
   // populated separately by `fetchModels`, so we strip the static
@@ -115,7 +129,9 @@ function stripFns(def) {
   return rest;
 }
 
-export async function detectAgents(configuredEnvByAgent = {}) {
+export async function detectAgents(
+  configuredEnvByAgent: Record<string, Record<string, string>> = {},
+) {
   const results = await Promise.all(
     AGENT_DEFS.map((def) => probe(def, configuredEnvByAgent?.[def.id] ?? {})),
   );
@@ -127,4 +143,3 @@ export async function detectAgents(configuredEnvByAgent = {}) {
   }
   return results;
 }
-

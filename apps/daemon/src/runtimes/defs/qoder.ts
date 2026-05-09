@@ -1,6 +1,6 @@
-// @ts-nocheck
 import path from 'node:path';
 import { DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const qoderAgentDef = {
     id: 'qoder',
@@ -55,4 +55,4 @@ export const qoderAgentDef = {
     },
     promptViaStdin: true,
     streamFormat: 'qoder-stream-json',
-};
+} satisfies RuntimeAgentDef;

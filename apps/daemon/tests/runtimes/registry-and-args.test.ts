@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { test } from 'vitest';
 import {
   AGENT_DEFS, assert, chmodSync, codex, detectAgents, join, mkdtempSync, rmSync, tmpdir, writeFileSync,

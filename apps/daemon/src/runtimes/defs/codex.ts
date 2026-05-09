@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { DEFAULT_MODEL_OPTION, clampCodexReasoning } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const codexAgentDef = {
     id: 'codex',
@@ -79,4 +79,4 @@ export const codexAgentDef = {
     promptViaStdin: true,
     streamFormat: 'json-event-stream',
     eventParser: 'codex',
-};
+} satisfies RuntimeAgentDef;

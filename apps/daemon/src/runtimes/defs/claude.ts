@@ -1,6 +1,6 @@
-// @ts-nocheck
 import { agentCapabilities } from '../capabilities.js';
 import { DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const claudeAgentDef = {
     id: 'claude',
@@ -67,4 +67,4 @@ export const claudeAgentDef = {
     },
     promptViaStdin: true,
     streamFormat: 'claude-stream-json',
-};
+} satisfies RuntimeAgentDef;

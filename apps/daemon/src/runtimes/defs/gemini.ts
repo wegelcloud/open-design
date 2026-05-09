@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const geminiAgentDef = {
     id: 'gemini',
@@ -35,4 +35,4 @@ export const geminiAgentDef = {
     promptViaStdin: true,
     streamFormat: 'json-event-stream',
     eventParser: 'gemini',
-};
+} satisfies RuntimeAgentDef;

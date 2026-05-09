@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { DEFAULT_MODEL_OPTION } from './shared.js';
+import type { RuntimeAgentDef } from '../types.js';
 
 export const qwenAgentDef = {
     id: 'qwen',
@@ -24,4 +24,4 @@ export const qwenAgentDef = {
     },
     promptViaStdin: true,
     streamFormat: 'plain',
-};
+} satisfies RuntimeAgentDef;
