@@ -3516,6 +3516,7 @@ async function runDaemon(args) {
                                           Print the daemon's runtime snapshot.
   od daemon stop   [--daemon-url <url>]   Send a graceful shutdown signal.
   od daemon db     status                 Print SQLite path + size + table row counts.
+  od daemon db     verify [--quick]       Run integrity_check + foreign_key_check.
   od daemon db     vacuum                 Run SQLite VACUUM to reclaim space after deletes.
 
 Common options:
@@ -3546,6 +3547,7 @@ async function runDaemonDb(rest, flags) {
   if (!sub || sub === 'help' || rest.includes('--help') || rest.includes('-h')) {
     console.log(`Usage:
   od daemon db status [--json] [--daemon-url <url>]
+  od daemon db verify [--quick] [--json] [--daemon-url <url>]
   od daemon db vacuum [--json] [--daemon-url <url>]
 
 status:
@@ -3554,6 +3556,11 @@ status:
     - size on disk (primary + WAL + SHM)
     - schema version (user_version PRAGMA)
     - per-table row counts (system tables excluded)
+
+verify:
+  Runs SQLite PRAGMA integrity_check (or quick_check with --quick)
+  + foreign_key_check, returns a structured issues[] report.
+  Exit 0 when ok=true, 4 when any issue is found.
 
 vacuum:
   Runs SQLite VACUUM to reclaim space after large delete batches
@@ -3577,6 +3584,31 @@ vacuum:
       + `${formatBytes(data.beforeBytes ?? 0)} \u2192 ${formatBytes(data.afterBytes ?? 0)}, `
       + `${data.elapsedMs ?? 0}ms)`);
     return;
+  }
+  if (sub === 'verify') {
+    const verifyFlags = parseFlags(rest.slice(1), {
+      string:  new Set(['daemon-url']),
+      boolean: new Set(['help', 'h', 'json', 'quick']),
+    });
+    const url = `${base}/api/daemon/db/verify${verifyFlags.quick ? '?quick=1' : ''}`;
+    const resp = await fetch(url, { method: 'POST' });
+    if (!resp.ok) {
+      console.error(`POST ${url} failed: ${resp.status} ${await resp.text()}`);
+      process.exit(1);
+    }
+    const data = await resp.json();
+    if (flags.json) {
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    } else {
+      const issueCount = Array.isArray(data.issues) ? data.issues.length : 0;
+      console.log(`[db verify] mode=${data.mode}  ok=${data.ok}  issues=${issueCount}  ${data.elapsedMs ?? 0}ms`);
+      if (issueCount > 0) {
+        for (const issue of data.issues) {
+          console.error(`  [${issue.kind}] ${issue.message}`);
+        }
+      }
+    }
+    process.exit(data.ok ? 0 : 4);
   }
   if (sub !== 'status') {
     console.error(`unknown subcommand: od daemon db ${sub}`);

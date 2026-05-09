@@ -118,3 +118,83 @@ function sanitizeTableName(name: string): string | null {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return null;
   return name;
 }
+
+// Plan §3.LL1 — daemon-DB integrity check.
+//
+// Wraps SQLite's PRAGMA integrity_check + foreign_key_check + the
+// fast PRAGMA quick_check variant. Returns a structured report so
+// the CLI can pretty-print + a CI tool can parse JSON.
+//
+// PRAGMA integrity_check returns either ['ok'] when the DB is
+// healthy or one row per issue. PRAGMA foreign_key_check returns
+// rows for each FK violation; we surface them as 'fk' issues.
+
+export type DbIntegrityIssueKind = 'integrity' | 'foreign_key';
+
+export interface DbIntegrityIssue {
+  kind:    DbIntegrityIssueKind;
+  message: string;
+}
+
+export interface DbIntegrityReport {
+  ok:           boolean;
+  // 'integrity_check' (default) or 'quick_check' — quick is faster
+  // but skips the index-content check.
+  mode:         'integrity_check' | 'quick_check';
+  issues:       DbIntegrityIssue[];
+  elapsedMs:    number;
+  generatedAt:  number;
+}
+
+export interface VerifyDbOptions {
+  db:    SqliteDb;
+  quick?: boolean;
+}
+
+export function verifySqliteIntegrity(opts: VerifyDbOptions): DbIntegrityReport {
+  const { db, quick = false } = opts;
+  const startedAt = Date.now();
+  const issues: DbIntegrityIssue[] = [];
+
+  // 1. integrity_check / quick_check.
+  const pragma = quick ? 'quick_check' : 'integrity_check';
+  try {
+    const rows = db.pragma(pragma) as Array<Record<string, unknown>>;
+    for (const row of rows) {
+      // SQLite returns the string under either `integrity_check`,
+      // `quick_check`, or just the first column. Normalise to the
+      // first string-valued field.
+      const message = (row[pragma] ?? Object.values(row)[0]) as unknown;
+      if (typeof message !== 'string') continue;
+      if (message.toLowerCase() === 'ok') continue;
+      issues.push({ kind: 'integrity', message });
+    }
+  } catch (err) {
+    issues.push({ kind: 'integrity', message: `pragma ${pragma} threw: ${(err as Error).message}` });
+  }
+
+  // 2. foreign_key_check.
+  try {
+    const rows = db.pragma('foreign_key_check') as Array<{ table?: string; rowid?: number; parent?: string; fkid?: number }>;
+    for (const row of rows) {
+      const tbl = row.table ?? '?';
+      const parent = row.parent ?? '?';
+      const fkid = row.fkid ?? '?';
+      const rowid = row.rowid ?? '?';
+      issues.push({
+        kind: 'foreign_key',
+        message: `FK violation in ${tbl} (rowid=${rowid}) referencing ${parent} (fkid=${fkid})`,
+      });
+    }
+  } catch (err) {
+    issues.push({ kind: 'foreign_key', message: `pragma foreign_key_check threw: ${(err as Error).message}` });
+  }
+
+  return {
+    ok:          issues.length === 0,
+    mode:        quick ? 'quick_check' : 'integrity_check',
+    issues,
+    elapsedMs:   Date.now() - startedAt,
+    generatedAt: Date.now(),
+  };
+}

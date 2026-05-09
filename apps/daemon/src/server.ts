@@ -2162,6 +2162,22 @@ export async function startServer({
     req.on('close', () => { unsubscribe(); });
   });
 
+  // Plan §3.LL1 — `od daemon db verify`. Runs SQLite
+  // PRAGMA integrity_check (or quick_check when ?quick=1) +
+  // PRAGMA foreign_key_check, returns a structured issues[]
+  // report. Loopback-only via requireLocalDaemonRequest because
+  // the result reveals storage-layer state.
+  app.post('/api/daemon/db/verify', requireLocalDaemonRequest, async (req, res) => {
+    try {
+      const { verifySqliteIntegrity } = await import('./storage/db-inspect.js');
+      const quick = String(req.query.quick ?? '').toLowerCase();
+      const report = verifySqliteIntegrity({ db, quick: quick === '1' || quick === 'true' });
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // Plan §3.HH2 — `od daemon db vacuum`. Runs SQLite VACUUM to
   // reclaim space after large delete batches (snapshot prune,
   // plugin uninstall, etc.). Reports before / after sizes so the
