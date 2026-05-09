@@ -27,6 +27,17 @@ Reviewers do not need to manually check rules that `pnpm guard` enforces. The au
 
 Trust guard for these. Focus review attention elsewhere.
 
+## Cross-cutting review invariants
+
+Before suggesting or accepting a fix, identify the ownership boundary of the state being changed. A symptom in one layer does not automatically authorize cleanup in another layer.
+
+- UI/session state may be cleared to improve retry UX, but protocol, security, credential, persisted, or daemon-owned state must only be invalidated by its owning lifecycle event.
+- Browser or external-process launch uncertainty is not proof that the underlying operation failed. Preserve server-side pending protocol state unless the user explicitly cancels, the callback completes, or the documented TTL expires.
+- Display metadata, preview subsets, hydrated execution definitions, and execution allowlists are separate concepts. Do not substitute one for another unless the public contract is updated in the same PR.
+- When a review asks to fix a symptom, also preserve the negative invariant: name which state must **not** be modified as part of the fix.
+
+For OAuth-like flows, the default rule is: launch failure is UI-only; callback validation state belongs to the daemon and must survive until callback, TTL, or explicit user cancellation.
+
 ## 1. Product relevance test
 
 Run this test **before** reviewing implementation details. A PR passes only when the changed behavior is visible in, required by, or directly validates an Open Design–owned surface.
