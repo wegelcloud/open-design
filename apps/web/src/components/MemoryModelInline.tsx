@@ -30,6 +30,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useState,
 } from 'react';
@@ -305,88 +306,100 @@ export function MemoryModelInline({
   // picker shows the same fallback there.)
   const showSuggestedOptions = modelOptions.length > 0;
 
-  // Hint paragraph is rendered as a sibling of the <label>, not as a
-  // child, so the <select>'s accessible name stays "Memory model" rather
-  // than absorbing the entire hint sentence (which contains substrings
-  // like "API key" that confuse Playwright's getByLabel locator strategy
-  // in e2e tests).
+  // Stable unique id for the labelling span so multiple instances of
+  // this picker (or instances rendered alongside other Memory pickers)
+  // never collide on a global selector. The select uses
+  // `aria-labelledby` to point at *just* the short title — never the
+  // hint paragraph, never the flash status — so Playwright's
+  // `getByLabel('Memory model')` resolves to a single combobox and
+  // `getByLabel('API key' / 'Model')` on the surrounding chat form
+  // can't accidentally cross-match the hint copy here.
+  const labelId = useId();
+
+  // The wrapper used to be a <label>, which made the select's
+  // accessible name absorb every text descendant (the flash status,
+  // the hint paragraph). The reviewer asked for a non-label wrapper so
+  // the labelling element is just the short title; we now use a div
+  // with an explicit id-based association via `aria-labelledby`.
   return (
-    <>
-      <label className="field">
-        <span className="field-label">
-          {t('settings.memoryModelInlineLabel')}
-          {flash ? (
-            <span
-              role="status"
-              aria-live="polite"
-              style={{
-                marginLeft: 8,
-                fontSize: 11,
-                fontWeight: 500,
-                color: 'var(--text-success, #1f7a3a)',
-                textTransform: 'none',
-                letterSpacing: 0,
-              }}
-            >
-              {flash}
-            </span>
-          ) : null}
-        </span>
-        <select
-          value={selectValue}
-          disabled={busy}
-          onChange={(e) => void onSelectChange(e.target.value)}
+    <div className="field">
+      <span id={labelId} className="field-label">
+        {t('settings.memoryModelInlineLabel')}
+      </span>
+      {flash ? (
+        <span
+          role="status"
+          aria-live="polite"
+          style={{
+            display: 'inline-block',
+            marginLeft: 8,
+            marginTop: -2,
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-success, #1f7a3a)',
+            textTransform: 'none',
+            letterSpacing: 0,
+          }}
         >
-          <option value={SAME_AS_CHAT_SENTINEL}>
-            {effectiveChatProtocol
-              ? t('settings.memoryModelInlineSameAsChatWithProvider', {
-                  provider: effectiveChatProtocol,
+          {flash}
+        </span>
+      ) : null}
+      <select
+        aria-labelledby={labelId}
+        value={selectValue}
+        disabled={busy}
+        onChange={(e) => void onSelectChange(e.target.value)}
+      >
+        <option value={SAME_AS_CHAT_SENTINEL}>
+          {effectiveChatProtocol
+            ? t('settings.memoryModelInlineSameAsChatWithProvider', {
+                provider: effectiveChatProtocol,
+              })
+            : chatModel
+              ? t('settings.memoryModelInlineSameAsChatWithModel', {
+                  model: chatModel,
                 })
-              : chatModel
-                ? t('settings.memoryModelInlineSameAsChatWithModel', {
-                    model: chatModel,
-                  })
-                : t('settings.memoryModelInlineSameAsChat')}
-          </option>
-          {showSuggestedOptions
-            ? modelOptions.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))
-            : null}
-          <option value={CUSTOM_MODEL_SENTINEL}>
-            {t('settings.modelCustom')}
-          </option>
-        </select>
-        {customActive ? (
-          <div
-            className="field-row"
-            style={{ marginTop: 6, display: 'flex', gap: 6 }}
+              : t('settings.memoryModelInlineSameAsChat')}
+        </option>
+        {showSuggestedOptions
+          ? modelOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))
+          : null}
+        <option value={CUSTOM_MODEL_SENTINEL}>
+          {t('settings.modelCustom')}
+        </option>
+      </select>
+      {customActive ? (
+        <div
+          className="field-row"
+          style={{ marginTop: 6, display: 'flex', gap: 6 }}
+        >
+          <input
+            type="text"
+            aria-label={t('settings.memoryModelInlineLabel')}
+            value={customDraft}
+            placeholder={t('settings.modelCustomPlaceholder')}
+            onChange={(e) => setCustomDraft(e.target.value.trimStart())}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void onSaveCustom();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void onSaveCustom()}
+            disabled={busy || !customDraft.trim()}
           >
-            <input
-              type="text"
-              value={customDraft}
-              placeholder={t('settings.modelCustomPlaceholder')}
-              onChange={(e) => setCustomDraft(e.target.value.trimStart())}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void onSaveCustom();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => void onSaveCustom()}
-              disabled={busy || !customDraft.trim()}
-            >
-              {t('common.save')}
-            </button>
-          </div>
-        ) : null}
-      </label>
+            {t('common.save')}
+          </button>
+        </div>
+      ) : null}
       <p className="hint" style={{ marginTop: 4, fontSize: 11 }}>
         {mode === 'api'
           ? t('settings.memoryModelInlineHintByok')
@@ -396,6 +409,6 @@ export function MemoryModelInline({
               })
             : t('settings.memoryModelInlineHintCli')}
       </p>
-    </>
+    </div>
   );
 }

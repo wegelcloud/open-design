@@ -3360,18 +3360,72 @@ export async function startServer({
     }
   });
 
-  // Imperative extract — `chat run` calls this internally after each user
-  // turn. Surfaced as HTTP so curl can exercise the regex pack independently
-  // of the chat path and a future settings UI can replay extraction.
+  // Imperative extract — used by CLI chats internally and by BYOK /
+  // API-mode chats from the web app, which never reach the chat-run
+  // path on the daemon. Mirrors the two-phase hook the daemon's chat
+  // route applies inline:
+  //
+  //   - Pre-turn (only `userMessage` supplied): run the synchronous
+  //     heuristic regex pack so explicit "remember: X" / "我是 X"
+  //     markers land in memory before the prompt is composed, and the
+  //     same turn's assistant reply already reflects them.
+  //   - Post-turn (`userMessage` + `assistantMessage` supplied): queue
+  //     the LLM extractor in the background — it speaks SSE /
+  //     extraction-history on its own and may take several seconds, so
+  //     we don't block the HTTP response on it. The heuristic is
+  //     skipped on this branch because the caller already ran it
+  //     pre-turn; running it twice would double the
+  //     `recordHeuristic({...})` rows in the extraction history for
+  //     every turn.
+  //
+  // External callers (curl, replay tools) that pass only
+  // `userMessage` keep the legacy behaviour: heuristic-only.
   app.post('/api/memory/extract', async (req, res) => {
     try {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const userMessage =
         typeof body.userMessage === 'string' ? body.userMessage : '';
-      const changed = await extractFromMessage(RUNTIME_DATA_DIR, userMessage);
-      res.json({ changed });
+      const assistantMessage =
+        typeof body.assistantMessage === 'string' ? body.assistantMessage : '';
+      const hasAssistant = assistantMessage.trim().length > 0;
+      const changed = hasAssistant
+        ? []
+        : await extractFromMessage(RUNTIME_DATA_DIR, userMessage);
+      let attemptedLLM = false;
+      if (userMessage.trim().length > 0 && hasAssistant) {
+        attemptedLLM = true;
+        void import('./memory-llm.js')
+          .then(({ extractWithLLM }) =>
+            extractWithLLM(
+              RUNTIME_DATA_DIR,
+              { userMessage, assistantMessage },
+              { projectRoot: PROJECT_ROOT, chatAgentId: null },
+            ),
+          )
+          .catch((err) =>
+            console.warn('[memory-llm] background failed (http extract)', err),
+          );
+      }
+      res.json({ changed, attemptedLLM });
     } catch (err) {
       res.status(400).json({ error: String((err && err.message) || err) });
+    }
+  });
+
+  // Composed memory body for the system prompt. Daemon-side chat runs
+  // call `composeMemoryBody()` directly; the web app (BYOK / API mode)
+  // can't import daemon internals, so this endpoint exposes the same
+  // string the daemon would have folded into the system prompt for a
+  // CLI run. `ProjectView.composedSystemPrompt()` calls it before each
+  // BYOK turn and passes the result into `composeSystemPrompt`'s
+  // `memoryBody` field — without this, the Memory tab is a no-op for
+  // BYOK users even though the UI saves model/index/entries for them.
+  app.get('/api/memory/system-prompt', async (_req, res) => {
+    try {
+      const body = await composeMemoryBody(RUNTIME_DATA_DIR);
+      res.json({ body });
+    } catch (err) {
+      res.status(500).json({ error: String((err && err.message) || err) });
     }
   });
 

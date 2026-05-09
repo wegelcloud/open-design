@@ -165,6 +165,22 @@ export interface ExtractMemoryResponse {
   /** Entries created or updated by this extraction pass. Empty when the
    *  heuristic found nothing worth saving. */
   changed: MemoryEntrySummary[];
+  /** True when the daemon also kicked off the background LLM extractor
+   *  for this turn — i.e. the caller supplied both a non-empty
+   *  `userMessage` and `assistantMessage`. The LLM extractor runs out
+   *  of band; observe `MemoryExtractionEvent` on `/api/memory/events`
+   *  for its result. */
+  attemptedLLM?: boolean;
+}
+
+// GET /api/memory/system-prompt — composed markdown block the daemon
+// would fold into the chat system prompt for a CLI run. Returns ''
+// when memory is disabled, missing, or nothing in the index is linked
+// in. BYOK / API-mode chats fetch this before each turn so the same
+// memory the daemon-side chat enjoys is also injected when
+// `ProjectView` composes the prompt locally.
+export interface MemorySystemPromptResponse {
+  body: string;
 }
 
 // SSE feed payload — emitted on `/api/memory/events` whenever the daemon

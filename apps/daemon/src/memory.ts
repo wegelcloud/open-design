@@ -359,6 +359,27 @@ export async function deleteMemoryEntry(dataDir, id) {
 
 const INDEX_LINK_RE = /^\s*-\s+\[([^\]]+)\]\(([^)]+)\)(\s+—\s+(.*))?$/;
 
+// Pull the linked entry ids out of MEMORY.md. The index is the user's
+// editable list — every bullet that points at `<id>.md` is a fact the
+// user wants injected into future system prompts. Removing a bullet
+// disables that fact while leaving the underlying file on disk, so the
+// user can paste the line back later. Anything that doesn't parse as a
+// valid `<id>.md` link is ignored (free-form prose, headings, blank
+// lines, `MEMORY.md` itself).
+function parseIndexLinkIds(indexBody: string): Set<string> {
+  const ids = new Set<string>();
+  for (const line of String(indexBody ?? '').split(/\r?\n/)) {
+    const m = INDEX_LINK_RE.exec(line);
+    if (!m) continue;
+    const target = typeof m[2] === 'string' ? m[2] : '';
+    if (!target.endsWith('.md')) continue;
+    if (target === INDEX_FILE) continue;
+    const id = target.slice(0, -3);
+    if (/^[a-z0-9_]+$/.test(id)) ids.add(id);
+  }
+  return ids;
+}
+
 async function ensureIndexHasEntry(dataDir, id, name, description) {
   const current = await readMemoryIndex(dataDir);
   const lines = current.split(/\r?\n/);
@@ -400,10 +421,22 @@ async function removeIndexLine(dataDir, id) {
 // Build the markdown block that the prompt composer folds into every
 // run. Returns `''` when memory is disabled, missing, or empty so the
 // composer can drop the block without an extra `if`.
+//
+// Active set is derived from MEMORY.md's link bullets, NOT from every
+// `*.md` file in the directory. The user's hand-edited index is the
+// source of truth for which facts get injected: removing a `- [Name](id.md)`
+// line disables that fact in future prompts while keeping the file on
+// disk (paste the line back in the settings panel to re-enable it).
+// Without this filter, deleted index lines had no effect — the daemon
+// kept reading every entry file and the index editor was cosmetic only.
 export async function composeMemoryBody(dataDir) {
   const cfg = await readMemoryConfig(dataDir);
   if (!cfg.enabled) return '';
-  const entries = await listMemoryEntries(dataDir);
+  const allEntries = await listMemoryEntries(dataDir);
+  if (allEntries.length === 0) return '';
+  const indexBody = await readMemoryIndex(dataDir);
+  const linkedIds = parseIndexLinkIds(indexBody);
+  const entries = allEntries.filter((e) => linkedIds.has(e.id));
   if (entries.length === 0) return '';
   const grouped = new Map();
   for (const e of entries) {

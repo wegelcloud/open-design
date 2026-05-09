@@ -405,6 +405,25 @@ function renderUserPayload({ userMessage, assistantMessage, currentMemory }) {
 // connect timeout) makes the failure feel even worse than it is.
 const FETCH_TIMEOUT_MS = 30_000;
 
+// Append `/v1<suffix>` to a base URL only when the URL doesn't already
+// carry an explicit `/vN` segment. Mirrors the same conditional path
+// build the chat proxy and connection-test routes use, so a custom
+// OpenAI-compatible endpoint whose saved baseUrl already contains
+// `/v1` (local servers, proxies that re-host OpenAI under a fixed
+// prefix) does not become `/v1/v1/chat/completions` and silently fail
+// every memory extraction even though chat through the same provider
+// works. Anthropic's `/v1/messages` and OpenAI's `/v1/chat/completions`
+// both flow through this; Azure and Gemini build their URLs
+// differently and don't need it.
+function appendVersionedApiPath(baseUrl, suffix) {
+  const url = new URL(baseUrl);
+  const pathname = url.pathname.replace(/\/+$/, '');
+  url.pathname = /\/v\d+(\/|$)/.test(pathname)
+    ? `${pathname}${suffix}`
+    : `${pathname}/v1${suffix}`;
+  return url.toString();
+}
+
 // Build a standard AbortSignal that fires after FETCH_TIMEOUT_MS so a
 // stalled provider call surfaces as a 'failed' record instead of
 // hanging the attempt indefinitely.
@@ -466,7 +485,7 @@ function describeFetchError(err) {
 async function callAnthropic(provider, system, user) {
   let resp;
   try {
-    resp = await fetch(`${provider.baseUrl}/v1/messages`, {
+    resp = await fetch(appendVersionedApiPath(provider.baseUrl, '/messages'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -495,22 +514,25 @@ async function callAnthropic(provider, system, user) {
 async function callOpenAI(provider, system, user) {
   let resp;
   try {
-    resp = await fetch(`${provider.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${provider.apiKey}`,
+    resp = await fetch(
+      appendVersionedApiPath(provider.baseUrl, '/chat/completions'),
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ],
+        }),
+        signal: withTimeout(FETCH_TIMEOUT_MS),
       },
-      body: JSON.stringify({
-        model: provider.model,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-      }),
-      signal: withTimeout(FETCH_TIMEOUT_MS),
-    });
+    );
   } catch (err) {
     throw new Error(describeFetchError(err));
   }
