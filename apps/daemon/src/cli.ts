@@ -822,6 +822,7 @@ async function runPlugin(args) {
   const rest = args.slice(1);
   switch (sub) {
     case 'list':      return runPluginList(rest);
+    case 'search':    return runPluginSearch(rest);
     case 'info':      return runPluginInfo(rest);
     case 'install':   return runPluginInstall(rest);
     case 'uninstall': return runPluginUninstall(rest);
@@ -1401,8 +1402,76 @@ function pluginDaemonUrl(flags) {
   return (flags && flags['daemon-url']) || process.env.OD_DAEMON_URL || 'http://127.0.0.1:7456';
 }
 
+// Plan §3.Y1 — filter knobs on `od plugin list` (and feeds
+// `od plugin search` below). Recognising these as string flags
+// keeps the parseFlags() argv consumer happy.
+const PLUGIN_LIST_FILTER_FLAGS = new Set([
+  ...PLUGIN_STRING_FLAGS,
+  'task-kind', 'mode', 'tag', 'trust',
+]);
+const PLUGIN_LIST_BOOLEAN_FLAGS = new Set([
+  ...PLUGIN_BOOLEAN_FLAGS,
+  'bundled', 'no-bundled',
+]);
+
 async function runPluginList(rest) {
-  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const flags = parseFlags(rest, {
+    string:  PLUGIN_LIST_FILTER_FLAGS,
+    boolean: PLUGIN_LIST_BOOLEAN_FLAGS,
+  });
+  if (flags.help || flags.h) {
+    console.log(`Usage:
+  od plugin list [--task-kind <kind>] [--mode <mode>] [--tag <tag>] \\
+                 [--trust <tier>] [--bundled | --no-bundled] [--json]
+
+Lists installed plugins. Filters AND together: --task-kind=code-migration
++ --tag=phase-7 returns only code-migration plugins tagged 'phase-7'.
+
+  --task-kind   Match od.taskKind (new-generation / figma-migration /
+                code-migration / tune-collab).
+  --mode        Match od.mode.
+  --tag         Match an entry in tags[].
+  --trust       Match trust tier (trusted / restricted / bundled).
+  --bundled     Restrict to bundled plugins (sourceKind='bundled' OR
+                trust='bundled').
+  --no-bundled  Exclude bundled plugins.`);
+    process.exit(0);
+  }
+  const data = await fetchPluginList(flags);
+  const filtered = await applyPluginFilters(data?.plugins ?? [], flags);
+  emitPluginList({ entries: filtered, json: !!flags.json, emptyMessage: 'No plugins matched the filter.' });
+}
+
+// Plan §3.Y1 — `od plugin search <query>`.
+async function runPluginSearch(rest) {
+  const flags = parseFlags(rest, {
+    string:  PLUGIN_LIST_FILTER_FLAGS,
+    boolean: PLUGIN_LIST_BOOLEAN_FLAGS,
+  });
+  const positional = rest.filter((a) => !a.startsWith('-'));
+  const query = positional[0];
+  if (flags.help || flags.h || !query) {
+    console.log(`Usage:
+  od plugin search <query> [--task-kind <kind>] [--mode <mode>] \\
+                           [--tag <tag>] [--trust <tier>] \\
+                           [--bundled | --no-bundled] [--json]
+
+Free-text search across installed plugins. Matches case-insensitively
+on id / title / description / tags. Combines with the same filter
+flags as 'od plugin list'.`);
+    process.exit(query ? 0 : 2);
+  }
+  const data = await fetchPluginList(flags);
+  const filtered = await applyPluginFilters(data?.plugins ?? [], flags, query);
+  emitPluginList({
+    entries: filtered,
+    json:    !!flags.json,
+    emptyMessage: `No installed plugins matched "${query}".`,
+    showRank: true,
+  });
+}
+
+async function fetchPluginList(flags) {
   const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins`;
   const resp = await fetch(url);
   if (!resp.ok) {
@@ -1410,17 +1479,52 @@ async function runPluginList(rest) {
     process.exit(1);
   }
   const data = await resp.json();
-  if (flags.json) {
-    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+  return data;
+}
+
+async function applyPluginFilters(plugins, flags, query) {
+  if (!Array.isArray(plugins) || plugins.length === 0) return [];
+  const { searchInstalledPlugins } = await import('./plugins/search.js');
+  const trustFlag = typeof flags.trust === 'string' ? flags.trust : undefined;
+  const taskKind  = typeof flags['task-kind'] === 'string' ? flags['task-kind'] : undefined;
+  const mode      = typeof flags.mode === 'string' ? flags.mode : undefined;
+  const tag       = typeof flags.tag === 'string'  ? flags.tag  : undefined;
+  let bundled;
+  if (flags.bundled === true)         bundled = true;
+  if (flags['no-bundled'] === true)   bundled = false;
+  const result = searchInstalledPlugins({
+    plugins,
+    ...(typeof query === 'string' && query.trim() ? { query } : {}),
+    ...(taskKind ? { taskKind } : {}),
+    ...(mode     ? { mode } : {}),
+    ...(tag      ? { tag } : {}),
+    ...(trustFlag === 'trusted' || trustFlag === 'restricted' || trustFlag === 'bundled' ? { trust: trustFlag } : {}),
+    ...(typeof bundled === 'boolean' ? { bundled } : {}),
+  });
+  return result.entries;
+}
+
+function emitPluginList({ entries, json, emptyMessage, showRank }) {
+  if (json) {
+    process.stdout.write(JSON.stringify({
+      total: entries.length,
+      plugins: entries.map((e) => ({
+        ...e.plugin,
+        ...(showRank ? { matched: e.matched, rank: e.rank } : {}),
+      })),
+    }, null, 2) + '\n');
     return;
   }
-  const plugins = Array.isArray(data?.plugins) ? data.plugins : [];
-  if (plugins.length === 0) {
-    console.log('No plugins installed. Run `od plugin install --source <path>` to install one.');
+  if (entries.length === 0) {
+    console.log(emptyMessage ?? 'No plugins matched.');
     return;
   }
-  for (const p of plugins) {
-    console.log(`${p.id}@${p.version}  trust=${p.trust}  source=${p.sourceKind}  title="${p.title}"`);
+  for (const entry of entries) {
+    const p = entry.plugin;
+    const tail = showRank && entry.matched.length > 0
+      ? `  matched=[${entry.matched.join(',')}]`
+      : '';
+    console.log(`${p.id}@${p.version}  trust=${p.trust}  source=${p.sourceKind}  title="${p.title}"${tail}`);
   }
 }
 
@@ -2052,7 +2156,8 @@ Common options:
 
 function printPluginHelp() {
   console.log(`Usage:
-  od plugin list                          List installed plugins.
+  od plugin list [--task-kind <kind>]     List installed plugins (filterable).
+  od plugin search <query> [--tag <t>]    Search installed plugins by id/title/desc/tag.
   od plugin info <id>                     Print a plugin's manifest + trust state as JSON.
   od plugin install --source <path>       Install a plugin from a local folder (Phase 1).
   od plugin uninstall <id>                Remove a plugin from the registry + on-disk staging.

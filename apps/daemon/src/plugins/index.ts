@@ -15,6 +15,12 @@ export {
   type PackPluginInput,
   type PackPluginResult,
 } from './pack.js';
+export {
+  searchInstalledPlugins,
+  type SearchInstalledPluginsInput,
+  type SearchInstalledPluginsResult,
+  type SearchInstalledPluginsResultEntry,
+} from './search.js';
 export * from './atoms/build-test.js';
 export * from './atoms/code-import.js';
 export * from './atoms/design-extract.js';
