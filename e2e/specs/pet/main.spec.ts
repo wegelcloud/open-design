@@ -85,7 +85,7 @@ describe('pet main spec', () => {
       const logs = await readToolsDevLogs(suite);
       assertNoFatalLogs(logs);
 
-      await suite.writeReportJson('summary.json', {
+      await suite.report.json('summary.json', {
         namespace: suite.namespace,
         registry: {
           bundledCount: registry.pets.filter((pet) => pet.bundled).length,

@@ -116,7 +116,7 @@ describe('orbit run spec', () => {
       const logs = await readToolsDevLogs(suite);
       assertNoFatalLogs(logs);
 
-      await suite.writeReportJson('summary.json', {
+      await suite.report.json('summary.json', {
         artifact,
         namespace: suite.namespace,
         orbit: finalOrbit,

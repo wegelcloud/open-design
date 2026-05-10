@@ -148,7 +148,7 @@ describe('tools-dev pure inspect smoke', () => {
       const logs = await readToolsDevLogs(suite);
       assertNoFatalLogs(logs);
 
-      await suite.writeReportJson('summary.json', {
+      await suite.report.json('summary.json', {
         connection,
         files: files.files.map((entry) => ({
           artifactManifest: entry.artifactManifest,

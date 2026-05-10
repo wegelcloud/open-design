@@ -1,18 +1,19 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, posix } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { assertRelativeReportPath, createReport, type E2eReport } from './report.ts';
 
 export type SmokeSuite = {
   codexHomeDir: string;
   dataDir: string;
   namespace: string;
-  reportDir: string;
+  report: E2eReport;
   root: string;
   scratchDir: string;
   toolsDevRoot: string;
-  writeReportJson: (name: string, value: unknown) => Promise<string>;
   writeScratchJson: (name: string, value: unknown) => Promise<string>;
-  finalize: (result: SmokeSuiteFinalizeInput) => Promise<void>;
+  finalize: (result: SmokeSuiteFinalizeInput) => Promise<string>;
 };
 
 export type SmokeSuiteFinalizeInput = {
@@ -39,9 +40,10 @@ export async function createSmokeSuite(name: string): Promise<SmokeSuite> {
 
   await mkdir(reportDir, { recursive: true });
   await mkdir(scratchDir, { recursive: true });
+  const report = await createReport(reportDir);
 
   async function writeJson(baseDir: string, name: string, value: unknown): Promise<string> {
-    const safeName = assertRelativeArtifactName(name);
+    const safeName = assertRelativeReportPath(name);
     const outputPath = join(baseDir, safeName);
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
@@ -52,16 +54,15 @@ export async function createSmokeSuite(name: string): Promise<SmokeSuite> {
     codexHomeDir,
     dataDir,
     namespace,
-    reportDir,
+    report,
     root,
     scratchDir,
     toolsDevRoot,
-    writeReportJson: (name, value) => writeJson(reportDir, name, value),
     writeScratchJson: (name, value) => writeJson(scratchDir, name, value),
     async finalize(result) {
-      await writeJson(reportDir, 'suite-result.json', {
+      await report.json('suite-result.json', {
         namespace,
-        reportDir,
+        reportPath: report.root,
         root,
         status: result.success ? 'success' : 'failed',
         timestamp: new Date().toISOString(),
@@ -69,14 +70,15 @@ export async function createSmokeSuite(name: string): Promise<SmokeSuite> {
 
       if (result.success) {
         await rm(scratchDir, { force: true, recursive: true });
-        return;
+        return report.root;
       }
 
-      await writeJson(reportDir, 'failure/preserved-site.json', {
+      await report.json('failure/preserved-site.json', {
         diagnostics: result.diagnostics ?? null,
         error: formatUnknown(result.error),
         preservedScratchDir: scratchDir,
       });
+      return report.root;
     },
   };
 }
@@ -84,18 +86,6 @@ export async function createSmokeSuite(name: string): Promise<SmokeSuite> {
 function sanitizeSegment(value: string): string {
   const safe = value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return safe || 'suite';
-}
-
-function assertRelativeArtifactName(name: string): string {
-  const unixName = name.replace(/\\/g, '/');
-  if (unixName.includes('\0') || unixName.startsWith('/') || /^[A-Za-z]:\//.test(unixName)) {
-    throw new Error(`artifact name must be relative: ${name}`);
-  }
-  const normalized = posix.normalize(unixName);
-  if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
-    throw new Error(`artifact name must not escape report root: ${name}`);
-  }
-  return normalized;
 }
 
 function formatUnknown(value: unknown): string | null {
