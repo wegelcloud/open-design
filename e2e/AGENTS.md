@@ -12,6 +12,7 @@ Follow the root `AGENTS.md` first. This package owns user-level end-to-end smoke
 - `lib/shared.ts`: tiny cross-suite shared helpers only.
 - `lib/vitest/`: Vitest-specific atomic helpers only. Helpers describe actions such as namespace lifecycle, mock servers, HTTP calls, tools-dev commands, inspect, logs, and reports; they should not hide core business scenario decisions.
 - `lib/vitest/report.ts`: the report boundary. Specs save curated output through `report.save(<relpath>, <blob>)` or `report.json(<relpath>, value)`; release workflows should consume only the final report path, not its internal file layout.
+- `createSmokeSuite(...).with.*`: suite-owned lifecycle composition. Prefer this shape for namespace-bound resources such as `suite.with.toolsDev(...)` so specs keep business workflow code in the foreground.
 - `lib/playwright/`: Playwright-specific fixtures, resource accessors, route helpers, and UI actions.
 - `scripts/playwright.ts`: Playwright auxiliary subcommands such as artifact cleanup; it must not wrap `playwright test`.
 
