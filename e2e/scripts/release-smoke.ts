@@ -37,7 +37,10 @@ async function main(): Promise<void> {
   await saveOptionalSource(report, 'tools-pack.log', process.env.OD_PACKAGED_E2E_BUILD_LOG_PATH);
 
   const startedAt = Date.now();
-  const result = await runVitest(spec);
+  const result = await runVitest(spec).catch((error: unknown) => ({
+    exitCode: 1,
+    log: formatUnknown(error),
+  }));
   await report.save('vitest.log', result.log);
   await report.json('suite-result.json', {
     durationMs: Date.now() - startedAt,
@@ -83,8 +86,7 @@ async function saveOptionalSource(
 
 async function runVitest(spec: string): Promise<{ exitCode: number; log: string }> {
   const chunks: string[] = [];
-  const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const child = spawn(command, ['test', spec], {
+  const child = spawn(process.execPath, [join(e2eRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'run', '-c', 'vitest.config.ts', spec], {
     cwd: e2eRoot,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -121,6 +123,15 @@ function defaultNamespace(platform: Platform): string {
 
 function resolveFromWorkspace(path: string): string {
   return isAbsolute(path) ? path : resolve(workspaceRoot, path);
+}
+
+function formatUnknown(value: unknown): string {
+  if (value instanceof Error) return value.stack ?? `${value.name}: ${value.message}`;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 await main();
