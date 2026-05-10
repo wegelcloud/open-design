@@ -33,6 +33,7 @@ import {
 import { migrateLegacyDataDirSync } from './legacy-data-migrator.js';
 import { findSkillById, listSkills, splitDerivedSkillId } from './skills.js';
 import { validateLinkedDirs } from './linked-dirs.js';
+import { installFromTarget, uninstallById, sanitizeRepoName } from './library-install.js';
 import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './native-folder-dialog.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
@@ -59,6 +60,7 @@ import {
   testProviderConnection,
   validateBaseUrl,
 } from './connectionTest.js';
+import { listProviderModels } from './providerModels.js';
 import { importClaudeDesignZip } from './claude-design-import.js';
 import {
   finalizeDesignPackage,
@@ -116,6 +118,11 @@ import {
 } from './mcp-tokens.js';
 import { agentCliEnvForAgent, readAppConfig, writeAppConfig } from './app-config.js';
 import { OrbitService, formatLocalProjectTimestamp, renderOrbitTemplateSystemPrompt } from './orbit.js';
+import {
+  RoutineService,
+  validateSchedule as validateRoutineSchedule,
+  validateTarget as validateRoutineTarget,
+} from './routines.js';
 import { buildMcpInstallPayload } from './mcp-install-info.js';
 import {
   buildProjectArchive,
@@ -129,6 +136,7 @@ import {
   mimeFor,
   projectDir,
   readProjectFile,
+  renameProjectFile,
   removeProjectDir,
   sanitizeName,
   searchProjectFiles,
@@ -148,6 +156,8 @@ import {
   getTemplate,
   insertConversation,
   insertProject,
+  insertRoutine,
+  insertRoutineRun,
   insertTemplate,
   listProjectsAwaitingInput,
   listConversations,
@@ -156,13 +166,20 @@ import {
   listMessages,
   listPreviewComments,
   listProjects,
+  listRoutines,
+  listRoutineRuns,
   listTabs,
   listTemplates,
+  getLatestRoutineRun,
+  getRoutine,
+  deleteRoutine as dbDeleteRoutine,
   openDatabase,
   setTabs,
   updateConversation,
   updatePreviewCommentStatus,
   updateProject,
+  updateRoutine,
+  updateRoutineRun,
   upsertDeployment,
   upsertMessage,
   upsertPreviewComment,
@@ -749,6 +766,9 @@ const CRAFT_DIR = resolveDaemonResourceDir(
   'craft',
   path.join(PROJECT_ROOT, 'craft'),
 );
+// User-installed skills and design systems live under the runtime data dir
+// so they respect OD_DATA_DIR overrides (test isolation, packaged runs).
+// Defined after RUNTIME_DATA_DIR is resolved below.
 const FRAMES_DIR = resolveDaemonResourceDir(
   DAEMON_RESOURCE_ROOT,
   'frames',
@@ -784,8 +804,22 @@ export function resolveDataDir(raw, projectRoot) {
     fs.accessSync(resolved, fs.constants.W_OK);
   } catch (err) {
     const e = err;
+    const currentUser = (() => {
+      try {
+        return os.userInfo().username;
+      } catch {
+        return process.env.USER ?? process.env.LOGNAME ?? 'unknown';
+      }
+    })();
+    const parentDir = path.dirname(resolved);
     throw new Error(
-      `OD_DATA_DIR "${resolved}" is not writable: ${e.message}`,
+      [
+        `OD_DATA_DIR "${resolved}" is not writable: ${e.message}`,
+        `Current user: ${currentUser}`,
+        `Check whether the folder or one of its parents is owned by another user, is a symlink to a protected location, or was previously created with sudo.`,
+        `Try: ls -ld "${parentDir}" "${resolved}"`,
+        `If the folder should belong to you, fix ownership/permissions, for example: sudo chown -R "${currentUser}":staff "${parentDir}" && chmod -R u+rwX "${parentDir}"`,
+      ].join(' '),
     );
   }
   return resolved;
@@ -815,8 +849,14 @@ migrateLegacyDataDirSync({
 });
 const ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'artifacts');
 const PROJECTS_DIR = path.join(RUNTIME_DATA_DIR, 'projects');
+const USER_SKILLS_DIR = path.join(RUNTIME_DATA_DIR, 'skills');
+const USER_DESIGN_SYSTEMS_DIR = path.join(RUNTIME_DATA_DIR, 'design-systems');
 fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+for (const dir of [USER_SKILLS_DIR, USER_DESIGN_SYSTEMS_DIR]) {
+  fs.mkdirSync(dir, { recursive: true });
+}
 const orbitService = new OrbitService(RUNTIME_DATA_DIR);
+let routineService = null;
 
 // In-memory OAuth state cache. Lives for the daemon process's lifetime.
 // Maps the OAuth `state` parameter we generated in /api/mcp/oauth/start
@@ -1846,10 +1886,19 @@ export interface StartServerOptions {
   returnServer?: boolean;
 }
 
+const DEFAULT_CHAT_RUN_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_CHAT_RUN_INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
 function resolveChatRunInactivityTimeoutMs() {
   const raw = Number(process.env.OD_CHAT_RUN_INACTIVITY_TIMEOUT_MS);
-  if (!Number.isFinite(raw)) return 2 * 60 * 1000;
-  return Math.max(0, Math.floor(raw));
+  // This watchdog observes child stdout/stderr/SSE activity, not real CPU or
+  // filesystem progress. Keep the default long enough for agents that spend
+  // several minutes silently writing large artifacts.
+  if (!Number.isFinite(raw)) return DEFAULT_CHAT_RUN_INACTIVITY_TIMEOUT_MS;
+  // Node clamps delays larger than a signed 32-bit integer down to 1ms, which
+  // makes an oversized override fail almost immediately while reporting a huge
+  // timeout. Keep explicit overrides bounded to a practical, timer-safe value.
+  return Math.min(MAX_CHAT_RUN_INACTIVITY_TIMEOUT_MS, Math.max(0, Math.floor(raw)));
 }
 
 function resolveChatRunShutdownGraceMs() {
@@ -1869,6 +1918,43 @@ export async function startServer({
   const extraAllowedOrigins = configuredAllowedOrigins();
   const app = express();
   app.use(express.json({ limit: '4mb' }));
+
+  // Multi-directory scanning: merge built-in and user-installed skills/DS.
+  // Built-in items win on ID collisions (higher priority per skills-protocol.md).
+  async function listAllSkills() {
+    const builtIn = (await listSkills(SKILLS_DIR)).map((s) => ({
+      ...s,
+      source: 'built-in',
+    }));
+    let installed = [];
+    try {
+      installed = (await listSkills(USER_SKILLS_DIR)).map((s) => ({
+        ...s,
+        source: 'installed',
+      }));
+    } catch {
+      // User directory may not exist yet or be unreadable.
+    }
+    const seen = new Set(builtIn.map((s) => s.id));
+    return [...builtIn, ...installed.filter((s) => !seen.has(s.id))];
+  }
+
+  async function listAllDesignSystems() {
+    const builtIn = (await listDesignSystems(DESIGN_SYSTEMS_DIR)).map((s) => ({
+      ...s,
+      source: 'built-in',
+    }));
+    let installed = [];
+    try {
+      installed = (await listDesignSystems(USER_DESIGN_SYSTEMS_DIR)).map(
+        (s) => ({ ...s, source: 'installed' }),
+      );
+    } catch {
+      // User directory may not exist yet or be unreadable.
+    }
+    const seen = new Set(builtIn.map((s) => s.id));
+    return [...builtIn, ...installed.filter((s) => !seen.has(s.id))];
+  }
 
   // Chrome may strip the port from the Origin header on same-origin GET
   // requests. Only use this as a fallback for safe, idempotent GET requests;
@@ -1929,6 +2015,32 @@ export async function startServer({
   configureComposioConfigStore(RUNTIME_DATA_DIR);
   composioConnectorProvider.configureCatalogCache(RUNTIME_DATA_DIR);
   composioConnectorProvider.startCatalogRefreshLoop();
+
+  // RoutineService persistence is a thin adapter over the SQLite helpers.
+  // Routines are stored as DB rows; the service holds in-memory timers and
+  // delegates "list me everything" / "record a run" back to SQLite.
+  routineService = new RoutineService({
+    list: () => listRoutines(db).map((row) => routineDbRowToContract(row, null)),
+    insertRun: (run) => {
+      insertRoutineRun(db, {
+        id: run.id,
+        routineId: run.routineId,
+        trigger: run.trigger,
+        status: run.status,
+        projectId: run.projectId,
+        conversationId: run.conversationId,
+        agentRunId: run.agentRunId,
+        startedAt: run.startedAt,
+        completedAt: run.completedAt,
+        summary: run.summary,
+        error: run.error,
+      });
+    },
+    updateRun: (id, patch) => {
+      updateRoutineRun(db, id, patch);
+    },
+    getLatestRun: (routineId) => getLatestRoutineRun(db, routineId),
+  });
   let daemonUrl = `http://127.0.0.1:${port}`;
 
   // Boot reconcile: any critique_runs row left in 'running' state by a prior
@@ -1968,6 +2080,8 @@ export async function startServer({
     })
     .catch(() => detectAgents().catch(() => {}));
 
+  routineService.start();
+
   await recoverStaleLiveArtifactRefreshes({ projectsRoot: PROJECTS_DIR }).catch((error) => {
     console.warn('[od] Failed to recover stale live artifact refreshes:', error);
   });
@@ -1995,6 +2109,8 @@ export async function startServer({
   });
 
   // ---- Projects (DB-backed) -------------------------------------------------
+
+
 
   const design = {
     runs: createChatRunService({ createSseResponse, createSseErrorPayload }),
@@ -2063,6 +2179,7 @@ export async function startServer({
     listFiles,
     searchProjectFiles,
     readProjectFile,
+    renameProjectFile,
     deleteProjectFile,
     writeProjectFile,
     sanitizeName,
@@ -2183,6 +2300,7 @@ export async function startServer({
   };
   const validationDeps = { isSafeId, validateExternalApiBaseUrl, validateBaseUrl };
   const agentDeps = {
+    listProviderModels,
     testProviderConnection,
     testAgentConnection,
     getAgentDef,
@@ -2331,7 +2449,7 @@ export async function startServer({
     let activeSkillDir = null;
     if (effectiveSkillId) {
       const skill = findSkillById(
-        await listSkills(SKILLS_DIR),
+        await listAllSkills(),
         effectiveSkillId,
       );
       if (skill) {
@@ -2357,11 +2475,12 @@ export async function startServer({
     let designSystemBody;
     let designSystemTitle;
     if (effectiveDesignSystemId) {
-      const systems = await listDesignSystems(DESIGN_SYSTEMS_DIR);
+      const systems = await listAllDesignSystems();
       const summary = systems.find((s) => s.id === effectiveDesignSystemId);
       designSystemTitle = summary?.title;
       designSystemBody =
         (await readDesignSystem(DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)) ??
+        (await readDesignSystem(USER_DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)) ??
         undefined;
     }
 
@@ -3578,7 +3697,7 @@ export async function startServer({
   });
 
   orbitService.setTemplateResolver(async (skillId) => {
-    const skills = await listSkills(SKILLS_DIR);
+    const skills = await listAllSkills();
     const skill = findSkillById(skills, skillId);
     if (!skill || skill.scenario !== 'orbit') return null;
     return {
@@ -3627,6 +3746,7 @@ export async function startServer({
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
   });
 
+
   registerChatRoutes(app, {
     db,
     design,
@@ -3636,6 +3756,7 @@ export async function startServer({
     critique: critiqueDeps,
     validation: validationDeps,
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
+
   });
 
   // Wait for `listen` to bind so callers always see the resolved URL —
@@ -3650,6 +3771,7 @@ export async function startServer({
     const cleanupDaemonBackgroundWork = () => {
       composioConnectorProvider.stopCatalogRefreshLoop();
       orbitService.stop();
+      routineService?.stop();
     };
     const shutdownDaemonRuns = async () => {
       if (daemonShutdownStarted) return;
