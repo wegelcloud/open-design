@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { startServer } from './server.js';
 import { runLiveArtifactsMcpServer } from './mcp-live-artifacts-server.js';
+import { runWriteMcpStdio } from './mcp-write.js';
 import { runConnectorsToolCli } from './tools-connectors-cli.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 import { splitResearchSubcommand } from './research/cli-args.js';
@@ -83,6 +84,34 @@ if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${JSON.stringify({ ok: false, error: { message } })}\n`);
+    process.exit(1);
+  }
+}
+
+if (argv[0] === 'mcp' && (argv[1] === 'write' || argv[1] === 'authoring')) {
+  try {
+    let flags;
+    try {
+      flags = parseFlags(argv.slice(2), {
+        string: MCP_STRING_FLAGS,
+        boolean: MCP_BOOLEAN_FLAGS,
+      });
+    } catch (err) {
+      console.error(err.message);
+      printMcpWriteHelp();
+      process.exit(2);
+    }
+    if (flags.help || flags.h) {
+      printMcpWriteHelp();
+      process.exit(0);
+    }
+    const { resolveMcpDaemonUrl } = await import('./mcp-daemon-url.js');
+    const daemonUrl = await resolveMcpDaemonUrl({ flagUrl: flags['daemon-url'] });
+    await runWriteMcpStdio({ daemonUrl });
+    process.exit(0);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
     process.exit(1);
   }
 }
@@ -192,6 +221,9 @@ function printRootHelp() {
 
   od mcp live-artifacts
       Start the MCP server exposing live-artifact and connector tools.
+
+  od mcp write [--daemon-url <url>]
+      Start the custom write-capable MCP server for Open Design authoring.
 
   od research search --query <text> [--max-sources 5] [--daemon-url <url>]
       Run agent-callable Tavily research through the local daemon.
@@ -697,4 +729,43 @@ For the copy-paste, per-client snippet (with absolute paths resolved
 for your machine, plus a one-click deeplink for Cursor), open Settings
 → MCP server in the Open Design app. Read-only by design; the daemon
 must be running locally for tool calls to succeed.`);
+}
+
+function printMcpWriteHelp() {
+  console.log(`Usage: od mcp write [--daemon-url <url>]
+
+Run the custom write-capable Open Design MCP server. This is separate
+from the official built-in read-only \`od mcp\` server and is intended
+for trusted local coding agents that need to create projects, write
+files, and trigger generation runs through the running Open Design daemon.
+
+Options:
+  --daemon-url <url>   Open Design daemon HTTP base URL. Resolution
+                       order: this flag, OD_DAEMON_URL, the running
+                       daemon's sidecar IPC status socket
+                       (/tmp/open-design/ipc/<namespace>/daemon.sock),
+                       then http://127.0.0.1:7456.
+
+Tools exposed:
+  list_agents                    list available Open Design inner agents
+  list_skills                    list Open Design skills
+  list_design_systems            list Open Design design systems
+  create_project                 create a managed Open Design project
+  update_project                 patch project metadata
+  list_conversations             list project conversations
+  create_conversation            create a conversation
+  write_file                     write one project file
+  rename_file                    rename/move one project file
+  delete_file                    delete one project file
+  generate_project_content       create a project and start a generation run
+  continue_project_content       start a generation run in an existing project
+  get_run                        inspect one run
+  wait_for_run                   poll until a run finishes or times out
+  cancel_run                     cancel an active run
+
+Notes:
+  * Managed project creation is supported.
+  * Desktop-gated folder import is intentionally not exposed here.
+  * Keep the standard read-only \`od mcp\` server alongside this one if
+    you want the official file-reading surface too.`);
 }
