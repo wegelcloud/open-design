@@ -21,13 +21,15 @@ import type { ApiProtocol } from '../types';
 // the user types in the model field is what's variable, not the API.
 export const SUGGESTED_MODELS_BY_PROTOCOL: Record<ApiProtocol, readonly string[]> = {
   anthropic: [
+    'claude-opus-4-7',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
     'claude-opus-4-5',
     'claude-sonnet-4-5',
-    'claude-haiku-4-5',
-    'deepseek-chat',
-    'deepseek-reasoner',
     'deepseek-v4-flash',
     'deepseek-v4-pro',
+    'deepseek-chat',
+    'deepseek-reasoner',
     'MiniMax-M2.7-highspeed',
     'MiniMax-M2.7',
     'MiniMax-M2.5-highspeed',
@@ -38,14 +40,19 @@ export const SUGGESTED_MODELS_BY_PROTOCOL: Record<ApiProtocol, readonly string[]
     'mimo-v2.5-pro',
   ],
   openai: [
-    'gpt-4o',
-    'gpt-4o-mini',
+    'gpt-5.5',
+    'gpt-5.2',
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-5-nano',
     'o3',
     'o4-mini',
-    'deepseek-chat',
-    'deepseek-reasoner',
+    'gpt-4o',
+    'gpt-4o-mini',
     'deepseek-v4-flash',
     'deepseek-v4-pro',
+    'deepseek-chat',
+    'deepseek-reasoner',
     'MiniMax-M2.7-highspeed',
     'MiniMax-M2.7',
     'MiniMax-M2.5-highspeed',
@@ -60,10 +67,12 @@ export const SUGGESTED_MODELS_BY_PROTOCOL: Record<ApiProtocol, readonly string[]
     'gpt-4o-mini',
   ],
   google: [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
+    'gemini-3.1-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
   ],
   ollama: [
     'cogito-2.1:671b',
@@ -114,9 +123,9 @@ export const SUGGESTED_MODELS_BY_PROTOCOL: Record<ApiProtocol, readonly string[]
 // that prioritises latency + cost over reasoning depth.
 export const FAST_MODEL_BY_PROTOCOL: Record<ApiProtocol, string> = {
   anthropic: 'claude-haiku-4-5',
-  openai: 'gpt-4o-mini',
+  openai: 'gpt-5-mini',
   azure: 'gpt-4o-mini',
-  google: 'gemini-2.0-flash',
+  google: 'gemini-3.1-flash-lite-preview',
   // Ollama Cloud doesn't have a clean "fast small model" default that
   // works for the LLM memory extractor — the catalog skews to large
   // open-weight checkpoints. Fall back to a small Gemma so the auto-

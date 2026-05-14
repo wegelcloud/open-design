@@ -103,7 +103,7 @@ const PROVIDER_DEFAULTS = {
     baseUrl: 'https://api.anthropic.com',
   },
   openai: {
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
     baseUrl: 'https://api.openai.com',
   },
   azure: {
@@ -112,7 +112,7 @@ const PROVIDER_DEFAULTS = {
     apiVersion: '2024-10-21',
   },
   google: {
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.1-flash-lite-preview',
     baseUrl: 'https://generativelanguage.googleapis.com',
   },
   // Ollama Cloud speaks OpenAI-compatible chat-completions, so the

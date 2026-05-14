@@ -8,10 +8,12 @@ export const geminiAgentDef = {
     versionArgs: ['--version'],
     fallbackModels: [
       DEFAULT_MODEL_OPTION,
-      // Gemini 3 (May 2026): top-tier reasoning + fast frontier-class.
-      // Both currently ship as previews via the Gemini CLI. Issue #981.
-      { id: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview' },
+      // Current Gemini CLI tiers: 3.1 Pro for flagship reasoning/coding,
+      // 3 Flash for the fast balanced tier, and 3.1 Flash-Lite for the
+      // high-throughput / low-latency lane.
+      { id: 'gemini-3.1-pro-preview', label: 'gemini-3.1-pro-preview' },
       { id: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview' },
+      { id: 'gemini-3.1-flash-lite-preview', label: 'gemini-3.1-flash-lite-preview' },
       { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
       { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
       // Cheapest 2.5 multimodal variant; useful for high-volume / low-latency work.
