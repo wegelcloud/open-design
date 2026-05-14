@@ -552,6 +552,19 @@ function isMacCodeBundle(name) {
   return name.endsWith(".app") || name.endsWith(".framework");
 }
 
+async function resolveMacCodeSignTarget(bundlePath) {
+  if (!bundlePath.endsWith(".framework")) return bundlePath;
+
+  const versionCandidates = [
+    path.join(bundlePath, "Versions", "Current"),
+    path.join(bundlePath, "Versions", "A"),
+  ];
+  for (const candidate of versionCandidates) {
+    if (await pathExists(candidate)) return candidate;
+  }
+  return bundlePath;
+}
+
 async function collectMacAdhocSignTargets(appPath) {
   const frameworksRoot = path.join(appPath, "Contents", "Frameworks");
   const targets = [];
@@ -562,7 +575,7 @@ async function collectMacAdhocSignTargets(appPath) {
       if (!entry.isDirectory()) continue;
       const entryPath = path.join(current, entry.name);
       if (isMacCodeBundle(entry.name)) {
-        targets.push(entryPath);
+        targets.push(await resolveMacCodeSignTarget(entryPath));
         continue;
       }
       await visit(entryPath);
